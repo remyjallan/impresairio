@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
-import { RunLookupService } from '../runs/run-lookup.service';
+import { FileStateStore } from '../runs/file-state.store';
+
+export const STATUS_WRITER = Symbol('STATUS_WRITER');
 
 export class RunNotFoundError extends Error {
   constructor(runId: string) {
@@ -17,19 +19,27 @@ export class RunNotFoundError extends Error {
 })
 export class StatusCommand extends CommandRunner {
   constructor(
-    @Inject(RunLookupService)
-    private readonly runLookupService: RunLookupService,
+    @Inject(FileStateStore)
+    private readonly stateStore: FileStateStore,
+    @Inject(STATUS_WRITER)
+    private readonly write: (line: string) => void = (line) => process.stdout.write(line),
   ) {
     super();
   }
 
   async run([runId]: string[]): Promise<void> {
-    const run = this.runLookupService.findById(runId);
+    const run = this.stateStore.findState(runId);
 
     if (!run) {
       throw new RunNotFoundError(runId);
     }
 
-    process.stdout.write(`${run.id}\n`);
+    this.write([
+      `run: ${run.id}`,
+      `workflow: ${run.workflow.id}`,
+      `status: ${run.currentStepId ?? 'not-started'}`,
+      `steps: ${run.steps.length}`,
+      '',
+    ].join('\n'));
   }
 }

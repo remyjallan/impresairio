@@ -5,6 +5,7 @@ import {
   CompletionService,
   type CompletionRunStore,
 } from '../src/runs/completion.service';
+import { RunBusyError } from '../src/runs/run-lock.service';
 
 function createStore(step: {
   readonly id: string;
@@ -100,5 +101,21 @@ describe('CompleteCommand', () => {
     });
 
     expect(() => service.complete('missing', 'design')).toThrow(CompletionError);
+  });
+
+  it('refuses a concurrent completion before reading, verifying or mutating the run', async () => {
+    const store = createStore({ id: 'design', kind: 'agent', status: 'in_progress' });
+    const verifier = { completeExpectedOutput: () => { throw new Error('must not verify output'); } };
+    const service = new CompletionService(
+      store,
+      verifier,
+      undefined,
+      { acquire: () => { throw new RunBusyError('run-42'); } },
+    );
+
+    await expect(new CompleteCommand(service).run(['run-42', 'design']))
+      .rejects.toThrow('run busy: run-42');
+    expect(store.completions).toEqual([]);
+    expect(store.events).toEqual([]);
   });
 });
