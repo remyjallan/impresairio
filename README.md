@@ -12,6 +12,10 @@ V0 is intentionally pragmatic:
 
 It is **not** a hosted project-management tool, a generic workflow engine, an agent marketplace or an automatic multi-agent runtime.
 
+## Community
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change, [SECURITY.md](SECURITY.md) to report vulnerabilities privately, and [SUPPORT.md](SUPPORT.md) for help channels. Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Requirements and installation
 
 - Node.js 22 or newer

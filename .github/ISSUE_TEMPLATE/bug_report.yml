@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible defect
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include credentials, private paths or run state."
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal commands and observed result.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Impresairio version
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
