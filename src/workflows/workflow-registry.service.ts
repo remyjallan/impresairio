@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { parseDocument, YAMLParseError } from 'yaml';
 import { HomeDirectoryResolver } from '../config/home-directory.resolver';
 import { workflowSchema, type Workflow } from './workflow.schema';
@@ -84,6 +84,20 @@ export class WorkflowRegistryService {
     };
   }
 
+  readPromptFile(resolvedWorkflow: ResolvedWorkflow, promptFile: string): string {
+    const workflowDirectory = dirname(resolvedWorkflow.path);
+    const candidate = resolve(workflowDirectory, promptFile);
+    const containment = relative(workflowDirectory, candidate);
+    if (containment === '' || containment.startsWith('..') || containment.includes('..\\')) {
+      throw new WorkflowError(`Prompt file escapes workflow directory: ${promptFile}`);
+    }
+    const content = this.read(candidate);
+    if (content.trim().length === 0) {
+      throw new WorkflowError(`${candidate}: prompt file must not be empty`);
+    }
+    return content;
+  }
+
   private read(path: string): string {
     try {
       return readFileSync(path, 'utf8');
@@ -122,4 +136,3 @@ export class WorkflowRegistryService {
 export function workflowPromptDirectory(resolved: ResolvedWorkflow): string {
   return dirname(resolved.path);
 }
-

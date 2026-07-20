@@ -17,6 +17,7 @@ import { ArtifactService } from '../src/documentation/artifact.service';
 import { FilesystemDocumentationTarget } from '../src/documentation/filesystem-documentation.target';
 import { PathRendererService } from '../src/documentation/path-renderer.service';
 import { CompletionService } from '../src/runs/completion.service';
+import { AgentProfileService } from '../src/agents/agent-profile.service';
 
 const temporaryDirectories: string[] = [];
 
@@ -29,8 +30,16 @@ function configureRepository(home: string, documentationRoot: string): string {
     kind: filesystem
     root: ${documentationRoot}
     defaultFormat: markdown
-agentProfiles: {}
-models: {}
+agentProfiles:
+  claude:
+    provider: claude-code
+  codex:
+    provider: codex
+  opencode-glm:
+    provider: opencode
+    modelAlias: glm-5.2
+models:
+  glm-5.2: z-ai/glm-5.2
 `);
   writeFileSync(join(repository, '.impresairio.yaml'), `project:
   name: Example Project
@@ -73,6 +82,7 @@ function createRunService() {
       locks,
       workflows,
       new ConfigService(resolver),
+      new AgentProfileService(),
       () => new Date('2026-07-20T10:00:00.000Z'),
     ),
     runner: new WorkflowRunnerService(
@@ -143,7 +153,7 @@ describe('start and status commands', () => {
     service.start({
       id: 'run-completion',
       workflowId: 'quick-fix',
-      roles: { launcher: 'claude' },
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
       feature: { id: 'IMP-43', slug: 'completion-test' },
       repositoryDirectory: repository,
     });
@@ -243,6 +253,38 @@ steps:
       expectedOutput: {
         path: join(documentationRoot, 'Specs', 'IMP-44 - snapshot-test', '01 - Draft.md'),
       },
+    });
+  });
+
+  it('freezes promptFile content at run start', () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    const workflows = join(repository, '.impresairio', 'workflows');
+    mkdirSync(join(workflows, 'prompts'), { recursive: true });
+    writeFileSync(join(workflows, 'prompted.yaml'), `id: prompted
+name: Prompted
+steps:
+  - id: draft
+    type: agent
+    actor: launcher
+    promptFile: prompts/draft.md
+    output:
+      id: draft
+      filename: "01 - Draft.md"
+`);
+    const promptPath = join(workflows, 'prompts', 'draft.md');
+    writeFileSync(promptPath, 'Write the first draft.\n');
+
+    service.start({
+      id: 'run-prompt-snapshot', workflowId: 'prompted', roles: { launcher: 'claude' },
+      feature: { id: 'IMP-45', slug: 'prompt-snapshot' }, repositoryDirectory: repository,
+    });
+    writeFileSync(promptPath, 'This change must not affect the run.\n');
+
+    expect(store.findState('run-prompt-snapshot')?.steps[0]).toMatchObject({
+      method: { promptFile: 'prompts/draft.md', content: 'Write the first draft.\n' },
     });
   });
 });

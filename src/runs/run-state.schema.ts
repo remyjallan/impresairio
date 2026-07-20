@@ -35,7 +35,24 @@ const declaredWorkflowOutputSchema = z
 
 const agentMethodSchema = z.union([
   z.object({ action: nonEmptyString }).strict(),
-  z.object({ promptFile: nonEmptyString }).strict(),
+  z.object({ promptFile: nonEmptyString, content: z.string().min(1) }).strict(),
+]);
+
+const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
+  z.object({
+    profile: nonEmptyString,
+    provider: z.literal('claude-code'),
+  }).strict(),
+  z.object({
+    profile: nonEmptyString,
+    provider: z.literal('codex'),
+  }).strict(),
+  z.object({
+    profile: nonEmptyString,
+    provider: z.literal('opencode'),
+    modelAlias: nonEmptyString,
+    model: nonEmptyString,
+  }).strict(),
 ]);
 
 const documentationContextSchema = z
@@ -128,6 +145,7 @@ export const runStateSchema = z
       })
       .strict(),
     roles: z.record(nonEmptyString, nonEmptyString),
+    resolvedActors: z.record(nonEmptyString, resolvedActorProfileSchema),
     documentation: documentationContextSchema,
     currentStepId: nonEmptyString.optional(),
     steps: z.array(runStepSchema),
@@ -143,6 +161,7 @@ export function createRunState(input: {
   readonly workflowId: string;
   readonly workflowSha256: string;
   readonly roles: Readonly<Record<string, string>>;
+  readonly resolvedActors?: z.input<typeof runStateSchema>['resolvedActors'];
   readonly documentation: z.input<typeof documentationContextSchema>;
   readonly steps: readonly {
     readonly id: string;
@@ -150,6 +169,7 @@ export function createRunState(input: {
     readonly actor?: 'launcher' | 'adversary' | 'implementer';
     readonly action?: string;
     readonly promptFile?: string;
+    readonly prompt?: string;
     readonly output?: {
       readonly id: string;
       readonly filename: string;
@@ -173,6 +193,7 @@ export function createRunState(input: {
       ),
     },
     roles: input.roles,
+    resolvedActors: input.resolvedActors ?? {},
     documentation: input.documentation,
     steps: input.steps.map((step) => {
       if (step.kind === 'gate') {
@@ -190,8 +211,8 @@ export function createRunState(input: {
       if (!step.actor || !step.output) {
         throw new Error(`Agent ${step.id} requires an actor and declared output`);
       }
-      const method = step.action ? { action: step.action } : step.promptFile
-        ? { promptFile: step.promptFile }
+      const method = step.action ? { action: step.action } : step.promptFile && step.prompt
+        ? { promptFile: step.promptFile, content: step.prompt }
         : undefined;
       if (!method || (step.action && step.promptFile)) {
         throw new Error(`Agent ${step.id} requires exactly one action or promptFile`);

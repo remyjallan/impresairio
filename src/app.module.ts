@@ -27,6 +27,13 @@ import { WorkflowRegistryService } from './workflows/workflow-registry.service';
 import { GateService } from './workflows/gate.service';
 import { GATE_CLOCK, StaleInvalidationService } from './workflows/stale-invalidation.service';
 import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runner.service';
+import { AgentProfileService } from './agents/agent-profile.service';
+import { AgentDispatchService } from './agents/agent-dispatch.service';
+import { AGENT_PROCESS_RUNNER, PlannedAgentProcessRunner } from './agents/agent-provider';
+import { ClaudeCodeProvider } from './agents/claude-code.provider';
+import { CodexProvider } from './agents/codex.provider';
+import { OpenCodeProvider } from './agents/opencode.provider';
+import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-registry.service';
 
 @Module({
   providers: [
@@ -38,6 +45,12 @@ import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runn
     RequestChangesCommand,
     RetryCommand,
     NextCommand,
+    AgentProfileService,
+    AgentDispatchService,
+    ProviderRegistryService,
+    ClaudeCodeProvider,
+    CodexProvider,
+    OpenCodeProvider,
     {
       provide: HomeDirectoryResolver,
       useFactory: () => new HomeDirectoryResolver(),
@@ -102,6 +115,19 @@ import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runn
     {
       provide: NEXT_WRITER,
       useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: AGENT_PROVIDERS,
+      useFactory: (
+        claude: ClaudeCodeProvider,
+        codex: CodexProvider,
+        opencode: OpenCodeProvider,
+      ) => [claude, codex, opencode],
+      inject: [ClaudeCodeProvider, CodexProvider, OpenCodeProvider],
+    },
+    {
+      provide: AGENT_PROCESS_RUNNER,
+      useClass: PlannedAgentProcessRunner,
     },
   ],
 })

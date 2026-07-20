@@ -6,6 +6,7 @@ import { RunLockService } from './run-lock.service';
 import { createRunState, type RunState } from './run-state.schema';
 import { WorkflowRegistryService } from '../workflows/workflow-registry.service';
 import { ConfigService } from '../config/config.service';
+import { AgentProfileService } from '../agents/agent-profile.service';
 
 export interface StartRunRequest {
   readonly id?: string;
@@ -33,6 +34,8 @@ export class RunService {
     private readonly workflowRegistry: WorkflowRegistryService,
     @Inject(ConfigService)
     private readonly configService: ConfigService,
+    @Inject(AgentProfileService)
+    private readonly agentProfiles: AgentProfileService,
     @Inject(RUN_CLOCK)
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -44,6 +47,14 @@ export class RunService {
     const resolvedWorkflow = this.workflowRegistry.resolve(
       request.workflowId,
       request.repositoryDirectory,
+    );
+    const actors = [...new Set(resolvedWorkflow.workflow.steps.flatMap((step) => (
+      step.type === 'agent' ? [step.actor] : []
+    )))];
+    const resolvedActors = this.agentProfiles.resolveForActors(
+      request.roles,
+      actors,
+      configuration.agentProfiles,
     );
     const state = createRunState({
       ...request,
@@ -59,6 +70,7 @@ export class RunService {
         },
       },
       workflowSha256: resolvedWorkflow.sha256,
+      resolvedActors,
       steps: resolvedWorkflow.workflow.steps.map((step) => ({
         id: step.id,
         kind: step.type,
@@ -67,7 +79,13 @@ export class RunService {
               actor: step.actor,
               ...('action' in step
                 ? { action: step.action }
-                : { promptFile: step.promptFile }),
+                : {
+                    promptFile: step.promptFile,
+                    prompt: this.workflowRegistry.readPromptFile(
+                      resolvedWorkflow,
+                      step.promptFile,
+                    ),
+                  }),
               output: step.output,
             }
           : { artifact: step.artifact }),
@@ -84,6 +102,7 @@ export class RunService {
         workflowSource: resolvedWorkflow.source,
         documentationTarget: state.documentation.target.name,
         roles: state.roles,
+        resolvedActors: state.resolvedActors,
       });
     } finally {
       release();

@@ -159,6 +159,25 @@ describe('ConfigService', () => {
     );
   });
 
+  it('rejects an unregistered provider name in global configuration', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    writeFileSync(
+      join(home, 'config.yaml'),
+      readFileSync(join(fixtureDirectory, 'global-config.yaml'), 'utf8').replace(
+        'provider: codex',
+        'provider: unknown-provider',
+      ),
+      'utf8',
+    );
+    const service = new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }));
+
+    expect(() => service.load(repository)).toThrow(
+      `${join(home, 'config.yaml')}: agentProfiles.codex.provider`,
+    );
+  });
+
   it('rejects a prototype property used as an OpenCode model alias', () => {
     const home = createDirectory();
     const repository = createDirectory();
