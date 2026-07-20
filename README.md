@@ -19,12 +19,12 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change, [SECURITY.md]
 ## Requirements and installation
 
 - Node.js 22 or newer
-- pnpm 10 or newer (via Corepack)
+- Node.js 22 or newer
 
 Once published to npm:
 
 ```bash
-pnpm add -g @impresairio/cli
+npm install -g @impresairio/cli
 impresairio --help
 ```
 
@@ -39,7 +39,7 @@ pnpm run verify
 node dist/main.js --help
 ```
 
-`npx @impresairio/cli --help` will also work after publication.
+`npx @impresairio/cli --help` will also work after publication. pnpm is only required for repository development.
 
 ## Minimal configuration
 
