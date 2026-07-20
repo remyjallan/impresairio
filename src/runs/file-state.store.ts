@@ -135,13 +135,31 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       throw new RunStateError(`Step not found in run ${runId}: ${completion.stepId}`);
     }
     const completedAt = new Date().toISOString();
-    const steps = state.steps.map((step, index) => index === stepIndex
-      ? {
-          ...step,
-          status: 'complete' as const,
-          output: { ...completion.output, completedAt },
-        }
-      : step);
+    const steps = state.steps.map((step, index) => {
+      if (index !== stepIndex) {
+        return step;
+      }
+      if (step.kind !== 'agent') {
+        throw new RunStateError(`Step ${completion.stepId} is not an agent step`);
+      }
+      const lastAttempt = step.attempts.at(-1);
+      if (!lastAttempt) {
+        throw new RunStateError(`Step ${completion.stepId} has no recorded attempt`);
+      }
+      return {
+        ...step,
+        status: 'complete' as const,
+        output: { ...completion.output, completedAt },
+        attempts: [
+          ...step.attempts.slice(0, -1),
+          {
+            ...lastAttempt,
+            completedAt,
+            outputSha256: completion.output.sha256,
+          },
+        ],
+      };
+    });
     this.save({ ...state, steps, updatedAt: completedAt });
   }
 

@@ -6,7 +6,8 @@ export type CompletionStepStatus =
   | 'pending'
   | 'in_progress'
   | 'complete'
-  | 'stale';
+  | 'stale'
+  | 'failed';
 
 export interface CompletionStep {
   readonly id: string;

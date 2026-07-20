@@ -8,6 +8,7 @@ import { FileStateStore } from '../src/runs/file-state.store';
 import { RunLockService } from '../src/runs/run-lock.service';
 import { createRunState } from '../src/runs/run-state.schema';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
+import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { ArtifactService } from '../src/documentation/artifact.service';
 import { FilesystemDocumentationTarget } from '../src/documentation/filesystem-documentation.target';
 import { PathRendererService } from '../src/documentation/path-renderer.service';
@@ -38,6 +39,10 @@ function createRunner(steps: Parameters<typeof createRunState>[0]['steps']) {
     hostname: 'local-machine', pid: 4242, isPidActive: () => false,
     now: () => new Date('2026-07-20T10:00:00.000Z'),
   });
+  const artifactService = new ArtifactService(
+    new PathRendererService(),
+    new FilesystemDocumentationTarget(),
+  );
   store.create(createRunState({
     id: 'run-workflow', workflowId: 'feature', workflowSha256: 'a'.repeat(64),
     roles: {},
@@ -59,7 +64,13 @@ function createRunner(steps: Parameters<typeof createRunState>[0]['steps']) {
       store,
       events,
       locks,
-      new ArtifactService(new PathRendererService(), new FilesystemDocumentationTarget()),
+      artifactService,
+      new StaleInvalidationService(
+        store,
+        events,
+        artifactService,
+        () => new Date('2026-07-20T10:01:00.000Z'),
+      ),
       () => new Date('2026-07-20T10:01:00.000Z'),
     ),
   };

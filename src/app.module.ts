@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CompleteCommand } from './commands/complete.command';
+import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
+import { RequestChangesCommand } from './commands/request-changes.command';
+import { RetryCommand } from './commands/retry.command';
 import { StartCommand, START_WRITER } from './commands/start.command';
 import { StatusCommand, STATUS_WRITER } from './commands/status.command';
 import { UnlockCommand } from './commands/unlock.command';
@@ -21,6 +24,8 @@ import { FILE_STATE_OPERATIONS, FileStateStore } from './runs/file-state.store';
 import { RUN_LOCK_RUNTIME, RunLockService } from './runs/run-lock.service';
 import { RUN_CLOCK, RunService } from './runs/run.service';
 import { WorkflowRegistryService } from './workflows/workflow-registry.service';
+import { GateService } from './workflows/gate.service';
+import { GATE_CLOCK, StaleInvalidationService } from './workflows/stale-invalidation.service';
 import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runner.service';
 
 @Module({
@@ -29,6 +34,9 @@ import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runn
     StartCommand,
     UnlockCommand,
     CompleteCommand,
+    ApproveCommand,
+    RequestChangesCommand,
+    RetryCommand,
     NextCommand,
     {
       provide: HomeDirectoryResolver,
@@ -45,6 +53,8 @@ import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runn
     RunService,
     WorkflowRegistryService,
     WorkflowRunnerService,
+    GateService,
+    StaleInvalidationService,
     {
       provide: FILE_STATE_OPERATIONS,
       useValue: {},
@@ -59,6 +69,10 @@ import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runn
     },
     {
       provide: WORKFLOW_CLOCK,
+      useValue: () => new Date(),
+    },
+    {
+      provide: GATE_CLOCK,
       useValue: () => new Date(),
     },
     {

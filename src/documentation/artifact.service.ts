@@ -97,6 +97,17 @@ export class ArtifactService implements OutputVerifier {
     };
   }
 
+  currentHash(
+    output: Pick<CompletedDocumentationOutput, 'id' | 'path' | 'format'>,
+    targetRoot: string,
+  ): string {
+    return this.completeOutput({
+      ...output,
+      targetRoot,
+      directory: dirname(output.path),
+    }).sha256;
+  }
+
   completeExpectedOutput(
     _run: CompletionRun,
     step: CompletionOutputStep,

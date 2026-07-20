@@ -12,6 +12,7 @@ import { RunLockService } from '../src/runs/run-lock.service';
 import { RunService } from '../src/runs/run.service';
 import { WorkflowRegistryService } from '../src/workflows/workflow-registry.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
+import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { ArtifactService } from '../src/documentation/artifact.service';
 import { FilesystemDocumentationTarget } from '../src/documentation/filesystem-documentation.target';
 import { PathRendererService } from '../src/documentation/path-renderer.service';
@@ -79,6 +80,12 @@ function createRunService() {
       events,
       locks,
       artifactService,
+      new StaleInvalidationService(
+        store,
+        events,
+        artifactService,
+        () => new Date('2026-07-20T10:01:00.000Z'),
+      ),
       () => new Date('2026-07-20T10:01:00.000Z'),
     ),
   };

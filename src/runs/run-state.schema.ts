@@ -3,6 +3,17 @@ import { z } from 'zod';
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const timestampSchema = z.string().datetime();
 const nonEmptyString = z.string().trim().min(1);
+const stepStatusSchema = z.enum(['pending', 'in_progress', 'complete', 'stale', 'failed']);
+
+const attemptSchema = z
+  .object({
+    number: z.number().int().positive(),
+    startedAt: timestampSchema,
+    inputArtifactHashes: z.record(nonEmptyString, sha256Schema),
+    completedAt: timestampSchema.optional(),
+    outputSha256: sha256Schema.optional(),
+  })
+  .strict();
 
 const preparedDocumentationOutputSchema = z
   .object({
@@ -52,7 +63,7 @@ const runAgentStepSchema = z
   .object({
     id: nonEmptyString,
     kind: z.literal('agent'),
-    status: z.enum(['pending', 'in_progress', 'complete', 'stale']),
+    status: stepStatusSchema,
     actor: z.enum(['launcher', 'adversary', 'implementer']),
     method: agentMethodSchema,
     declaredOutput: declaredWorkflowOutputSchema,
@@ -67,6 +78,8 @@ const runAgentStepSchema = z
       })
       .strict()
       .optional(),
+    inputArtifactHashes: z.record(nonEmptyString, sha256Schema).optional(),
+    attempts: z.array(attemptSchema),
     approval: z
       .object({
         approvedArtifactHash: sha256Schema,
@@ -82,7 +95,7 @@ const runGateStepSchema = z
   .object({
     id: nonEmptyString,
     kind: z.literal('gate'),
-    status: z.enum(['pending', 'in_progress', 'complete', 'stale']),
+    status: stepStatusSchema,
     artifact: nonEmptyString,
     approval: z
       .object({
@@ -92,6 +105,12 @@ const runGateStepSchema = z
       })
       .strict()
       .optional(),
+    feedback: z.array(
+      z.object({
+        requestedAt: timestampSchema,
+        comment: z.string().min(1),
+      }).strict(),
+    ),
   })
   .strict();
 
@@ -105,6 +124,7 @@ export const runStateSchema = z
       .object({
         id: nonEmptyString,
         sha256: sha256Schema,
+        successors: z.record(nonEmptyString, z.array(nonEmptyString)),
       })
       .strict(),
     roles: z.record(nonEmptyString, nonEmptyString),
@@ -145,6 +165,12 @@ export function createRunState(input: {
     workflow: {
       id: input.workflowId,
       sha256: input.workflowSha256,
+      successors: Object.fromEntries(
+        input.steps.map((step, index) => [
+          step.id,
+          index + 1 < input.steps.length ? [input.steps[index + 1].id] : [],
+        ]),
+      ),
     },
     roles: input.roles,
     documentation: input.documentation,
@@ -158,6 +184,7 @@ export function createRunState(input: {
           kind: 'gate' as const,
           status: 'pending' as const,
           artifact: step.artifact,
+          feedback: [],
         };
       }
       if (!step.actor || !step.output) {
@@ -176,6 +203,7 @@ export function createRunState(input: {
         actor: step.actor,
         method,
         declaredOutput: step.output,
+        attempts: [],
       };
     }),
     createdAt: input.now,
