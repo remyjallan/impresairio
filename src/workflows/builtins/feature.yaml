@@ -1,0 +1,80 @@
+id: feature
+name: Feature
+steps:
+  - id: design
+    type: agent
+    actor: launcher
+    action: feature-design
+    output:
+      id: design
+      filename: "01 - Feature Design.md"
+      template: feature-design
+  - id: challenge
+    type: agent
+    actor: adversary
+    action: adversarial-review
+    output:
+      id: design-challenge
+      filename: "02 - Design Challenge.md"
+  - id: approve-design
+    type: gate
+    artifact: design
+  - id: specification
+    type: agent
+    actor: launcher
+    action: specification
+    output:
+      id: specification
+      filename: "03 - Specification.md"
+      template: specification
+  - id: review-specification
+    type: agent
+    actor: adversary
+    action: spec-review
+    output:
+      id: specification-review
+      filename: "04 - Specification Review.md"
+  - id: approve-specification
+    type: gate
+    artifact: specification
+  - id: integration-plan
+    type: agent
+    actor: launcher
+    action: integration-plan
+    output:
+      id: integration-plan
+      filename: "05 - Integration Plan.md"
+      template: integration-plan
+  - id: review-plan
+    type: agent
+    actor: adversary
+    action: plan-review
+    output:
+      id: plan-review
+      filename: "06 - Plan Review.md"
+  - id: approve-plan
+    type: gate
+    artifact: integration-plan
+  - id: implementation
+    type: agent
+    actor: implementer
+    action: implementation
+    output:
+      id: implementation-report
+      filename: "07 - Implementation Report.md"
+  - id: final-review
+    type: agent
+    actor: adversary
+    action: final-review
+    output:
+      id: final-review
+      filename: "08 - Final Review.md"
+  - id: final-report
+    type: agent
+    actor: launcher
+    action: final-report
+    output:
+      id: final-report
+      filename: "09 - Final Report.md"
+      template: final-report
+

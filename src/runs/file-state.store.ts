@@ -121,6 +121,9 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         id: step.id,
         kind: step.kind,
         status: step.status,
+        ...(step.kind === 'agent' && step.expectedOutput
+          ? { output: step.expectedOutput }
+          : {}),
       })),
     };
   }

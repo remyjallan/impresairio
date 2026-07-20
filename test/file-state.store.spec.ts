@@ -11,6 +11,17 @@ import {
 import { createRunState } from '../src/runs/run-state.schema';
 
 const temporaryDirectories: string[] = [];
+const documentation = {
+  target: {
+    name: 'test', kind: 'filesystem' as const, root: '/tmp/docs', defaultFormat: 'markdown' as const,
+  },
+  featurePath: 'Features/{{ feature.id }}',
+  bindings: {
+    project: { name: 'Test', slug: 'test' },
+    feature: { id: 'TEST-1', slug: 'test-1' },
+    run: { id: 'run-test' },
+  },
+};
 
 function createStore(fileOperations?: Partial<StateFileOperations>): {
   readonly home: string;
@@ -39,8 +50,10 @@ describe('FileStateStore', () => {
     const state = createRunState({
       id: 'run-20260720-001',
       workflowId: 'feature',
+      workflowSha256: 'a'.repeat(64),
       roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
-      documentationRoot: '/tmp/docs',
+      documentation,
+      steps: [],
       now: '2026-07-20T10:00:00.000Z',
     });
 
@@ -72,8 +85,10 @@ describe('FileStateStore', () => {
     const state = createRunState({
       id: 'run-failure',
       workflowId: 'feature',
+      workflowSha256: 'a'.repeat(64),
       roles: { launcher: 'claude' },
-      documentationRoot: '/tmp/docs',
+      documentation,
+      steps: [],
       now: '2026-07-20T10:00:00.000Z',
     });
 

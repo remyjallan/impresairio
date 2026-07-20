@@ -1,0 +1,11 @@
+id: custom
+name: Global custom
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    action: final-report
+    output:
+      id: report
+      filename: "01 - Global Report.md"
+

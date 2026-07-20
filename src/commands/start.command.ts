@@ -9,7 +9,9 @@ interface StartOptions {
   readonly adversary?: string;
   readonly implementer?: string;
   readonly runId?: string;
-  readonly documentationRoot?: string;
+  readonly repository?: string;
+  readonly featureId?: string;
+  readonly featureSlug?: string;
 }
 
 @Injectable()
@@ -32,7 +34,8 @@ export class StartCommand extends CommandRunner {
       id: options.runId,
       workflowId,
       roles: this.roles(options),
-      documentationRoot: options.documentationRoot ?? '.',
+      feature: this.feature(options),
+      repositoryDirectory: options.repository,
     });
     this.write(`${state.id}\n`);
   }
@@ -57,8 +60,18 @@ export class StartCommand extends CommandRunner {
     return value;
   }
 
-  @Option({ flags: '--documentation-root <path>', description: 'Resolved documentation root.' })
-  parseDocumentationRoot(value: string): string {
+  @Option({ flags: '--repository <path>', description: 'Repository used to resolve workflow overrides.' })
+  parseRepository(value: string): string {
+    return value;
+  }
+
+  @Option({ flags: '--feature-id <id>', description: 'Feature identifier used by documentation bindings.' })
+  parseFeatureId(value: string): string {
+    return value;
+  }
+
+  @Option({ flags: '--feature-slug <slug>', description: 'Feature slug used by documentation bindings.' })
+  parseFeatureSlug(value: string): string {
     return value;
   }
 
@@ -74,5 +87,12 @@ export class StartCommand extends CommandRunner {
       }
     }
     return roles;
+  }
+
+  private feature(options: StartOptions): { id: string; slug: string } {
+    if (!options.featureId || !options.featureSlug) {
+      throw new Error('start requires --feature-id and --feature-slug');
+    }
+    return { id: options.featureId, slug: options.featureSlug };
   }
 }

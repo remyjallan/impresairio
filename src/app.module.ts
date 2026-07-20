@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CompleteCommand } from './commands/complete.command';
+import { NextCommand, NEXT_WRITER } from './commands/next.command';
 import { StartCommand, START_WRITER } from './commands/start.command';
 import { StatusCommand, STATUS_WRITER } from './commands/status.command';
 import { UnlockCommand } from './commands/unlock.command';
@@ -19,6 +20,8 @@ import { EventLogService } from './runs/event-log.service';
 import { FILE_STATE_OPERATIONS, FileStateStore } from './runs/file-state.store';
 import { RUN_LOCK_RUNTIME, RunLockService } from './runs/run-lock.service';
 import { RUN_CLOCK, RunService } from './runs/run.service';
+import { WorkflowRegistryService } from './workflows/workflow-registry.service';
+import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runner.service';
 
 @Module({
   providers: [
@@ -26,6 +29,7 @@ import { RUN_CLOCK, RunService } from './runs/run.service';
     StartCommand,
     UnlockCommand,
     CompleteCommand,
+    NextCommand,
     {
       provide: HomeDirectoryResolver,
       useFactory: () => new HomeDirectoryResolver(),
@@ -39,6 +43,8 @@ import { RUN_CLOCK, RunService } from './runs/run.service';
     EventLogService,
     RunLockService,
     RunService,
+    WorkflowRegistryService,
+    WorkflowRunnerService,
     {
       provide: FILE_STATE_OPERATIONS,
       useValue: {},
@@ -49,6 +55,10 @@ import { RUN_CLOCK, RunService } from './runs/run.service';
     },
     {
       provide: RUN_CLOCK,
+      useValue: () => new Date(),
+    },
+    {
+      provide: WORKFLOW_CLOCK,
       useValue: () => new Date(),
     },
     {
@@ -73,6 +83,10 @@ import { RUN_CLOCK, RunService } from './runs/run.service';
     },
     {
       provide: START_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: NEXT_WRITER,
       useValue: (line: string) => process.stdout.write(line),
     },
   ],

@@ -11,7 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-workflow-assets.mjs",
     "prepack": "npm run build",
     "test": "vitest",
     "typecheck": "tsc --noEmit",

@@ -1,0 +1,116 @@
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
+import { EventLogService } from '../src/runs/event-log.service';
+import { FileStateStore } from '../src/runs/file-state.store';
+import { RunLockService } from '../src/runs/run-lock.service';
+import { createRunState } from '../src/runs/run-state.schema';
+import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
+import { ArtifactService } from '../src/documentation/artifact.service';
+import { FilesystemDocumentationTarget } from '../src/documentation/filesystem-documentation.target';
+import { PathRendererService } from '../src/documentation/path-renderer.service';
+
+const directories: string[] = [];
+
+function agent(id: string): NonNullable<Parameters<typeof createRunState>[0]['steps']>[number] {
+  return {
+    id,
+    kind: 'agent',
+    actor: 'launcher',
+    action: 'feature-design',
+    output: { id: `${id}-output`, filename: `01 - ${id}.md` },
+  };
+}
+
+function gate(id: string, artifact: string): NonNullable<Parameters<typeof createRunState>[0]['steps']>[number] {
+  return { id, kind: 'gate', artifact };
+}
+
+function createRunner(steps: Parameters<typeof createRunState>[0]['steps']) {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-schedule-')));
+  directories.push(home);
+  const resolver = new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home });
+  const store = new FileStateStore(resolver);
+  const events = new EventLogService(resolver);
+  const locks = new RunLockService(store, events, {
+    hostname: 'local-machine', pid: 4242, isPidActive: () => false,
+    now: () => new Date('2026-07-20T10:00:00.000Z'),
+  });
+  store.create(createRunState({
+    id: 'run-workflow', workflowId: 'feature', workflowSha256: 'a'.repeat(64),
+    roles: {},
+    documentation: {
+      target: { name: 'test', kind: 'filesystem', root: home, defaultFormat: 'markdown' },
+      featurePath: 'Features/{{ feature.id }}',
+      bindings: {
+        project: { name: 'Test', slug: 'test' },
+        feature: { id: 'TEST-1', slug: 'test-1' },
+        run: { id: 'run-workflow' },
+      },
+    },
+    steps,
+    now: '2026-07-20T10:00:00.000Z',
+  }));
+  return {
+    store,
+    runner: new WorkflowRunnerService(
+      store,
+      events,
+      locks,
+      new ArtifactService(new PathRendererService(), new FilesystemDocumentationTarget()),
+      () => new Date('2026-07-20T10:01:00.000Z'),
+    ),
+  };
+}
+
+afterEach(() => {
+  for (const directory of directories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe('WorkflowRunnerService', () => {
+  it('starts only the first pending agent step in order', () => {
+    const { runner, store } = createRunner([
+      agent('design'),
+      agent('challenge'),
+    ]);
+
+    expect(runner.next('run-workflow')).toEqual({ kind: 'agent', stepId: 'design' });
+    expect(store.findState('run-workflow')?.steps).toEqual([
+      expect.objectContaining({ id: 'design', status: 'in_progress' }),
+      expect.objectContaining({ id: 'challenge', status: 'pending' }),
+    ]);
+    expect(runner.next('run-workflow')).toEqual({ kind: 'agent', stepId: 'design' });
+  });
+
+  it('skips completed work but stops at the first waiting human gate', () => {
+    const { runner, store } = createRunner([
+      agent('design'),
+      gate('approve-design', 'design-output'),
+      agent('specification'),
+    ]);
+    const state = store.findState('run-workflow');
+    if (!state) throw new Error('missing test state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'design'
+        ? { ...step, status: 'complete' as const }
+        : step),
+    });
+
+    expect(runner.next('run-workflow')).toEqual({ kind: 'gate', stepId: 'approve-design' });
+    expect(store.findState('run-workflow')?.steps[2]).toMatchObject({ status: 'pending' });
+  });
+
+  it('reports completion when every declared step is complete', () => {
+    const { runner, store } = createRunner([agent('design')]);
+    const state = store.findState('run-workflow');
+    if (!state) throw new Error('missing test state');
+    store.save({ ...state, steps: [{ ...state.steps[0], status: 'complete' }] });
+
+    expect(runner.next('run-workflow')).toEqual({ kind: 'complete' });
+  });
+});

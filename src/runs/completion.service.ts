@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { CompletedDocumentationOutput } from '../documentation/documentation-target';
+import type { PreparedDocumentationOutput } from '../documentation/documentation-target';
 
 export type CompletionStepStatus =
   | 'pending'
@@ -11,6 +12,7 @@ export interface CompletionStep {
   readonly id: string;
   readonly kind: 'agent' | 'gate';
   readonly status: CompletionStepStatus;
+  readonly output?: PreparedDocumentationOutput;
 }
 
 export interface CompletionRun {
