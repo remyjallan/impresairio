@@ -1,0 +1,9 @@
+src/
+test/
+coverage/
+*.ts
+vitest.config.mts
+tsconfig.json
+tsconfig.build.json
+nest-cli.json
+eslint.config.mjs
