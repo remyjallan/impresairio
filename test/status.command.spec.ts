@@ -11,7 +11,7 @@ describe('impresairio status', () => {
       readFileSync(resolve(projectRoot, 'package.json'), 'utf8'),
     ) as { scripts?: Record<string, string> };
 
-    expect(packageJson.scripts?.prepack).toBe('npm run build');
+    expect(packageJson.scripts?.prepack).toBe('pnpm run build');
   });
 
   it('fails with a stable error when the run does not exist', () => {

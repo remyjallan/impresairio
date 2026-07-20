@@ -18,10 +18,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-      - run: npm ci
-      - run: npm run verify
-      - run: npm pack
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run verify
+      - run: pnpm pack
       - uses: actions/upload-artifact@v4
         with:
           name: impresairio-npm-package

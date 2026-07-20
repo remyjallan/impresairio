@@ -15,12 +15,12 @@ It is **not** a hosted project-management tool, a generic workflow engine, an ag
 ## Requirements and installation
 
 - Node.js 22 or newer
-- npm 10 or newer
+- pnpm 10 or newer (via Corepack)
 
 Once published to npm:
 
 ```bash
-npm install -g @impresairio/cli
+pnpm add -g @impresairio/cli
 impresairio --help
 ```
 
@@ -29,8 +29,9 @@ For local development:
 ```bash
 git clone <your-fork-or-clone-url>
 cd impresairio
-npm ci
-npm run verify
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run verify
 node dist/main.js --help
 ```
 
@@ -127,11 +128,11 @@ The first two real runs are the decision point for further abstraction. Follow [
 ## Development and release checks
 
 ```bash
-npm run test:run
-npm run typecheck
-npm run lint
-npm run build
-npm run pack:check
+pnpm run test:run
+pnpm run typecheck
+pnpm run lint
+pnpm run build
+pnpm run pack:check
 ```
 
 GitHub Actions runs the verification suite on supported Node versions and builds a package artifact for manual release inspection. No workflow publishes to npm.
