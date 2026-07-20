@@ -85,6 +85,7 @@ export class StaleInvalidationService {
           output: undefined,
           approval: undefined,
           inputArtifactHashes: undefined,
+          dispatchPreparedAt: undefined,
         };
       }
       if (step.id === gate.id && step.kind === 'gate') {
@@ -131,6 +132,7 @@ export class StaleInvalidationService {
           output: undefined,
           approval: undefined,
           inputArtifactHashes: undefined,
+          dispatchPreparedAt: undefined,
         }
       : candidate);
     const next = this.withTimestamp({

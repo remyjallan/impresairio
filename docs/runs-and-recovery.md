@@ -30,8 +30,9 @@ impresairio status run-example
 ```
 
 `status` is read-only. It reports the run identifier, recorded workflow,
-current step and number of resolved steps. Use `next` to prepare the next agent
-handoff or reveal the next human approval gate.
+current step, number of resolved steps and the status of every step. Use it to
+identify stale or failed work before `retry`, then use `next` to prepare the
+next agent handoff or reveal the next human approval gate.
 
 ## Single-writer lock
 

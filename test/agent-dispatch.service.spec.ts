@@ -126,4 +126,14 @@ describe('AgentDispatchService', () => {
       type: 'agent.invocation.prepared', modelAlias: 'glm-5.2', model: 'z-ai/glm-5.2',
     }));
   });
+
+  it('keeps an invocation in repeated handoffs while recording preparation once', () => {
+    const { runner, dispatch, processRunner, events } = setup('implementer');
+    const result = runner.next('run-agent');
+
+    expect(dispatch.prepare('run-agent', result)?.invocation).toBeDefined();
+    expect(dispatch.prepare('run-agent', result)?.invocation).toBeDefined();
+    expect(processRunner.calls).toHaveLength(2);
+    expect(events.read('run-agent').filter((event) => event.type === 'agent.invocation.prepared')).toHaveLength(1);
+  });
 });

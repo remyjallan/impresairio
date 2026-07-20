@@ -61,7 +61,7 @@ export class AgentDispatchService {
     } as const;
     const isLauncher = step.actor === 'launcher';
     const alreadyPrepared = Boolean(step.dispatchPreparedAt);
-    const invocation = isLauncher || alreadyPrepared ? undefined : this.processRunner.prepare(provider.prepareInvocation({
+    const invocation = isLauncher ? undefined : this.processRunner.prepare(provider.prepareInvocation({
       runId,
       stepId: step.id,
       profile: agent.profile,

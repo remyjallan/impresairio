@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { CommandFactory } from 'nest-commander';
 import { AppModule } from './app.module';
 
-const version = '0.1.0';
+const version = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version as string;
 
 export async function bootstrap(): Promise<void> {
-  if (process.argv.slice(2).includes('--version') || process.argv.slice(2).includes('-V')) {
+  if (process.argv.length === 3 && (process.argv[2] === '--version' || process.argv[2] === '-V')) {
     process.stdout.write(`${version}\n`);
     return;
   }
