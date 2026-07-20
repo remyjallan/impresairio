@@ -1,0 +1,17 @@
+documentationTargets:
+  personal-vault:
+    kind: filesystem
+    root: /tmp/impresairio-documents
+    defaultFormat: markdown
+
+agentProfiles:
+  claude:
+    provider: claude-code
+  codex:
+    provider: codex
+  opencode-glm:
+    provider: opencode
+    modelAlias: glm-5.2
+
+models:
+  glm-5.2: z-ai/glm-5.2

@@ -1,0 +1,8 @@
+project:
+  name: Example Project
+  slug: example-project
+
+documentation:
+  target: personal-vault
+  featurePath: "Features/{{ feature.id }} - {{ feature.slug }}"
+  format: markdown
