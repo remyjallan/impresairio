@@ -1,5 +1,6 @@
 import { isAbsolute, win32 } from 'node:path';
 import { z } from 'zod';
+import { isKnownDocumentationTemplate } from '../documentation/templates';
 
 const identifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
   error: 'must use lowercase letters, numbers and hyphens, starting with a letter',
@@ -53,7 +54,7 @@ const outputSchema = z
   .object({
     id: identifier,
     filename: safeFilename,
-    template: identifier.optional(),
+    template: identifier.refine(isKnownDocumentationTemplate, 'must be a known documentation template').optional(),
   })
   .strict();
 
@@ -134,4 +135,3 @@ export type GateWorkflowStep = Extract<WorkflowStep, { readonly type: 'gate' }>;
 export function isAgentWorkflowStep(step: WorkflowStep): step is AgentWorkflowStep {
   return step.type === 'agent';
 }
-

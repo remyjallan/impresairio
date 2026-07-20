@@ -82,6 +82,7 @@ describe('WorkflowRegistryService', () => {
     ['an unsupported field', '    action: final-report\n    shell: npm test\n    output:\n      id: report\n      filename: "01 - Report.md"\n'],
     ['an unsafe prompt reference', '    promptFile: ../outside.md\n    output:\n      id: report\n      filename: "01 - Report.md"\n'],
     ['a dynamic expression', '    action: final-report\n    output:\n      id: report\n      filename: "{{ env.HOME }}.md"\n'],
+    ['an unknown documentation template', '    action: final-report\n    output:\n      id: report\n      filename: "01 - Report.md"\n      template: unknown-template\n'],
   ])('rejects %s', (_label, body) => {
     const home = temporaryDirectory('impresairio-workflow-home-');
     const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
@@ -114,4 +115,3 @@ steps:
     expect(() => createRegistry(home, packageDirectory).resolve('custom', home)).toThrow(WorkflowError);
   });
 });
-

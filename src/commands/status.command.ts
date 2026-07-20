@@ -37,8 +37,9 @@ export class StatusCommand extends CommandRunner {
     this.write([
       `run: ${run.id}`,
       `workflow: ${run.workflow.id}`,
-      `status: ${run.currentStepId ?? 'not-started'}`,
+      `current-step: ${run.currentStepId ?? 'not-started'}`,
       `steps: ${run.steps.length}`,
+      ...run.steps.map((step) => `${step.id}: ${step.status}`),
       '',
     ].join('\n'));
   }

@@ -143,6 +143,8 @@ describe('start and status commands', () => {
     expect(output.join('')).toContain('run-quick-fix');
     expect(output.join('')).toContain('workflow: quick-fix');
     expect(output.join('')).toContain('steps: 3');
+    expect(output.join('')).toContain('investigate: pending');
+    expect(output.join('')).toContain('verify: pending');
   });
 
   it('keeps the resolved step contract through start, next and completion', () => {

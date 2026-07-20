@@ -19,10 +19,34 @@ const templates: Readonly<Record<string, string>> = {
 ## Acceptance criteria
 `,
   'generic-markdown': '# Document\n',
+  specification: `# Specification
+
+## Scope
+
+## Requirements
+
+## Acceptance criteria
+`,
+  'integration-plan': `# Integration Plan
+
+## Tasks
+
+## Verification
+`,
+  'final-report': `# Final Report
+
+## Delivered
+
+## Verification
+`,
 };
 
+export function isKnownDocumentationTemplate(template: string): boolean {
+  return Object.hasOwn(templates, template);
+}
+
 export function resolveDocumentationTemplate(template: string): string {
-  const content = Object.hasOwn(templates, template)
+  const content = isKnownDocumentationTemplate(template)
     ? templates[template]
     : undefined;
   if (!content) {
