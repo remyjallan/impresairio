@@ -85,6 +85,7 @@ const runAgentStepSchema = z
     method: agentMethodSchema,
     declaredOutput: declaredWorkflowOutputSchema,
     expectedOutput: preparedDocumentationOutputSchema.optional(),
+    dispatchPreparedAt: timestampSchema.optional(),
     output: z
       .object({
         id: nonEmptyString,

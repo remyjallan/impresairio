@@ -41,6 +41,7 @@ export class RunService {
   ) {}
 
   start(request: StartRunRequest): RunState {
+    this.validateFeature(request.feature);
     const id = request.id ?? `run-${randomUUID()}`;
     const timestamp = this.now().toISOString();
     const configuration = this.configService.load(request.repositoryDirectory ?? process.cwd());
@@ -116,5 +117,14 @@ export class RunService {
       throw new RunStateError(`Run not found: ${runId}`);
     }
     return state;
+  }
+
+  private validateFeature(feature: StartRunRequest['feature']): void {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(feature.id)) {
+      throw new RunStateError('Feature ID must contain only letters, numbers, dots, underscores or hyphens');
+    }
+    if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(feature.slug)) {
+      throw new RunStateError('Feature slug must use lowercase letters, numbers, hyphens or underscores');
+    }
   }
 }

@@ -200,6 +200,12 @@ export class StaleInvalidationService {
       );
     }
     const timestamp = this.now().toISOString();
+    if (producer.output.sha256 !== currentHash) {
+      this.eventLog.append(runId, {
+        type: 'artifact.hash.refreshed-before-approval', at: timestamp,
+        artifactId: producer.declaredOutput.id, previousHash: producer.output.sha256, currentHash,
+      });
+    }
     const steps = state.steps.map((step) => {
       if (step.id === producer.id && step.kind === 'agent' && step.output) {
         return { ...step, output: { ...step.output, sha256: currentHash } };

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
+import { RunLockService } from '../runs/run-lock.service';
 import type { NextStepResult } from '../workflows/workflow-runner.service';
 import {
   AGENT_PROCESS_RUNNER,
@@ -34,16 +35,19 @@ export class AgentDispatchService {
     @Inject(ProviderRegistryService) private readonly providers: ProviderRegistryService,
     @Inject(EventLogService) private readonly events: EventLogService,
     @Inject(AGENT_PROCESS_RUNNER) private readonly processRunner: AgentProcessRunner,
+    @Inject(RunLockService) private readonly locks: RunLockService,
   ) {}
 
   prepare(runId: string, result: NextStepResult): AgentHandoff | undefined {
     if (result.kind !== 'agent') return undefined;
-    const state = this.stateStore.findState(runId);
-    if (!state) throw new RunStateError(`Run not found: ${runId}`);
-    const step = state.steps.find((candidate) => candidate.id === result.stepId);
-    if (!step || step.kind !== 'agent' || !step.expectedOutput) {
-      throw new RunStateError(`Agent step ${result.stepId} has no prepared output`);
-    }
+    const release = this.locks.acquire(runId, 'dispatch');
+    try {
+      const state = this.stateStore.findState(runId);
+      if (!state) throw new RunStateError(`Run not found: ${runId}`);
+      const step = state.steps.find((candidate) => candidate.id === result.stepId);
+      if (!step || step.kind !== 'agent' || !step.expectedOutput) {
+        throw new RunStateError(`Agent step ${result.stepId} has no prepared output`);
+      }
     const agent = state.resolvedActors[step.actor];
     if (!agent) {
       throw new RunStateError(`Agent profile is not frozen for actor ${step.actor}`);
@@ -56,7 +60,8 @@ export class AgentDispatchService {
       format: step.expectedOutput.format,
     } as const;
     const isLauncher = step.actor === 'launcher';
-    const invocation = isLauncher ? undefined : this.processRunner.prepare(provider.prepareInvocation({
+    const alreadyPrepared = Boolean(step.dispatchPreparedAt);
+    const invocation = isLauncher || alreadyPrepared ? undefined : this.processRunner.prepare(provider.prepareInvocation({
       runId,
       stepId: step.id,
       profile: agent.profile,
@@ -75,16 +80,28 @@ export class AgentDispatchService {
       expectedOutput,
       ...(invocation ? { invocation } : {}),
     };
-    this.events.append(runId, {
-      type: invocation ? 'agent.invocation.prepared' : 'agent.handoff.prepared',
-      at: new Date().toISOString(),
-      stepId: step.id,
-      actor: step.actor,
-      profile: agent.profile,
-      provider: agent.provider,
-      ...(agent.provider === 'opencode' ? { modelAlias: agent.modelAlias, model: agent.model } : {}),
-    });
+    if (!alreadyPrepared) {
+      this.stateStore.save({
+        ...state,
+        steps: state.steps.map((candidate) => candidate.id === step.id && candidate.kind === 'agent'
+          ? { ...candidate, dispatchPreparedAt: new Date().toISOString() }
+          : candidate),
+        updatedAt: new Date().toISOString(),
+      });
+        this.events.append(runId, {
+          type: invocation ? 'agent.invocation.prepared' : 'agent.handoff.prepared',
+          at: new Date().toISOString(),
+          stepId: step.id,
+          actor: step.actor,
+          profile: agent.profile,
+          provider: agent.provider,
+          ...(agent.provider === 'opencode' ? { modelAlias: agent.modelAlias, model: agent.model } : {}),
+      });
+    }
     return handoff;
+    } finally {
+      release();
+    }
   }
 
   private instructionFor(

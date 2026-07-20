@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "A local CLI for durable, human-gated AI-assisted engineering workflows.",
   "license": "MIT",
+  "repository": "https://github.com/remyjallan/impresairio.git",
+  "homepage": "https://github.com/remyjallan/impresairio#readme",
+  "bugs": "https://github.com/remyjallan/impresairio/issues",
   "private": false,
   "keywords": [
     "ai",

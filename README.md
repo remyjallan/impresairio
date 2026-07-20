@@ -74,6 +74,8 @@ documentation:
   format: markdown
 ```
 
+This repository ships [.impresairio.example.yaml](.impresairio.example.yaml) for its own dogfooding; copy it to `.impresairio.yaml` after defining the named target in your global configuration.
+
 The documentation location is simply a filesystem directory. Obsidian is never required; it is only one possible Markdown viewer. See [configuration](docs/configuration.md) and [documentation targets](docs/documentation-targets.md) for the fixed bindings, path validation and local-filesystem safety boundary.
 
 ## Run a workflow

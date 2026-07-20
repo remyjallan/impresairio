@@ -49,7 +49,7 @@ export const globalConfigSchema = z
         openCodeProfileSchema,
       ]),
     ),
-    models: z.record(nonEmptyString, nonEmptyString),
+    models: z.record(nonEmptyString, nonEmptyString).default({}),
   })
   .strict();
 

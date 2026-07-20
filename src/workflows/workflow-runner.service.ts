@@ -44,6 +44,9 @@ export class WorkflowRunnerService {
         }
         throw new RunStateError(`Step ${step.id} is stale and must be retried before continuing`);
       }
+      if (step.status === 'failed') {
+        throw new RunStateError(`Step ${step.id} failed and must be retried before continuing`);
+      }
       if (step.kind === 'gate') {
         return { kind: 'gate', stepId: step.id };
       }

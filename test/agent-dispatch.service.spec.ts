@@ -76,6 +76,7 @@ function setup(actor: 'launcher' | 'implementer') {
     new ProviderRegistryService([new ClaudeCodeProvider(), new CodexProvider(), new OpenCodeProvider()]),
     events,
     processRunner,
+    locks,
   );
   return { store, events, runner, processRunner, dispatch };
 }
