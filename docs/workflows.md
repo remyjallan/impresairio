@@ -1,6 +1,9 @@
 # Workflows (V0)
 
-Impresairio workflows are deliberately small YAML files. They define the ordered work for a run; the TypeScript CLI owns state changes, locking, output verification and later gate integrity. A workflow is not a general-purpose automation language.
+Impresairio workflows are deliberately small YAML files. They define the ordered
+work for a run; the TypeScript CLI owns state changes, locking, output
+verification, gate integrity and stale invalidation. A workflow is not a
+general-purpose automation language.
 
 ## Resolution and reproducibility
 
@@ -50,7 +53,10 @@ The method may instead refer to a versioned Markdown prompt file located below t
     filename: "01 - Domain Analysis.md"
 ```
 
-`action` is limited to the built-in V0 action names. Agent-provider behavior is resolved separately from the workflow in the next implementation stage. An optional output `template` is an approved template identifier, not a path:
+`action` is limited to the built-in V0 action names. Agent-provider behavior is
+resolved separately from the workflow: a provider may offer a native skill, or
+Impresairio supplies a packaged fallback prompt. An optional output `template`
+is an approved template identifier, not a path:
 
 ```yaml
 output:
@@ -78,7 +84,8 @@ The initial package workflows are `feature` and `quick-fix`. `feature` contains 
 - it reports the first pending gate and stops there;
 - it returns `complete` only when every recorded step is complete.
 
-`complete` remains the only way to mark an agent step complete. Gate approval, retries, stale invalidation and approved-artifact integrity are added by the next V0 stage.
+`complete` remains the only way to mark an agent step complete. `approve`,
+`request-changes` and `retry` own gate approval, stale invalidation and recovery.
 
 ## Security boundary
 

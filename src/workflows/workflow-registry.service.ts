@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -29,6 +29,8 @@ export interface WorkflowRegistryRuntime {
   readonly currentDirectory: () => string;
 }
 
+export const WORKFLOW_REGISTRY_RUNTIME = Symbol('WORKFLOW_REGISTRY_RUNTIME');
+
 const nativeRuntime: WorkflowRegistryRuntime = {
   packageWorkflowsDirectory: join(__dirname, 'builtins'),
   currentDirectory: () => process.cwd(),
@@ -40,6 +42,7 @@ export class WorkflowRegistryService {
 
   constructor(
     private readonly homeDirectoryResolver: HomeDirectoryResolver,
+    @Inject(WORKFLOW_REGISTRY_RUNTIME)
     runtime: Partial<WorkflowRegistryRuntime> = {},
   ) {
     this.runtime = { ...nativeRuntime, ...runtime };

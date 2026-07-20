@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CompleteCommand } from './commands/complete.command';
 import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
+import { ImpresairioRootCommand } from './commands/root.command';
 import { RequestChangesCommand } from './commands/request-changes.command';
 import { RetryCommand } from './commands/retry.command';
 import { StartCommand, START_WRITER } from './commands/start.command';
@@ -23,7 +24,10 @@ import { EventLogService } from './runs/event-log.service';
 import { FILE_STATE_OPERATIONS, FileStateStore } from './runs/file-state.store';
 import { RUN_LOCK_RUNTIME, RunLockService } from './runs/run-lock.service';
 import { RUN_CLOCK, RunService } from './runs/run.service';
-import { WorkflowRegistryService } from './workflows/workflow-registry.service';
+import {
+  WORKFLOW_REGISTRY_RUNTIME,
+  WorkflowRegistryService,
+} from './workflows/workflow-registry.service';
 import { GateService } from './workflows/gate.service';
 import { GATE_CLOCK, StaleInvalidationService } from './workflows/stale-invalidation.service';
 import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runner.service';
@@ -37,6 +41,7 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
 
 @Module({
   providers: [
+    ImpresairioRootCommand,
     StatusCommand,
     StartCommand,
     UnlockCommand,
@@ -70,6 +75,10 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
     StaleInvalidationService,
     {
       provide: FILE_STATE_OPERATIONS,
+      useValue: {},
+    },
+    {
+      provide: WORKFLOW_REGISTRY_RUNTIME,
       useValue: {},
     },
     {

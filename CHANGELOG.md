@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes to Impresairio are documented here.
+
+The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and aims to follow [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+
+- V0 local CLI foundation for durable, human-gated engineering workflows.
+- Built-in `feature` and `quick-fix` YAML workflows.
+- Frozen Claude Code, Codex and OpenCode profile resolution, including OpenCode model aliases.
+- Filesystem Markdown documentation targets with fixed path bindings.
+- Durable run state, event logs, locks, approval integrity and stale recovery.
+
+## [0.1.0] - 2026-07-20
+
+Initial dogfooding release candidate. It is intentionally limited to the V0 scope described in the README and documentation.

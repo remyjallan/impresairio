@@ -1,9 +1,23 @@
 {
   "name": "@impresairio/cli",
   "version": "0.1.0",
-  "description": "A CLI for orchestrating AI-assisted engineering workflows.",
+  "description": "A local CLI for durable, human-gated AI-assisted engineering workflows.",
   "license": "MIT",
   "private": false,
+  "keywords": [
+    "ai",
+    "agents",
+    "cli",
+    "engineering",
+    "workflow"
+  ],
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "bin": {
     "impresairio": "dist/main.js"
   },
@@ -13,9 +27,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/copy-workflow-assets.mjs",
     "prepack": "npm run build",
-    "test": "vitest",
+    "test": "npm run build && vitest",
+    "test:run": "npm run build && vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
+    "verify": "npm run test:run && npm run typecheck && npm run lint && npm run build",
+    "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

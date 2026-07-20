@@ -15,23 +15,23 @@ one JSON event per line.
 
 ## Start and inspect a run
 
-`start` creates durable state. Workflow YAML and scheduling arrive in the next
-increment, so V0 Task 4 accepts the workflow identifier and records the role
-bindings without yet selecting steps.
+`start` resolves and validates a workflow, snapshots its ordered steps and
+documentation context, and creates durable state. It also freezes the selected
+agent profiles and resolved OpenCode model identifiers for the run.
 
 ```bash
 impresairio start quick-fix \
   --launcher claude \
   --adversary codex \
   --implementer opencode-glm \
-  --documentation-root "/Users/me/Documents/Engineering Docs" \
   --run-id run-example
 
 impresairio status run-example
 ```
 
 `status` is read-only. It reports the run identifier, recorded workflow,
-current step (when scheduling has assigned one), and number of resolved steps.
+current step and number of resolved steps. Use `next` to prepare the next agent
+handoff or reveal the next human approval gate.
 
 ## Single-writer lock
 

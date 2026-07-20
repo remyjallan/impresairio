@@ -17,7 +17,7 @@ describe('impresairio status', () => {
   it('fails with a stable error when the run does not exist', () => {
     const result = spawnSync(
       process.execPath,
-      ['--import', 'tsx', 'src/main.ts', 'status', 'unknown-run'],
+      ['dist/main.js', 'status', 'unknown-run'],
       {
         cwd: projectRoot,
         encoding: 'utf8',
