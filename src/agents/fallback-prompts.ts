@@ -1,5 +1,8 @@
 import type { AgentAction } from './agent-provider';
 
+// Serves frozen V0 runs only: legacy `{action}` run-state methods created before
+// capabilities existed still resolve their prompt text from here at dispatch time.
+// New runs resolve capability prompts through CapabilityResolverService at start.
 const actionPrompts: Record<AgentAction, string> = {
   'feature-design': 'Develop a functional feature design. State goals, non-goals, rules, edge cases and open decisions.',
   'adversarial-review': 'Challenge the preceding artifact. Identify flawed assumptions, missing cases, risks and simpler alternatives.',
