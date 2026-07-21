@@ -172,8 +172,9 @@ when the source step is retried or becomes stale. Conditions cannot execute code
 files or environment variables, inspect raw Markdown, or apply to gates, review
 cycles, or composed steps.
 
-The package workflows are `feature`, `quick-fix`, and the small dogfooding workflow
-`classification-smoke`. `feature` contains
+The package's public workflows are `feature` and `quick-fix`. The internal
+`classification-smoke` fixture remains available for validation but is not a public
+workflow contract. `feature` contains
 bounded author/reviewer cycles for design, specification and integration plan,
 each followed by a human approval gate, then implementation, final review and
 report steps. Its public documents retain the historical sequence numbers 01,

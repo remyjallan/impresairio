@@ -43,4 +43,4 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [0.1.0] - 2026-07-20
 
-Initial dogfooding release candidate. It is intentionally limited to the V0 scope described in the README and documentation.
+Initial release candidate. It is intentionally limited to the V0 scope described in the README and documentation.

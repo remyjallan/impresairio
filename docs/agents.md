@@ -115,7 +115,7 @@ and freezes its full provider-qualified model ID for that run.
 
 Claude Code and Codex profiles currently use the respective CLI defaults. They do
 not yet accept a configured model or reasoning-effort setting. The planned extension
-is specified in [the roadmap](roadmap.md#provider-specific-model-and-reasoning-profiles).
+is tracked in [issue #9](https://github.com/remyjallan/impresairio/issues/9).
 
 ## Planned profile selection by task complexity
 
@@ -127,8 +127,8 @@ profile to each workflow role with `--actor` (or an existing role shortcut).
 
 This keeps the complexity decision visible, reviewable, and frozen at run start;
 workflow YAML continues to bind abstract roles and must not select a provider,
-model, or profile itself. See the roadmap for the proposed configuration contract,
-validation, and execution requirements.
+model, or profile itself. See [issue #9](https://github.com/remyjallan/impresairio/issues/9)
+for the proposed configuration contract, validation, and execution requirements.
 
 ## Connectivity checks
 
