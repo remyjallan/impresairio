@@ -10,6 +10,7 @@ import { RunLockService } from '../src/runs/run-lock.service';
 import { RunService } from '../src/runs/run.service';
 import { CompletionService } from '../src/runs/completion.service';
 import { WorkflowRegistryService } from '../src/workflows/workflow-registry.service';
+import { WorkflowExpanderService } from '../src/workflows/workflow-expander.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
 import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { VerdictCompletionPolicy } from '../src/workflows/verdict-completion.policy';
@@ -113,8 +114,9 @@ steps:
     locks,
   );
   const runService = new RunService(
-    store, events, locks, workflows, new ConfigService(resolver), new AgentProfileService(),
+    store, events, locks, workflows, new WorkflowExpanderService(workflows), new ConfigService(resolver), new AgentProfileService(),
     new CapabilityResolverService(resolver),
+    artifactService,
     () => new Date('2026-07-21T10:00:00.000Z'),
   );
 

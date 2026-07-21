@@ -5,11 +5,18 @@ import { EventLogService } from './event-log.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
 import { createRunState, type RunState } from './run-state.schema';
-import { WorkflowRegistryService } from '../workflows/workflow-registry.service';
+import {
+  WorkflowError,
+  WorkflowRegistryService,
+} from '../workflows/workflow-registry.service';
 import { ConfigService } from '../config/config.service';
 import { AgentProfileService } from '../agents/agent-profile.service';
 import { CapabilityResolverService } from '../agents/capability-resolver.service';
-import type { Workflow, WorkflowStep } from '../workflows/workflow.schema';
+import { ArtifactService } from '../documentation/artifact.service';
+import {
+  type ExpandedWorkflowStep,
+  WorkflowExpanderService,
+} from '../workflows/workflow-expander.service';
 
 export interface StartRunRequest {
   readonly id?: string;
@@ -36,12 +43,16 @@ export class RunService {
     private readonly locks: RunLockService,
     @Inject(WorkflowRegistryService)
     private readonly workflowRegistry: WorkflowRegistryService,
+    @Inject(WorkflowExpanderService)
+    private readonly workflowExpander: WorkflowExpanderService,
     @Inject(ConfigService)
     private readonly configService: ConfigService,
     @Inject(AgentProfileService)
     private readonly agentProfiles: AgentProfileService,
     @Inject(CapabilityResolverService)
     private readonly capabilities: CapabilityResolverService,
+    @Inject(ArtifactService)
+    private readonly artifacts: ArtifactService,
     @Inject(RUN_CLOCK)
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -57,7 +68,18 @@ export class RunService {
       request.workflowId,
       repositoryDirectory,
     );
-    const steps = expandWorkflow(resolvedWorkflow.workflow);
+    const expanded = this.workflowExpander.expand(resolvedWorkflow, repositoryDirectory);
+    const steps = expanded.steps;
+    const documentation: RunState['documentation'] = {
+      target: configuration.documentation.target,
+      featurePath: configuration.documentation.featurePath,
+      bindings: {
+        project: configuration.project,
+        feature: request.feature,
+        run: { id },
+      },
+    };
+    this.validateArtifactDestinations(id, steps, documentation);
     const actors = [...new Set(steps.flatMap((step) => (
       step.type === 'agent' ? [step.actor] : []
     )))];
@@ -72,17 +94,10 @@ export class RunService {
       repositoryDirectory,
       id,
       now: timestamp,
-      documentation: {
-        target: configuration.documentation.target,
-        featurePath: configuration.documentation.featurePath,
-        bindings: {
-          project: configuration.project,
-          feature: request.feature,
-          run: { id },
-        },
-      },
+      documentation,
       execution: configuration.execution,
       workflowSha256: resolvedWorkflow.sha256,
+      workflowDefinitions: expanded.definitions,
       resolvedActors,
       steps: steps.map((step) => ({
         id: step.id,
@@ -102,7 +117,7 @@ export class RunService {
                 : {
                     promptFile: step.promptFile,
                     prompt: this.workflowRegistry.readPromptFile(
-                      resolvedWorkflow,
+                      step.definition,
                       step.promptFile,
                     ),
               }),
@@ -121,6 +136,7 @@ export class RunService {
         at: timestamp,
         workflowId: state.workflow.id,
         workflowSha256: state.workflow.sha256,
+        workflowDefinitions: state.workflow.definitions,
         workflowSource: resolvedWorkflow.source,
         documentationTarget: state.documentation.target.name,
         repositoryDirectory: state.repositoryDirectory,
@@ -160,24 +176,31 @@ export class RunService {
     }
     return normalized;
   }
-}
 
-type ExpandedStep = Exclude<WorkflowStep, { readonly type: 'review-cycle' }> & {
-  readonly cycle?: { readonly id: string; readonly role: 'review' | 'consolidate'; readonly iteration: number };
-};
-
-function expandWorkflow(workflow: Workflow): readonly ExpandedStep[] {
-  return workflow.steps.flatMap((step): readonly ExpandedStep[] => {
-    if (step.type !== 'review-cycle') return [step];
-    const expanded: ExpandedStep[] = [{ id: step.id, type: 'agent', actor: step.actor, capability: step.capability, output: step.output }];
-    for (let index = 1; index <= step.maxIterations; index += 1) {
-      expanded.push({ id: `${step.id}-review-${index}`, type: 'agent', actor: step.reviewer, capability: step.reviewCapability,
-        output: { id: `${step.id}-review-${index}`, filename: `.review-${step.id}-${index}.md`, storage: 'internal' },
-        cycle: { id: step.id, role: 'review', iteration: index } });
-      if (index < step.maxIterations) expanded.push({ id: `${step.id}-consolidate-${index}`, type: 'agent', actor: step.actor, capability: step.capability, output: step.output,
-        cycle: { id: step.id, role: 'consolidate', iteration: index } });
+  private validateArtifactDestinations(
+    runId: string,
+    steps: readonly ExpandedWorkflowStep[],
+    documentation: RunState['documentation'],
+  ): void {
+    const destinations = new Map<string, { readonly stepId: string; readonly outputId: string }>();
+    for (const step of steps) {
+      if (step.type !== 'agent') continue;
+      const path = step.output.storage === 'internal'
+        ? this.artifacts.resolveInternalOutputPath(this.stateStore.runDirectory(runId), step.output)
+        : this.artifacts.resolveOutputPath({
+            target: documentation.target,
+            featurePath: documentation.featurePath,
+            bindings: documentation.bindings,
+            output: step.output,
+          });
+      const destinationKey = path.normalize('NFC').toLowerCase();
+      const previous = destinations.get(destinationKey);
+      if (previous && previous.outputId !== step.output.id) {
+        throw new WorkflowError(
+          `Artifact destination collision at "${path}": step "${previous.stepId}" output "${previous.outputId}" and step "${step.id}" output "${step.output.id}"`,
+        );
+      }
+      destinations.set(destinationKey, { stepId: step.id, outputId: step.output.id });
     }
-    expanded.push({ id: step.gateId, type: 'gate', artifact: step.output.id });
-    return expanded;
-  });
+  }
 }

@@ -20,9 +20,11 @@ selected global documentation target. It requires explicit `--feature-id` and
 `--feature-slug` values for the fixed V0 bindings, plus a non-empty `--request`
 of at most 20,000 characters describing the work to perform.
 
-At start, Impresairio validates the selected file, creates an immutable run-step
-snapshot from it, and writes the SHA-256 of the exact YAML content to
-`state.json`. It freezes the work request, resolved documentation target root,
+At start, Impresairio validates the selected file, recursively resolves any
+composed workflows, and creates an immutable leaf-step snapshot. It writes the
+SHA-256 of the exact root YAML plus an ordered manifest containing the source
+and SHA-256 of every resolved workflow definition to `state.json`. It freezes
+the work request, resolved documentation target root,
 repository `featurePath`, project bindings, feature bindings and run ID at the
 same time. The snapshot includes each agent role, its resolved capability method
 or prompt reference, declared output, and each gate artifact reference. Every
@@ -137,6 +139,93 @@ Validation is closed by default. Unknown YAML fields are errors. Therefore a wor
 `promptFile` must be a relative `.md` path and cannot be absolute or contain traversal segments. Output filenames must be Markdown filenames, not paths. Template values are identifiers only. Bindings for documentation paths remain owned by the repository configuration rather than arbitrary workflow expressions. The V0 fixed keys are resolved during `start`, then stored in the run: `project.name`, `project.slug`, `feature.id`, `feature.slug` and `run.id`.
 
 This protects the V0 workflow surface. It does not make locally installed workflow files trustworthy: teams should review repository workflow changes like source code.
+
+## Workflow composition
+
+A workflow may insert another workflow as an ordered step:
+
+```yaml
+id: full-feature
+name: Full feature
+steps:
+  - id: design
+    uses: workflow:feature-design
+    actors:
+      author: launcher
+      reviewer: adversary
+
+  - id: implementation
+    uses: workflow:proportional-implementation
+    actors:
+      reviewer: adversary
+```
+
+`uses` accepts only `workflow:<id>`. The referenced workflow uses the same
+repository, global, then package precedence as a directly started workflow.
+References may be nested; direct and indirect composition cycles fail `start`
+with the complete cycle chain. Composition is sequential in this release and
+does not accept `with`, parameters, conditions, exports or parallel branches.
+
+The optional `actors` map is written from child role to parent role. An omitted
+child role keeps its name, so mappings may be partial. In the example,
+`reviewer` inside `feature-design` becomes the root `adversary`, while an
+unmapped child role such as `implementer` remains `implementer`. The final set
+of roles is derived after all nested mappings and must be bound with `--actor`
+or a compatible role shortcut. Mapping a review-cycle author and reviewer onto
+the same final role is rejected.
+
+Child leaf IDs are namespaced with the mount ID and `--`:
+
+```text
+implementation--classify
+implementation--implement
+implementation--review-review-1
+```
+
+Step IDs, output IDs, gate artifact references, verdict retry targets and
+review-cycle generated IDs are rewritten together. Root step IDs are unchanged.
+The expanded agent/gate steps are the only executable steps persisted in
+`state.json`; `workflow.definitions` records the `root` definition and each
+`mount:<namespace>` workflow instance, its resolution source and its exact YAML
+hash. Absolute definition paths are not persisted. Existing runs without that optional manifest remain
+readable. A child `promptFile` is read relative to the child YAML that declares
+it, and its exact content is frozen before the run is created.
+
+Gates remain owned by the child workflow that declares them. A parent cannot
+reach into an unexported child output. Output filenames are deliberately not
+namespaced, so the workflow author retains control over public document names.
+Before persisting a run, Impresairio resolves every output destination and
+rejects different logical outputs that would write to the same physical path.
+The comparison is Unicode-normalized and case-insensitive so a workflow remains
+safe when moved between Linux, macOS and Windows filesystems.
+Canonical review-cycle consolidations may reuse their own output ID and path.
+Mounting the same publishing workflow twice therefore requires distinct
+filenames; parameterized filenames are deferred to a later workflow contract.
+
+Example standalone child:
+
+```yaml
+id: feature-design
+name: Feature design
+steps:
+  - id: design
+    type: review-cycle
+    actor: author
+    reviewer: reviewer
+    capability: feature-design
+    reviewCapability: adversarial-review
+    maxIterations: 2
+    output:
+      id: design
+      filename: "01 - Feature Design.md"
+    gateId: approve-design
+```
+
+The following errors stop `start` before state, events or documentation are
+created: an unresolved child, invalid actor mapping key, composition cycle,
+ambiguous mount namespace, post-expansion ID collision, output destination
+collision, mapped author and reviewer equality, unresolved capability, or
+invalid child prompt file.
 
 ## Bounded review cycles
 

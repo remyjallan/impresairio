@@ -15,8 +15,11 @@ one JSON event per line.
 
 ## Start and inspect a run
 
-`start` resolves and validates a workflow, snapshots its ordered steps and
-documentation context, and creates durable state. It also freezes the canonical
+`start` resolves and validates a workflow, recursively expands any composed
+workflows, snapshots the resulting ordered leaf steps and documentation context,
+and creates durable state. It freezes the root workflow hash and an ordered
+`workflow.definitions` manifest containing every mounted workflow instance,
+resolution source and hash. It also freezes the canonical
 repository directory, selected agent profiles and resolved OpenCode model identifiers
 for the run. `advance` therefore executes providers in the original repository even
 when the command is invoked from another directory.
@@ -48,6 +51,10 @@ history, so they must not contain credentials or other secrets.
 Runs created before the repository directory was frozen also remain readable. For
 those legacy runs only, invoke `advance` from the intended repository directory;
 new runs are independent of the caller's current directory.
+
+Runs created before workflow composition was introduced do not contain
+`workflow.definitions`; they remain valid and resume from their already frozen
+steps. New runs never reread parent or child YAML files during recovery.
 
 If a bounded review cycle reaches its final iteration with
 `VERDICT: CHANGES_REQUESTED`, `status` shows a persistent warning until the

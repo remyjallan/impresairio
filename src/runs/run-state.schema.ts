@@ -34,6 +34,15 @@ const declaredWorkflowOutputSchema = z
   })
   .strict();
 
+const workflowDefinitionSchema = z
+  .object({
+    instanceId: nonEmptyString,
+    workflowId: nonEmptyString,
+    source: z.enum(['repository', 'global', 'package']),
+    sha256: sha256Schema,
+  })
+  .strict();
+
 const agentMethodSchema = z.union([
   z.object({ action: nonEmptyString }).strict(),
   z.object({ promptFile: nonEmptyString, content: z.string().min(1) }).strict(),
@@ -182,6 +191,7 @@ export const runStateSchema = z
       .object({
         id: nonEmptyString,
         sha256: sha256Schema,
+        definitions: z.array(workflowDefinitionSchema).min(1).optional(),
         successors: z.record(nonEmptyString, z.array(nonEmptyString)),
       })
       .strict(),
@@ -206,6 +216,7 @@ export function createRunState(input: {
   readonly request?: string;
   readonly repositoryDirectory?: string;
   readonly workflowSha256: string;
+  readonly workflowDefinitions?: readonly z.input<typeof workflowDefinitionSchema>[];
   readonly roles: Readonly<Record<string, string>>;
   readonly resolvedActors?: z.input<typeof runStateSchema>['resolvedActors'];
   readonly documentation: z.input<typeof documentationContextSchema>;
@@ -250,6 +261,7 @@ export function createRunState(input: {
     workflow: {
       id: input.workflowId,
       sha256: input.workflowSha256,
+      ...(input.workflowDefinitions ? { definitions: input.workflowDefinitions } : {}),
       successors: Object.fromEntries(
         input.steps.map((step, index) => [
           step.id,

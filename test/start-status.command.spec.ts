@@ -12,6 +12,7 @@ import { FileStateStore } from '../src/runs/file-state.store';
 import { RunLockService } from '../src/runs/run-lock.service';
 import { RunService } from '../src/runs/run.service';
 import { WorkflowRegistryService } from '../src/workflows/workflow-registry.service';
+import { WorkflowExpanderService } from '../src/workflows/workflow-expander.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
 import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { ArtifactService } from '../src/documentation/artifact.service';
@@ -83,9 +84,11 @@ function createRunService() {
       events,
       locks,
       workflows,
+      new WorkflowExpanderService(workflows),
       new ConfigService(resolver),
       new AgentProfileService(),
       new CapabilityResolverService(resolver),
+      artifactService,
       () => new Date('2026-07-20T10:00:00.000Z'),
     ),
     runner: new WorkflowRunnerService(

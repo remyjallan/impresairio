@@ -53,19 +53,7 @@ export class ArtifactService implements OutputVerifier {
   ) {}
 
   prepareOutput(input: PrepareOutputInput): PreparedDocumentationOutput {
-    if (input.target.kind !== 'filesystem' || input.target.defaultFormat !== 'markdown') {
-      throw new ArtifactError('Only filesystem Markdown documentation targets are supported');
-    }
-    if (extname(input.output.filename).toLowerCase() !== '.md') {
-      throw new ArtifactError('Documentation output filename must end in .md');
-    }
-
-    const path = this.pathRenderer.renderOutputPath({
-      targetRoot: input.target.root,
-      featurePath: input.featurePath,
-      filename: input.output.filename,
-      bindings: input.bindings,
-    });
+    const path = this.resolveOutputPath(input);
     const prepared: PreparedDocumentationOutput = {
       id: input.output.id,
       targetRoot: input.target.root,
@@ -85,14 +73,37 @@ export class ArtifactService implements OutputVerifier {
     return prepared;
   }
 
+  resolveOutputPath(input: PrepareOutputInput): string {
+    if (input.target.kind !== 'filesystem' || input.target.defaultFormat !== 'markdown') {
+      throw new ArtifactError('Only filesystem Markdown documentation targets are supported');
+    }
+    if (extname(input.output.filename).toLowerCase() !== '.md') {
+      throw new ArtifactError('Documentation output filename must end in .md');
+    }
+
+    return this.pathRenderer.renderOutputPath({
+      targetRoot: input.target.root,
+      featurePath: input.featurePath,
+      filename: input.output.filename,
+      bindings: input.bindings,
+    });
+  }
+
   prepareInternalOutput(runDirectory: string, output: DeclaredOutput): PreparedDocumentationOutput {
-    const directory = join(runDirectory, 'artifacts');
+    const path = this.resolveInternalOutputPath(runDirectory, output);
     const prepared: PreparedDocumentationOutput = {
-      id: output.id, targetRoot: runDirectory, directory,
-      path: join(directory, output.filename), format: 'markdown',
+      id: output.id, targetRoot: runDirectory, directory: dirname(path),
+      path, format: 'markdown',
     };
     this.filesystemTarget.ensureDirectory(prepared);
     return prepared;
+  }
+
+  resolveInternalOutputPath(runDirectory: string, output: DeclaredOutput): string {
+    if (extname(output.filename).toLowerCase() !== '.md') {
+      throw new ArtifactError('Internal output filename must end in .md');
+    }
+    return join(runDirectory, 'artifacts', output.filename);
   }
 
   completeOutput(

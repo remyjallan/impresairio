@@ -46,6 +46,7 @@ import { OpenCodeProvider } from './agents/opencode.provider';
 import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-registry.service';
 import { AGENT_COMMAND_EXECUTOR, AgentHealthService, LocalAgentCommandExecutor } from './agents/agent-health.service';
 import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
+import { WorkflowExpanderService } from './workflows/workflow-expander.service';
 
 @Module({
   providers: [
@@ -84,6 +85,7 @@ import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
     RunLockService,
     RunService,
     WorkflowRegistryService,
+    WorkflowExpanderService,
     WorkflowRunnerService,
     GateService,
     StaleInvalidationService,

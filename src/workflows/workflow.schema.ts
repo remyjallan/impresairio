@@ -92,6 +92,16 @@ const gateStepSchema = z
   })
   .strict();
 
+const composedWorkflowStepSchema = z
+  .object({
+    id: identifier,
+    uses: z.string().regex(/^workflow:[a-z][a-z0-9-]*$/, {
+      error: 'must reference a workflow as workflow:<id>',
+    }),
+    actors: z.record(identifier, identifier).optional(),
+  })
+  .strict();
+
 const reviewCycleStepSchema = z.object({
   id: identifier,
   type: z.literal('review-cycle'),
@@ -110,7 +120,13 @@ export const workflowSchema = z
   .object({
     id: identifier,
     name: staticText,
-    steps: z.array(z.union([capabilityAgentStepSchema, promptAgentStepSchema, gateStepSchema, reviewCycleStepSchema])).min(1),
+    steps: z.array(z.union([
+      capabilityAgentStepSchema,
+      promptAgentStepSchema,
+      gateStepSchema,
+      reviewCycleStepSchema,
+      composedWorkflowStepSchema,
+    ])).min(1),
   })
   .strict()
   .superRefine((workflow, context) => {
@@ -126,6 +142,8 @@ export const workflowSchema = z
         });
       }
       stepIds.add(step.id);
+
+      if ('uses' in step) return;
 
       if (step.type === 'agent' || step.type === 'review-cycle') {
         if (outputIds.has(step.output.id)) {
@@ -156,7 +174,7 @@ export const workflowSchema = z
         const target = workflow.steps
           .slice(0, index)
           .find((candidate) => candidate.id === retryFrom);
-        if (!target || target.type !== 'agent') {
+        if (!target || !('type' in target) || target.type !== 'agent') {
           context.addIssue({
             code: 'custom',
             path: ['steps', index, 'verdictPolicy', 'changesRequested', 'retryFrom'],
@@ -168,6 +186,7 @@ export const workflowSchema = z
 
     const generatedOwners = new Map<string, number>();
     workflow.steps.forEach((step, index) => {
+      if ('uses' in step) return;
       if (step.type !== 'review-cycle') return;
       const generated = [
         step.gateId,
@@ -205,7 +224,8 @@ export type Workflow = z.infer<typeof workflowSchema>;
 export type WorkflowStep = Workflow['steps'][number];
 export type AgentWorkflowStep = Extract<WorkflowStep, { readonly type: 'agent' }>;
 export type GateWorkflowStep = Extract<WorkflowStep, { readonly type: 'gate' }>;
+export type ComposedWorkflowStep = Extract<WorkflowStep, { readonly uses: string }>;
 
 export function isAgentWorkflowStep(step: WorkflowStep): step is AgentWorkflowStep {
-  return step.type === 'agent';
+  return 'type' in step && step.type === 'agent';
 }
