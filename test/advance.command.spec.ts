@@ -6,11 +6,24 @@ import {
   extractContent,
   extractDeniedWriteContent,
   formatAgentProgress,
+  prepareExecutionInvocation,
 } from '../src/commands/advance.command';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
 import { describe, expect, it } from 'vitest';
 
 describe('advance command output recovery', () => {
+  it('limits Codex writable access to the staging directory', () => {
+    expect(prepareExecutionInvocation({
+      command: 'codex',
+      args: ['exec', '--sandbox', 'read-only'],
+      input: 'write to /run/artifacts/report.md',
+    }, '/run/artifacts/report.md', '/run/staging/implement.md')).toEqual({
+      command: 'codex',
+      args: ['exec', '--sandbox', 'read-only', '--add-dir', '/run/staging'],
+      input: 'write to /run/staging/implement.md',
+    });
+  });
+
   it('uses the frozen repository and preserves caller-CWD fallback for legacy runs', () => {
     expect(executionDirectory('/workspace/project', '/caller')).toBe('/workspace/project');
     expect(executionDirectory(undefined, '/caller')).toBe('/caller');

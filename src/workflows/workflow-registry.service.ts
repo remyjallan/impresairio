@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseDocument, YAMLParseError } from 'yaml';
 import { HomeDirectoryResolver } from '../config/home-directory.resolver';
 import { workflowSchema, type Workflow } from './workflow.schema';
@@ -88,13 +88,22 @@ export class WorkflowRegistryService {
   }
 
   readPromptFile(resolvedWorkflow: ResolvedWorkflow, promptFile: string): string {
-    const workflowDirectory = dirname(resolvedWorkflow.path);
+    const workflowDirectory = realpathSync(dirname(resolvedWorkflow.path));
     const candidate = resolve(workflowDirectory, promptFile);
-    const containment = relative(workflowDirectory, candidate);
-    if (containment === '' || containment.startsWith('..') || containment.includes('..\\')) {
+    if (!isContainedPath(workflowDirectory, candidate)) {
       throw new WorkflowError(`Prompt file escapes workflow directory: ${promptFile}`);
     }
-    const content = this.read(candidate);
+    let realCandidate: string;
+    try {
+      realCandidate = realpathSync(candidate);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'could not resolve prompt file';
+      throw new WorkflowError(`${candidate}: ${detail}`);
+    }
+    if (!isContainedPath(workflowDirectory, realCandidate)) {
+      throw new WorkflowError(`Prompt file escapes workflow directory: ${promptFile}`);
+    }
+    const content = this.read(realCandidate);
     if (content.trim().length === 0) {
       throw new WorkflowError(`${candidate}: prompt file must not be empty`);
     }
@@ -145,6 +154,14 @@ export class WorkflowRegistryService {
 
     return result.data;
   }
+}
+
+function isContainedPath(root: string, candidate: string): boolean {
+  const containment = relative(root, candidate);
+  return containment !== ''
+    && containment !== '..'
+    && !containment.startsWith(`..${sep}`)
+    && !isAbsolute(containment);
 }
 
 export function workflowPromptDirectory(resolved: ResolvedWorkflow): string {

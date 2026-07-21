@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -74,6 +74,32 @@ describe('WorkflowRegistryService', () => {
 
     expect(first.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(second.sha256).not.toBe(first.sha256);
+  });
+
+  it('rejects prompt files whose symlink target escapes the workflow directory', () => {
+    const home = temporaryDirectory('impresairio-workflow-home-');
+    const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
+    const prompts = join(packageDirectory, 'prompts');
+    mkdirSync(prompts);
+    writeFileSync(join(packageDirectory, 'custom.yaml'), `id: custom
+name: Custom
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    promptFile: prompts/leak.md
+    output:
+      id: report
+      filename: "01 - Report.md"
+`);
+    const secret = join(temporaryDirectory('impresairio-workflow-secret-'), 'secret.txt');
+    writeFileSync(secret, 'must not enter the prompt');
+    symlinkSync(secret, join(prompts, 'leak.md'));
+    const registry = createRegistry(home, packageDirectory);
+    const resolved = registry.resolve('custom', home);
+
+    expect(() => registry.readPromptFile(resolved, 'prompts/leak.md'))
+      .toThrow('Prompt file escapes workflow directory');
   });
 
   it.each([
