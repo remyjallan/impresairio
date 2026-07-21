@@ -193,6 +193,29 @@ describe('AgentDispatchService', () => {
     expect(handoff?.invocation?.input).toContain('do not modify them directly');
   });
 
+  it('lists declared enum result values in the agent handoff', () => {
+    const { runner, dispatch, store } = setup('implementer');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? {
+            ...step,
+            declaredResult: {
+              fields: { complexity: { type: 'enum' as const, values: ['trivial', 'standard', 'complex'] } },
+            },
+          }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.input).toContain(
+      'complexity (enum; allowed values: trivial, standard, complex)',
+    );
+  });
+
   it('preserves context additions for configured skills and prompt files', () => {
     const { runner, dispatch, store } = setup('launcher');
     const state = store.findState('run-agent');

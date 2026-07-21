@@ -72,7 +72,7 @@ export class AgentDispatchService {
         ? 'End the Markdown response with exactly one of: VERDICT: APPROVED, VERDICT: CHANGES_REQUESTED, or VERDICT: BLOCKED.'
         : undefined,
       step.declaredResult
-        ? `After the human-readable Markdown, append exactly one fenced \`impresairio-result\` block containing a JSON object with exactly these fields: ${Object.entries(step.declaredResult.fields).map(([name, definition]) => `${name} (${definition.type})`).join(', ')}.`
+        ? `After the human-readable Markdown, append exactly one fenced \`impresairio-result\` block containing a JSON object with exactly these fields: ${Object.entries(step.declaredResult.fields).map(([name, definition]) => `${name} (${resultFieldDescription(definition)})`).join(', ')}.`
         : undefined,
       step.patch === 'apply-unified-diff'
         ? 'After the human-readable Markdown, append exactly one fenced `impresairio-patch` block containing a unified Git diff. For each changed file, include `diff --git a/path b/path`, matching `--- a/path` and `+++ b/path` lines, and enough unchanged context for Git to apply it. The block must contain only the patch. Inspect repository files as needed, but do not modify them directly. The patch may modify only existing tracked files.'
@@ -180,4 +180,10 @@ export class AgentDispatchService {
     }
     return { ...instruction, content: `${instruction.content}\n\n${additions}` };
   }
+}
+
+function resultFieldDescription(definition: { readonly type: string; readonly values?: readonly string[] }): string {
+  return definition.type === 'enum'
+    ? `enum; allowed values: ${definition.values?.join(', ') ?? ''}`
+    : definition.type;
 }
