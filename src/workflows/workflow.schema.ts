@@ -35,21 +35,6 @@ const safeFilename = staticText.refine(
   'must be a Markdown filename without path separators',
 );
 
-const builtInAction = z.enum([
-  'feature-design',
-  'adversarial-review',
-  'specification',
-  'spec-review',
-  'integration-plan',
-  'plan-review',
-  'implementation',
-  'final-review',
-  'final-report',
-  'investigate',
-  'implement',
-  'verification',
-]);
-
 const outputSchema = z
   .object({
     id: identifier,
@@ -85,14 +70,14 @@ const agentBaseSchema = z
   .object({
     id: identifier,
     type: z.literal('agent'),
-    actor: z.enum(['launcher', 'adversary', 'implementer']),
+    actor: identifier,
     output: outputSchema,
     verdictPolicy: verdictPolicySchema.optional(),
   })
   .strict();
 
-const actionAgentStepSchema = agentBaseSchema.extend({
-  action: builtInAction,
+const capabilityAgentStepSchema = agentBaseSchema.extend({
+  capability: identifier,
 }).strict();
 
 const promptAgentStepSchema = agentBaseSchema.extend({
@@ -110,10 +95,10 @@ const gateStepSchema = z
 const reviewCycleStepSchema = z.object({
   id: identifier,
   type: z.literal('review-cycle'),
-  actor: z.enum(['launcher', 'adversary', 'implementer']),
-  reviewer: z.enum(['launcher', 'adversary', 'implementer']),
-  action: builtInAction,
-  reviewAction: builtInAction,
+  actor: identifier,
+  reviewer: identifier,
+  capability: identifier,
+  reviewCapability: identifier,
   maxIterations: z.number().int().min(1).max(10),
   output: outputSchema,
   gateId: identifier,
@@ -125,7 +110,7 @@ export const workflowSchema = z
   .object({
     id: identifier,
     name: staticText,
-    steps: z.array(z.union([actionAgentStepSchema, promptAgentStepSchema, gateStepSchema, reviewCycleStepSchema])).min(1),
+    steps: z.array(z.union([capabilityAgentStepSchema, promptAgentStepSchema, gateStepSchema, reviewCycleStepSchema])).min(1),
   })
   .strict()
   .superRefine((workflow, context) => {

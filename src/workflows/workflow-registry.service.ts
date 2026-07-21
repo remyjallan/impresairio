@@ -125,8 +125,19 @@ export class WorkflowRegistryService {
       throw new WorkflowError(`${path}: unsupported YAML: ${document.warnings[0].message}`);
     }
 
-    const result = workflowSchema.safeParse(document.toJS({ maxAliasCount: 0 }));
+    const raw = document.toJS({ maxAliasCount: 0 }) as { steps?: unknown };
+    const result = workflowSchema.safeParse(raw);
     if (!result.success) {
+      if (Array.isArray((raw as { steps?: unknown[] }).steps)) {
+        for (const candidate of (raw as { steps: unknown[] }).steps) {
+          if (candidate && typeof candidate === 'object' && 'action' in candidate) {
+            throw new WorkflowError(`${path}: "action" was renamed to "capability"; update the workflow step`);
+          }
+          if (candidate && typeof candidate === 'object' && 'reviewAction' in candidate) {
+            throw new WorkflowError(`${path}: "reviewAction" was renamed to "reviewCapability"; update the workflow step`);
+          }
+        }
+      }
       const issue = result.error.issues[0];
       const field = issue.path.length > 0 ? issue.path.join('.') : '(root)';
       throw new WorkflowError(`${path}: ${field}: ${issue.message}`);
