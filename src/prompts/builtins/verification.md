@@ -1,1 +1,1 @@
-Verify the correction against its acceptance criteria and report the result.
+Inspect the changed source files and relevant tests before verifying the correction against its acceptance criteria. Separate observed evidence (with file paths) from assumptions or open questions. Report executed checks and their actual results; do not claim a check passed unless you ran it.

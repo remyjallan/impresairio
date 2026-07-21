@@ -102,6 +102,7 @@ describe('AgentDispatchService', () => {
       invocation: { command: 'claude' },
     });
     expect(handoff?.invocation?.input).toContain('Work request:\nAdd a safe greeting command.');
+    expect(handoff?.invocation?.input).toContain('Separate observed evidence (including file paths) from assumptions or open questions.');
     expect(processRunner.calls).toHaveLength(1);
   });
 
@@ -187,7 +188,32 @@ describe('AgentDispatchService', () => {
     const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
 
     expect(handoff?.invocation?.input).toContain('`impresairio-patch` block');
+    expect(handoff?.invocation?.input).toContain('`diff --git a/path b/path`');
+    expect(handoff?.invocation?.input).toContain('enough unchanged context for Git to apply it');
     expect(handoff?.invocation?.input).toContain('do not modify them directly');
+  });
+
+  it('lists declared enum result values in the agent handoff', () => {
+    const { runner, dispatch, store } = setup('implementer');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? {
+            ...step,
+            declaredResult: {
+              fields: { complexity: { type: 'enum' as const, values: ['trivial', 'standard', 'complex'] } },
+            },
+          }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.input).toContain(
+      'complexity (enum; allowed values: trivial, standard, complex)',
+    );
   });
 
   it('preserves context additions for configured skills and prompt files', () => {

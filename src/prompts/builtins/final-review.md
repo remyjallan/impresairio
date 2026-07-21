@@ -1,1 +1,1 @@
-Review the completed implementation and report defects, regressions or verification gaps.
+Inspect the changed source files and relevant tests before reviewing the completed implementation. Report defects, regressions, or verification gaps. Separate observed evidence (with file paths) from assumptions or open questions. Do not claim a check passed unless you ran it.
