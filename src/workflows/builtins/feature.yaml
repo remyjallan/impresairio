@@ -5,8 +5,8 @@ steps:
     type: review-cycle
     actor: launcher
     reviewer: adversary
-    action: feature-design
-    reviewAction: adversarial-review
+    capability: feature-design
+    reviewCapability: adversarial-review
     maxIterations: 3
     output:
       id: design
@@ -17,8 +17,8 @@ steps:
     type: review-cycle
     actor: launcher
     reviewer: adversary
-    action: specification
-    reviewAction: spec-review
+    capability: specification
+    reviewCapability: spec-review
     maxIterations: 2
     output:
       id: specification
@@ -29,8 +29,8 @@ steps:
     type: review-cycle
     actor: launcher
     reviewer: adversary
-    action: integration-plan
-    reviewAction: plan-review
+    capability: integration-plan
+    reviewCapability: plan-review
     maxIterations: 2
     output:
       id: integration-plan
@@ -40,14 +40,14 @@ steps:
   - id: implementation
     type: agent
     actor: implementer
-    action: implementation
+    capability: implementation
     output:
       id: implementation-report
       filename: "07 - Implementation Report.md"
   - id: final-review
     type: agent
     actor: adversary
-    action: final-review
+    capability: final-review
     output:
       id: final-review
       filename: "08 - Final Review.md"
@@ -59,7 +59,7 @@ steps:
   - id: final-report
     type: agent
     actor: launcher
-    action: final-report
+    capability: final-report
     output:
       id: final-report
       filename: "09 - Final Report.md"

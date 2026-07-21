@@ -4,21 +4,21 @@ steps:
   - id: investigate
     type: agent
     actor: launcher
-    action: investigate
+    capability: investigate
     output:
       id: investigation
       filename: "01 - Investigation.md"
   - id: implement
     type: agent
     actor: implementer
-    action: implement
+    capability: implement
     output:
       id: implementation-report
       filename: "02 - Implementation Report.md"
   - id: verify
     type: agent
     actor: adversary
-    action: verification
+    capability: verification
     output:
       id: verification
       filename: "03 - Verification.md"
