@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -205,4 +205,60 @@ describe('AgentDispatchService', () => {
     expect(promptHandoff?.invocation?.input).toContain('Custom instructions.');
     expect(promptHandoff?.invocation?.input).toContain('Keep it small.');
   });
+
+  it('drives verdict transport from a declared policy, not action names', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? { ...step, verdictPolicy: { blocked: 'stop' as const } }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.args).toContain('--json-schema');
+    expect(handoff?.invocation?.input).toContain(
+      'End the Markdown response with exactly one of: VERDICT: APPROVED, VERDICT: CHANGES_REQUESTED, or VERDICT: BLOCKED.',
+    );
+  });
+
+  it('omits verdict transport for plain steps', () => {
+    const { runner, dispatch } = setup('launcher');
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.args).not.toContain('--json-schema');
+    expect(handoff?.invocation?.input).not.toContain('End the Markdown response with exactly one of');
+  });
+
+  it('injects the reviewer feedback artifact into a reopened step', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const feedbackDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-feedback-')));
+    directories.push(feedbackDirectory);
+    const feedbackPath = join(feedbackDirectory, 'v.md');
+    writeFileSync(feedbackPath, 'Fix the empty-name handling.\n\nVERDICT: CHANGES_REQUESTED\n', 'utf8');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? {
+            ...step,
+            retryContext: {
+              sourceStepId: 'verify', artifactPath: feedbackPath,
+              artifactSha256: 'c'.repeat(64), at: '2026-07-20T10:03:00.000Z',
+            },
+          }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.input).toContain('Reviewer feedback to address:');
+    expect(handoff?.invocation?.input).toContain('Fix the empty-name handling.');
+  });
 });
+

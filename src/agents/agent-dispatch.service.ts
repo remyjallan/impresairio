@@ -57,10 +57,16 @@ export class AgentDispatchService {
     const baseInstruction = this.instructionFor(step.method, provider, agent.skills);
     const context = this.contextFor(state, step.id);
     const feedback = this.feedbackFor(state, step.declaredOutput.id);
+    const expectsVerdict = Boolean(step.verdictPolicy) || step.cycle?.role === 'review';
+    const reviewerFeedback = step.retryContext ? this.reviewerFeedbackFor(step.retryContext) : undefined;
     const additions = [
       state.request ? `Work request:\n${state.request}` : undefined,
       context ? `Input artifacts:\n${context}` : undefined,
       feedback ? `Human feedback to address:\n${feedback}` : undefined,
+      reviewerFeedback ? `Reviewer feedback to address:\n${reviewerFeedback}` : undefined,
+      expectsVerdict
+        ? 'End the Markdown response with exactly one of: VERDICT: APPROVED, VERDICT: CHANGES_REQUESTED, or VERDICT: BLOCKED.'
+        : undefined,
     ].filter((value): value is string => Boolean(value)).join('\n\n');
     const instruction = additions ? this.withAdditions(baseInstruction, additions) : baseInstruction;
     const expectedOutput = {
@@ -72,7 +78,7 @@ export class AgentDispatchService {
     const invocation = this.processRunner.prepare(provider.prepareInvocation({
       runId,
       stepId: step.id,
-      ...('action' in step.method ? { action: step.method.action } : {}),
+      expectsVerdict,
       profile: agent.profile,
       agent,
       instruction,
@@ -125,6 +131,14 @@ export class AgentDispatchService {
     return nativeSkill
       ? { kind: 'native-skill', skill: nativeSkill }
       : { kind: 'fallback-prompt', content: fallbackPromptFor(method.action) };
+  }
+
+  private reviewerFeedbackFor(retryContext: { readonly sourceStepId: string; readonly artifactPath: string }): string {
+    try {
+      return readFileSync(retryContext.artifactPath, 'utf8');
+    } catch {
+      return `The verdict from step ${retryContext.sourceStepId} requested changes, but its artifact could not be read; inspect the run events before retrying.`;
+    }
   }
 
   private contextFor(state: NonNullable<ReturnType<FileStateStore['findState']>>, stepId: string): string {

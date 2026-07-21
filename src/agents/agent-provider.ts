@@ -15,7 +15,7 @@ export type PreparedInstruction =
 export interface ProviderPreparationRequest {
   readonly runId: string;
   readonly stepId: string;
-  readonly action?: AgentAction;
+  readonly expectsVerdict?: boolean;
   readonly profile: string;
   /** The port validates its own provider-specific requirements before use. */
   readonly agent: {

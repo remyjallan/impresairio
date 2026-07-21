@@ -17,7 +17,7 @@ export class ClaudeCodeProvider implements AgentProvider {
   }
 
   prepareInvocation(request: ProviderPreparationRequest): PreparedAgentInvocation {
-    const review = request.action === 'adversarial-review' || request.action === 'spec-review' || request.action === 'plan-review';
+    const review = request.expectsVerdict === true;
     return {
       command: 'claude',
       args: [
