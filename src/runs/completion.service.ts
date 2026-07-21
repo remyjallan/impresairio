@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { CompletedDocumentationOutput } from '../documentation/documentation-target';
 import type { PreparedDocumentationOutput } from '../documentation/documentation-target';
 import { readFileSync } from 'node:fs';
-import type { WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
+import type { WorkflowPatch, WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
 import { parseStructuredResult, StructuredResultError } from '../workflows/structured-result';
 
 export type CompletionStepStatus =
@@ -19,11 +19,14 @@ export interface CompletionStep {
   readonly status: CompletionStepStatus;
   readonly output?: PreparedDocumentationOutput;
   readonly declaredResult?: WorkflowResult;
+  readonly patch?: WorkflowPatch;
   readonly cycle?: { readonly id: string; readonly role: 'review' | 'consolidate'; readonly iteration: number };
 }
 
 export interface CompletionRun {
   readonly id: string;
+  readonly repositoryDirectory?: string;
+  readonly repositoryPatch?: RepositoryPatchState;
   readonly currentStepId: string | undefined;
   readonly steps: readonly CompletionStep[];
 }
@@ -41,6 +44,28 @@ export interface CompletionRecord {
     readonly outputSha256: string;
     readonly recordedAt: string;
   };
+  readonly appliedPatch?: AppliedPatch;
+  readonly repositoryPatch?: RepositoryPatchState;
+}
+
+export interface AppliedPatch {
+  readonly sha256: string;
+  readonly paths: string[];
+  readonly appliedAt: string;
+}
+
+export interface RepositoryPatchState {
+  readonly baselineSha256: string;
+  readonly currentSha256: string;
+}
+
+export interface PatchApplication {
+  readonly patch: AppliedPatch;
+  readonly repositoryPatch: RepositoryPatchState;
+}
+
+export interface PatchApplier {
+  apply(run: CompletionRun, step: CompletionStep, markdown: string, appliedAt: string): PatchApplication;
 }
 
 export type CompletionTransition =
@@ -62,6 +87,7 @@ export interface CompletionPolicy {
 export type CompletionEvent =
   | { readonly type: 'step.completed'; readonly stepId: string; readonly at: string; readonly outputSha256: string }
   | { readonly type: 'step.result.recorded'; readonly stepId: string; readonly fields: readonly string[]; readonly outputSha256: string; readonly at: string }
+  | { readonly type: 'step.patch.applied'; readonly stepId: string; readonly sha256: string; readonly paths: readonly string[]; readonly at: string }
   | { readonly type: 'cycle.exhausted'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'CHANGES_REQUESTED'; readonly at: string }
   | { readonly type: 'cycle.blocked'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'BLOCKED'; readonly at: string }
   | { readonly type: 'verdict.changes_requested'; readonly stepId: string; readonly retryFrom: string; readonly at: string }
@@ -89,6 +115,7 @@ export const OUTPUT_VERIFIER = Symbol('OUTPUT_VERIFIER');
 export const COMPLETION_CLOCK = Symbol('COMPLETION_CLOCK');
 export const COMPLETION_LOCK = Symbol('COMPLETION_LOCK');
 export const COMPLETION_POLICY = Symbol('COMPLETION_POLICY');
+export const PATCH_APPLIER = Symbol('PATCH_APPLIER');
 
 export interface CompletionLock {
   acquire(runId: string, command: string): () => void;
@@ -112,6 +139,8 @@ export class CompletionService {
     private readonly lock: CompletionLock = { acquire: () => () => undefined },
     @Optional() @Inject(COMPLETION_POLICY)
     private readonly policy: CompletionPolicy = { evaluate: () => ({ skipStepIds: [] }) },
+    @Optional() @Inject(PATCH_APPLIER)
+    private readonly patches: PatchApplier = { apply: () => { throw new CompletionError('No patch applier is configured'); } },
   ) {}
 
   complete(runId: string, stepId: string): void {
@@ -145,17 +174,24 @@ export class CompletionService {
       let output: CompletedDocumentationOutput;
       let policyResult: CompletionPolicyResult;
       let result: CompletionRecord['result'];
+      let patchApplication: PatchApplication | undefined;
       try {
         output = this.outputVerifier.completeExpectedOutput(run, step);
-        if (step.declaredResult) {
+        const content = step.declaredResult || step.patch
+          ? this.outputVerifier.readExpectedOutput?.(run, step) ?? readFileSync(output.path, 'utf8')
+          : undefined;
+        if (step.declaredResult && content !== undefined) {
           result = {
             value: parseStructuredResult(
-              this.outputVerifier.readExpectedOutput?.(run, step) ?? readFileSync(output.path, 'utf8'),
+              content,
               step.declaredResult,
             ),
             outputSha256: output.sha256,
             recordedAt: this.now().toISOString(),
           };
+        }
+        if (step.patch && content !== undefined) {
+          patchApplication = this.patches.apply(run, step, content, this.now().toISOString());
         }
         policyResult = this.policy.evaluate(runId, stepId, output);
         this.store.recordCompletion(runId, {
@@ -164,6 +200,10 @@ export class CompletionService {
           ...(policyResult.skipStepIds.length > 0 ? { skipStepIds: policyResult.skipStepIds } : {}),
           ...(policyResult.reviewOutcome ? { reviewOutcome: policyResult.reviewOutcome } : {}),
           ...(result ? { result } : {}),
+          ...(patchApplication ? {
+            appliedPatch: patchApplication.patch,
+            repositoryPatch: patchApplication.repositoryPatch,
+          } : {}),
         });
       } catch (error) {
         if (!(error instanceof StructuredResultError)) {
@@ -184,6 +224,15 @@ export class CompletionService {
           fields: Object.keys(result.value),
           outputSha256: result.outputSha256,
           at: this.now().toISOString(),
+        });
+      }
+      if (patchApplication) {
+        this.store.appendEvent(runId, {
+          type: 'step.patch.applied',
+          stepId,
+          sha256: patchApplication.patch.sha256,
+          paths: patchApplication.patch.paths,
+          at: patchApplication.patch.appliedAt,
         });
       }
       if (policyResult.source === 'policy' && policyResult.reviewOutcome) {

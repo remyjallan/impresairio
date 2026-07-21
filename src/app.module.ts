@@ -22,6 +22,7 @@ import {
   COMPLETION_CLOCK,
   COMPLETION_LOCK,
   COMPLETION_POLICY,
+  PATCH_APPLIER,
   CompletionService,
   OUTPUT_VERIFIER,
 } from './runs/completion.service';
@@ -48,6 +49,7 @@ import { AGENT_COMMAND_EXECUTOR, AgentHealthService, LocalAgentCommandExecutor }
 import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
 import { WorkflowExpanderService } from './workflows/workflow-expander.service';
 import { ConditionEvaluatorService } from './workflows/condition-evaluator.service';
+import { RepositoryPatchService } from './runs/repository-patch.service';
 
 @Module({
   providers: [
@@ -81,6 +83,7 @@ import { ConditionEvaluatorService } from './workflows/condition-evaluator.servi
     FilesystemDocumentationTarget,
     ArtifactService,
     CompletionService,
+    RepositoryPatchService,
     FileStateStore,
     EventLogService,
     RunLockService,
@@ -139,6 +142,10 @@ import { ConditionEvaluatorService } from './workflows/condition-evaluator.servi
     {
       provide: COMPLETION_POLICY,
       useExisting: VerdictCompletionPolicy,
+    },
+    {
+      provide: PATCH_APPLIER,
+      useExisting: RepositoryPatchService,
     },
     {
       provide: STATUS_WRITER,

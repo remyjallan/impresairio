@@ -193,6 +193,9 @@ const verdictPolicySchema = z
 
 export type WorkflowVerdictPolicy = z.infer<typeof verdictPolicySchema>;
 
+export const workflowPatchSchema = z.literal('apply-unified-diff');
+export type WorkflowPatch = z.infer<typeof workflowPatchSchema>;
+
 const agentBaseSchema = z
   .object({
     id: identifier,
@@ -202,6 +205,7 @@ const agentBaseSchema = z
     verdictPolicy: verdictPolicySchema.optional(),
     result: workflowResultSchema.optional(),
     when: workflowConditionSchema.optional(),
+    patch: workflowPatchSchema.optional(),
   })
   .strict();
 

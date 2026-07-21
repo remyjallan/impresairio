@@ -148,11 +148,13 @@ describe('start and status commands', () => {
       }),
       steps: expect.arrayContaining([
         expect.objectContaining({ id: 'investigate', status: 'pending' }),
+        expect.objectContaining({ id: 'implement', patch: 'apply-unified-diff' }),
+        expect.objectContaining({ id: 'approve-fix', kind: 'gate', status: 'pending' }),
       ]),
     }));
     expect(output.join('')).toContain('run-quick-fix');
     expect(output.join('')).toContain('workflow: quick-fix');
-    expect(output.join('')).toContain('steps: 3');
+    expect(output.join('')).toContain('steps: 4');
     expect(output.join('')).toContain('investigate: pending');
     expect(output.join('')).toContain('verify: pending');
     expect(events.read('run-quick-fix')).toContainEqual(expect.objectContaining({

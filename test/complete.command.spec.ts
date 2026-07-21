@@ -49,6 +49,44 @@ describe('CompleteCommand', () => {
     expect(store.events).toEqual([expect.objectContaining({ type: 'step.completed', stepId: 'design' })]);
   });
 
+  it('applies a declared patch after publishing its Markdown output', () => {
+    const patch = {
+      sha256: 'b'.repeat(64), paths: ['src/greet.ts'], appliedAt: '2026-07-21T12:00:00.000Z',
+    };
+    const repositoryPatch = { baselineSha256: 'c'.repeat(64), currentSha256: 'd'.repeat(64) };
+    const store = createStore({ id: 'implement', kind: 'agent', status: 'in_progress' });
+    const service = new CompletionService(
+      {
+        ...store,
+        find: (runId) => ({
+          id: runId,
+          repositoryDirectory: '/repository',
+          currentStepId: 'implement',
+          steps: [{ id: 'implement', kind: 'agent', status: 'in_progress', patch: 'apply-unified-diff' }],
+        }),
+      },
+      {
+        completeExpectedOutput: () => ({
+          id: 'implementation', path: '/docs/implementation.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+        }),
+        readExpectedOutput: () => '# Implementation\n\n```impresairio-patch\ndiff --git a/src/greet.ts b/src/greet.ts\n```\n',
+      },
+      undefined,
+      undefined,
+      undefined,
+      { apply: () => ({ patch, repositoryPatch }) },
+    );
+
+    service.complete('run-42', 'implement');
+
+    expect(store.completions).toContainEqual(expect.objectContaining({
+      stepId: 'implement', appliedPatch: patch, repositoryPatch,
+    }));
+    expect(store.events).toContainEqual(expect.objectContaining({
+      type: 'step.patch.applied', stepId: 'implement', sha256: patch.sha256, paths: patch.paths,
+    }));
+  });
+
   it.each([
     ['pending', 'must be in progress'],
     ['complete', 'is already complete'],

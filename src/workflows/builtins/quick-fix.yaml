@@ -15,6 +15,7 @@ steps:
     output:
       id: implementation-report
       filename: "02 - Implementation Report.md"
+    patch: apply-unified-diff
   - id: verify
     type: agent
     actor: adversary
@@ -27,4 +28,6 @@ steps:
         retryFrom: implement
         maxIterations: 2
       blocked: stop
-
+  - id: approve-fix
+    type: gate
+    artifact: verification

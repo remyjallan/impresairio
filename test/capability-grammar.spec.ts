@@ -50,6 +50,26 @@ describe('workflow grammar: free capabilities and actors', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts the explicit controlled patch contract on an agent step', () => {
+    const result = workflowSchema.safeParse(workflowWith([{
+      id: 'implement', type: 'agent', actor: 'implementer', capability: 'implement',
+      output: { id: 'implementation', filename: '01 - Implementation.md' },
+      patch: 'apply-unified-diff',
+    }]));
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an unknown patch contract', () => {
+    const result = workflowSchema.safeParse(workflowWith([{
+      id: 'implement', type: 'agent', actor: 'implementer', capability: 'implement',
+      output: { id: 'implementation', filename: '01 - Implementation.md' },
+      patch: 'write-anything',
+    }]));
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects an invalid capability identifier', () => {
     const result = workflowSchema.safeParse(workflowWith([{
       id: 'model', type: 'agent', actor: 'product-author', capability: 'Threat Model',

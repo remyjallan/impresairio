@@ -173,6 +173,23 @@ describe('AgentDispatchService', () => {
     expect(handoff?.invocation?.input).toContain('Clarify empty names.');
   });
 
+  it('instructs a patch-enabled step to return a controlled unified diff', () => {
+    const { runner, dispatch, store } = setup('implementer');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? { ...step, patch: 'apply-unified-diff' as const }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.input).toContain('`impresairio-patch` block');
+    expect(handoff?.invocation?.input).toContain('do not modify them directly');
+  });
+
   it('preserves context additions for configured skills and prompt files', () => {
     const { runner, dispatch, store } = setup('launcher');
     const state = store.findState('run-agent');
@@ -298,4 +315,3 @@ describe('AgentDispatchService', () => {
     expect(handoff?.invocation?.input).toContain('Fix the empty-name handling.');
   });
 });
-
