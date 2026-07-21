@@ -25,8 +25,10 @@ describe('OpenCodeProvider', () => {
     expect(invocation).toMatchObject({
       command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2'], model: 'z-ai/glm-5.2',
     });
+    expect(invocation.input).toContain('You may inspect repository files.');
     expect(invocation.input).toContain('Return the complete Markdown artifact in your response only.');
-    expect(invocation.input).toContain('Do not read, write, or modify files.');
+    expect(invocation.input).toContain('Do not write or modify files.');
+    expect(invocation.input).not.toContain('Do not read');
     expect(invocation.input).not.toContain('/docs/report.md');
   });
 

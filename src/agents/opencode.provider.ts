@@ -34,8 +34,8 @@ export class OpenCodeProvider implements AgentProvider {
       // OpenCode may try to inspect or write a path mentioned in its prompt.
       // Run artifacts can be outside its repository sandbox, while the runner
       // is the only component allowed to publish them. Keep this transport
-      // contract path-free, as for Claude Code.
-      input: `${renderInstruction(request.instruction)}\n\nReturn the complete Markdown artifact in your response only. Do not read, write, or modify files.`,
+      // contract path-free, but allow repository inspection.
+      input: `${renderInstruction(request.instruction)}\n\nYou may inspect repository files. Return the complete Markdown artifact in your response only. Do not write or modify files.`,
       model: request.agent.model,
     };
   }
