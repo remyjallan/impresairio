@@ -44,5 +44,6 @@ describe('CLI help', () => {
     expect(result.stdout).toContain('--launcher <profile>');
     expect(result.stdout).toContain('--adversary <profile>');
     expect(result.stdout).toContain('--implementer <profile>');
+    expect(result.stdout).toContain('--actor <binding...>');
   });
 });

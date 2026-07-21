@@ -35,4 +35,14 @@ describe('AgentProfileService', () => {
       claude: { provider: 'claude-code' },
     })).toThrow(new AgentProfileError('Actor launcher requires an agent profile'));
   });
+
+  it('rejects a role binding for an actor the workflow does not declare', () => {
+    expect(() => service.resolveForActors(
+      { launcher: 'claude', 'product-author': 'claude' },
+      ['launcher'],
+      { claude: { provider: 'claude-code' } },
+    )).toThrow(new AgentProfileError(
+      'Unknown workflow roles: product-author; this workflow declares: launcher',
+    ));
+  });
 });

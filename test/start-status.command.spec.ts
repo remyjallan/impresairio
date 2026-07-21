@@ -19,6 +19,7 @@ import { FilesystemDocumentationTarget } from '../src/documentation/filesystem-d
 import { PathRendererService } from '../src/documentation/path-renderer.service';
 import { CompletionService } from '../src/runs/completion.service';
 import { AgentProfileService } from '../src/agents/agent-profile.service';
+import { CapabilityResolverService } from '../src/agents/capability-resolver.service';
 
 const temporaryDirectories: string[] = [];
 
@@ -84,6 +85,7 @@ function createRunService() {
       workflows,
       new ConfigService(resolver),
       new AgentProfileService(),
+      new CapabilityResolverService(resolver),
       () => new Date('2026-07-20T10:00:00.000Z'),
     ),
     runner: new WorkflowRunnerService(
@@ -168,14 +170,14 @@ steps:
   - id: implement
     type: agent
     actor: implementer
-    action: implement
+    capability: implement
     output:
       id: implementation-report
       filename: "01 - Implementation Report.md"
   - id: verify
     type: agent
     actor: adversary
-    action: verification
+    capability: verification
     output:
       id: verification
       filename: "02 - Verification.md"
@@ -196,6 +198,89 @@ steps:
       changesRequested: { retryFrom: 'implement', maxIterations: 2 },
       blocked: 'stop',
     });
+  });
+
+  it('binds a custom workflow role with repeatable --actor <role>=<profile>', async () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    mkdirSync(join(repository, '.impresairio', 'workflows'), { recursive: true });
+    writeFileSync(join(repository, '.impresairio', 'workflows', 'authored.yaml'), `id: authored
+name: Authored
+steps:
+  - id: draft
+    type: agent
+    actor: product-author
+    capability: final-report
+    output:
+      id: draft
+      filename: "01 - Draft.md"
+`);
+    const start = new StartCommand(service, () => undefined);
+
+    await start.run(['authored'], {
+      actor: ['product-author=claude'],
+      runId: 'run-custom-actor',
+      repository,
+      featureId: 'IMP-50',
+      featureSlug: 'custom-actor',
+      request: 'Draft with a free actor role.',
+    });
+
+    expect(store.findState('run-custom-actor')).toMatchObject({
+      roles: { 'product-author': 'claude' },
+    });
+  });
+
+  it('rejects a role bound twice with conflicting profiles across --actor and a legacy flag', async () => {
+    const { service } = createRunService();
+    const start = new StartCommand(service, () => undefined);
+
+    await expect(start.run(['quick-fix'], {
+      actor: ['launcher=codex'],
+      launcher: 'claude',
+      featureId: 'IMP-51', featureSlug: 'duplicate-binding',
+      request: 'Attempt a conflicting binding.',
+    })).rejects.toThrow('Role "launcher" is bound twice (--launcher); use a single binding');
+  });
+
+  it('rejects a malformed --actor binding', async () => {
+    const { service } = createRunService();
+    const start = new StartCommand(service, () => undefined);
+
+    await expect(start.run(['quick-fix'], {
+      actor: ['launcher'],
+      featureId: 'IMP-52', featureSlug: 'malformed-binding',
+      request: 'Attempt a malformed binding.',
+    })).rejects.toThrow('--actor expects <role>=<profile>, received "launcher"');
+  });
+
+  it('rejects an --actor binding for a role the workflow does not declare', async () => {
+    const { home, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    mkdirSync(join(repository, '.impresairio', 'workflows'), { recursive: true });
+    writeFileSync(join(repository, '.impresairio', 'workflows', 'authored.yaml'), `id: authored
+name: Authored
+steps:
+  - id: draft
+    type: agent
+    actor: product-author
+    capability: final-report
+    output:
+      id: draft
+      filename: "01 - Draft.md"
+`);
+    const start = new StartCommand(service, () => undefined);
+
+    await expect(start.run(['authored'], {
+      actor: ['product-author=claude', 'skeptic=claude'],
+      repository,
+      featureId: 'IMP-53', featureSlug: 'unknown-role',
+      request: 'Bind an undeclared role.',
+    })).rejects.toThrow('Unknown workflow roles: skeptic; this workflow declares: product-author');
   });
 
   it('requires a non-empty work request for new runs', async () => {
@@ -302,7 +387,7 @@ steps:
   - id: draft
     type: agent
     actor: launcher
-    action: final-report
+    capability: final-report
     output:
       id: draft
       filename: "01 - Draft.md"
@@ -326,7 +411,7 @@ steps:
   - id: draft
     type: agent
     actor: adversary
-    action: investigate
+    capability: investigate
     output:
       id: edited
       filename: "99 - Edited.md"
@@ -337,7 +422,7 @@ steps:
     const snapshot = store.findState('run-snapshot');
     expect(snapshot?.steps[0]).toMatchObject({
       actor: 'launcher',
-      method: { action: 'final-report' },
+      method: { capability: 'final-report', promptSource: 'package' },
       declaredOutput: { id: 'draft', filename: '01 - Draft.md' },
     });
     expect(snapshot?.documentation).toMatchObject({

@@ -5,6 +5,7 @@ import { RunService } from '../runs/run.service';
 export const START_WRITER = Symbol('START_WRITER');
 
 interface StartOptions {
+  readonly actor?: string[];
   readonly launcher?: string;
   readonly adversary?: string;
   readonly implementer?: string;
@@ -40,6 +41,11 @@ export class StartCommand extends CommandRunner {
       repositoryDirectory: options.repository,
     });
     this.write(`${state.id}\n`);
+  }
+
+  @Option({ flags: '--actor <binding...>', description: 'Bind a workflow role to a profile, as <role>=<profile>. Repeatable.' })
+  parseActor(value: string, previous: string[] = []): string[] {
+    return [...previous, value];
   }
 
   @Option({ flags: '--launcher <profile>', description: 'Launcher agent profile.' })
@@ -84,14 +90,23 @@ export class StartCommand extends CommandRunner {
 
   private roles(options: StartOptions): Record<string, string> {
     const roles: Record<string, string> = {};
-    for (const [role, profile] of Object.entries({
-      launcher: options.launcher,
-      adversary: options.adversary,
-      implementer: options.implementer,
-    })) {
-      if (profile !== undefined) {
-        roles[role] = profile;
+    const assign = (role: string, profile: string, source: string): void => {
+      if (roles[role] !== undefined && roles[role] !== profile) {
+        throw new Error(`Role "${role}" is bound twice (${source}); use a single binding`);
       }
+      roles[role] = profile;
+    };
+    for (const binding of options.actor ?? []) {
+      const separator = binding.indexOf('=');
+      if (separator <= 0 || separator === binding.length - 1) {
+        throw new Error(`--actor expects <role>=<profile>, received "${binding}"`);
+      }
+      assign(binding.slice(0, separator), binding.slice(separator + 1), '--actor');
+    }
+    for (const [role, profile] of Object.entries({
+      launcher: options.launcher, adversary: options.adversary, implementer: options.implementer,
+    })) {
+      if (profile !== undefined) assign(role, profile, `--${role}`);
     }
     return roles;
   }

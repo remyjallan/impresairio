@@ -18,6 +18,13 @@ export class AgentProfileService {
     actors: readonly string[],
     profiles: Readonly<Record<string, ResolvedAgentProfile>>,
   ): ResolvedActorProfiles {
+    const declared = new Set(actors);
+    const unknown = Object.keys(roleBindings).filter((role) => !declared.has(role));
+    if (unknown.length > 0) {
+      throw new AgentProfileError(
+        `Unknown workflow roles: ${unknown.join(', ')}; this workflow declares: ${[...declared].join(', ')}`,
+      );
+    }
     return Object.fromEntries(actors.map((actor) => {
       const profileName = roleBindings[actor];
       if (!profileName) {
