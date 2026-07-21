@@ -270,6 +270,9 @@ export class WorkflowExpanderService {
         },
         cycle: { id: step.id, role: 'review', iteration },
         definition: step.definition,
+        // A review is a distinct output producer. Author and consolidation
+        // steps intentionally share the cycle origin because they rewrite the
+        // same canonical artifact.
         originStepId: reviewId,
       });
       if (iteration < step.maxIterations) {

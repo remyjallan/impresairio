@@ -234,6 +234,38 @@ steps:
     expect(existsSync(join(harness.documentationRoot, 'Specs', 'COMP-2 - collision'))).toBe(false);
   });
 
+  it('rejects mounting the same publishing workflow twice when filenames are unchanged', () => {
+    const harness = createHarness();
+    writeFileSync(join(harness.packageWorkflows, 'publisher.yaml'), `id: publisher
+name: Publisher
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    capability: final-report
+    output: { id: report, filename: "Report.md" }
+`, 'utf8');
+    writeFileSync(join(harness.repository, '.impresairio', 'workflows', 'repeated.yaml'), `id: repeated
+name: Repeated
+steps:
+  - id: first
+    uses: workflow:publisher
+  - id: second
+    uses: workflow:publisher
+`, 'utf8');
+
+    expect(() => harness.runService.start({
+      id: 'run-repeated',
+      workflowId: 'repeated',
+      repositoryDirectory: harness.repository,
+      roles: { launcher: 'codex' },
+      feature: { id: 'COMP-4', slug: 'repeated' },
+      request: 'Detect repeated publisher destinations.',
+    })).toThrow(/Artifact destination collision.*first--write.*second--write/);
+    expect(harness.store.findState('run-repeated')).toBeUndefined();
+    expect(harness.events.read('run-repeated')).toEqual([]);
+  });
+
   it('reopens namespaced child work and stales its gate after a negative terminal verdict', () => {
     const harness = createHarness();
     writeFileSync(join(harness.packageWorkflows, 'delivery.yaml'), `id: delivery

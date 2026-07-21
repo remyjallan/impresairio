@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
+import { normalize as normalizePath } from 'node:path';
 import { EventLogService } from './event-log.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
@@ -123,7 +124,7 @@ export class RunService {
               }),
               output: step.output,
               ...(step.cycle ? { cycle: step.cycle } : {}),
-              ...(step.type === 'agent' && step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
+              ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
             }
           : { artifact: step.artifact }),
       })),
@@ -185,7 +186,7 @@ export class RunService {
     const destinations = new Map<string, { readonly stepId: string; readonly outputId: string }>();
     for (const step of steps) {
       if (step.type !== 'agent') continue;
-      const path = step.output.storage === 'internal'
+      const destinationPath = step.output.storage === 'internal'
         ? this.artifacts.resolveInternalOutputPath(this.stateStore.runDirectory(runId), step.output)
         : this.artifacts.resolveOutputPath({
             target: documentation.target,
@@ -193,11 +194,11 @@ export class RunService {
             bindings: documentation.bindings,
             output: step.output,
           });
-      const destinationKey = path.normalize('NFC').toLowerCase();
+      const destinationKey = normalizePath(destinationPath).normalize('NFC').toLowerCase();
       const previous = destinations.get(destinationKey);
       if (previous && previous.outputId !== step.output.id) {
         throw new WorkflowError(
-          `Artifact destination collision at "${path}": step "${previous.stepId}" output "${previous.outputId}" and step "${step.id}" output "${step.output.id}"`,
+          `Artifact destination collision at "${destinationPath}": step "${previous.stepId}" output "${previous.outputId}" and step "${step.id}" output "${step.output.id}"`,
         );
       }
       destinations.set(destinationKey, { stepId: step.id, outputId: step.output.id });

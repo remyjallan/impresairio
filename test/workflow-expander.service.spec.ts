@@ -294,7 +294,7 @@ steps:
     )).toThrow('Expanded step ID collision "child--work"');
   });
 
-  it('accepts mounting the same child twice under distinct namespaces', () => {
+  it('keeps step and output IDs distinct when the same child is mounted twice', () => {
     const harness = createHarness();
     harness.writePackage('child', `
 id: child
