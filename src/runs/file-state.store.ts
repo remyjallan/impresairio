@@ -219,6 +219,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     if (!policyStep || policyStep.kind !== 'agent' || !policyStep.output) {
       throw new RunStateError(`Step ${policyStepId} has no completed verdict artifact`);
     }
+    const verdictArtifact = policyStep.output;
     const target = state.steps.find((step) => step.id === targetStepId);
     if (!target || target.kind !== 'agent') {
       throw new RunStateError(`Verdict retry target is not an agent step: ${targetStepId}`);
@@ -235,8 +236,8 @@ export class FileStateStore implements StateStore, CompletionRunStore {
           dispatchPreparedAt: undefined,
           retryContext: {
             sourceStepId: policyStepId,
-            artifactPath: policyStep.output.path,
-            artifactSha256: policyStep.output.sha256,
+            artifactPath: verdictArtifact.path,
+            artifactSha256: verdictArtifact.sha256,
             at: timestamp,
           },
         };
