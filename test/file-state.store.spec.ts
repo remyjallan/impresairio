@@ -139,7 +139,7 @@ describe('FileStateStore', () => {
     expect(implement?.status).toBe('pending');
     expect(implement?.kind === 'agent' ? implement.retryContext?.sourceStepId : undefined).toBe('verify');
     expect(implement?.kind === 'agent' ? implement.retryContext?.artifactPath : undefined).toBe('/tmp/docs/v.md');
-    expect(verify?.status).toBe('stale');
+    expect(verify?.status).toBe('pending');
     expect(verify?.kind === 'agent' ? verify.verdictRetries : undefined).toBe(1);
     expect(state?.currentStepId).toBeUndefined();
   });

@@ -226,7 +226,23 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     }
     const timestamp = new Date().toISOString();
     const invalidated = invalidateFrom(state, targetStepId);
+    const previousStatus = new Map(state.steps.map((step) => [step.id, step.status]));
     const steps = invalidated.steps.map((step) => {
+      // Steps invalidated by the policy's own bounded loop are machine-reopened
+      // work, not externally tampered artifacts: agent steps return to pending
+      // so the loop can continue, while gates stay stale and reopen through the
+      // existing prerequisite check.
+      if (step.kind === 'agent' && step.status === 'stale' && previousStatus.get(step.id) !== 'stale' && step.id !== targetStepId) {
+        return {
+          ...step,
+          status: 'pending' as const,
+          output: undefined,
+          inputArtifactHashes: undefined,
+          dispatchPreparedAt: undefined,
+          reviewOutcome: undefined,
+          ...(step.id === policyStepId ? { verdictRetries: (step.verdictRetries ?? 0) + 1 } : {}),
+        };
+      }
       if (step.id === targetStepId && step.kind === 'agent') {
         return {
           ...step,
@@ -241,9 +257,6 @@ export class FileStateStore implements StateStore, CompletionRunStore {
             at: timestamp,
           },
         };
-      }
-      if (step.id === policyStepId && step.kind === 'agent') {
-        return { ...step, verdictRetries: (step.verdictRetries ?? 0) + 1 };
       }
       return step;
     });

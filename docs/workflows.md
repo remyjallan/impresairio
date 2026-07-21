@@ -190,9 +190,10 @@ Defaults and behavior:
 - Without a `verdictPolicy` block the step keeps the V0 behavior: no verdict is
   read.
 - `APPROVED` lets the run continue (or complete).
-- `CHANGES_REQUESTED` reopens the `retryFrom` step, marks the intermediate work
-  and the verdict step itself stale, and injects the verdict artifact into the
-  reopened step as reviewer feedback. Each pass consumes one of
+- `CHANGES_REQUESTED` reopens the `retryFrom` step, returns the intermediate
+  agent work and the verdict step itself to `pending` (gates in between are
+  staled and reopen once their prerequisites are rebuilt), and injects the
+  verdict artifact into the reopened step as reviewer feedback. Each pass consumes one of
   `maxIterations`; when the budget is exhausted the run halts for a human
   decision instead of completing. Without a `changesRequested` block a
   `CHANGES_REQUESTED` verdict halts immediately.
