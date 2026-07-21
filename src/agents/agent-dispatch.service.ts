@@ -73,6 +73,9 @@ export class AgentDispatchService {
       step.declaredResult
         ? `After the human-readable Markdown, append exactly one fenced \`impresairio-result\` block containing a JSON object with exactly these fields: ${Object.entries(step.declaredResult.fields).map(([name, definition]) => `${name} (${definition.type})`).join(', ')}.`
         : undefined,
+      step.patch === 'apply-unified-diff'
+        ? 'After the human-readable Markdown, append exactly one fenced `impresairio-patch` block containing a unified Git diff. Inspect repository files as needed, but do not modify them directly. The patch may modify only existing tracked files.'
+        : undefined,
     ].filter((value): value is string => Boolean(value)).join('\n\n');
     const instruction = additions ? this.withAdditions(baseInstruction, additions) : baseInstruction;
     const expectedOutput = {

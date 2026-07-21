@@ -18,7 +18,7 @@ export class CodexProvider implements AgentProvider {
   prepareInvocation(request: ProviderPreparationRequest): PreparedAgentInvocation {
     return {
       command: 'codex',
-      args: ['exec', '--output-last-message', request.expectedOutput],
+      args: ['exec', '--sandbox', 'read-only', '--output-last-message', request.expectedOutput],
       input: `${renderInstruction(request.instruction)}\n\nExpected Markdown output: ${request.expectedOutput}`,
     };
   }

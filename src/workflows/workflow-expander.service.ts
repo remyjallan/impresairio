@@ -5,6 +5,7 @@ import type {
   WorkflowParameters,
   WorkflowPrimitiveValue,
   WorkflowResult,
+  WorkflowPatch,
   WorkflowStep,
   WorkflowVerdictPolicy,
 } from './workflow.schema';
@@ -40,6 +41,7 @@ interface ExpandedAgentStepBase extends ExpandedStepMetadata {
   readonly result?: WorkflowResult;
   readonly when?: WorkflowCondition;
   readonly verdictPolicy?: WorkflowVerdictPolicy;
+  readonly patch?: WorkflowPatch;
   readonly cycle?: {
     readonly id: string;
     readonly role: 'review' | 'consolidate';
@@ -275,6 +277,7 @@ export class WorkflowExpanderService {
               },
             }
           : {}),
+        ...(step.patch ? { patch: step.patch } : {}),
       };
       return ['capability' in step
         ? { ...common, capability: step.capability }

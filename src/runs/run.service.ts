@@ -132,6 +132,7 @@ export class RunService {
               ...(step.when ? { when: step.when } : {}),
               ...(step.cycle ? { cycle: step.cycle } : {}),
               ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
+              ...(step.patch ? { patch: step.patch } : {}),
             }
           : { artifact: step.artifact }),
       })),

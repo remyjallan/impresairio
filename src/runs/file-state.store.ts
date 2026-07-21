@@ -139,6 +139,8 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     }
     return {
       id: state.id,
+      ...(state.repositoryDirectory ? { repositoryDirectory: state.repositoryDirectory } : {}),
+      ...(state.repositoryPatch ? { repositoryPatch: state.repositoryPatch } : {}),
       currentStepId: state.currentStepId,
       steps: state.steps.map((step) => ({
         id: step.id,
@@ -146,6 +148,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         status: step.status,
         ...(step.kind === 'agent' && step.cycle ? { cycle: step.cycle } : {}),
         ...(step.kind === 'agent' && step.declaredResult ? { declaredResult: step.declaredResult } : {}),
+        ...(step.kind === 'agent' && step.patch ? { patch: step.patch } : {}),
         ...(step.kind === 'agent' && step.expectedOutput
           ? { output: step.expectedOutput }
           : {}),
@@ -178,6 +181,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         retryContext: undefined,
         ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
         ...(completion.result ? { result: completion.result } : {}),
+        ...(completion.appliedPatch ? { appliedPatch: completion.appliedPatch } : {}),
         attempts: [
           ...step.attempts.slice(0, -1),
           {
@@ -192,7 +196,12 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     steps = steps.map((step) => skipped.has(step.id) && step.kind === 'agent' && step.status === 'pending'
       ? { ...step, status: 'skipped' as const }
       : step);
-    this.save({ ...state, steps, updatedAt: completedAt });
+    this.save({
+      ...state,
+      ...(completion.repositoryPatch ? { repositoryPatch: completion.repositoryPatch } : {}),
+      steps,
+      updatedAt: completedAt,
+    });
   }
 
   appendEvent(runId: string, event: CompletionEvent): void {

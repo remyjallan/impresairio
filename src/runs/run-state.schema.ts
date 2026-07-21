@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   workflowConditionSchema,
+  workflowPatchSchema,
   workflowPrimitiveValueSchema,
   workflowResultSchema,
 } from '../workflows/workflow.schema';
@@ -43,6 +44,17 @@ const structuredResultSchema = z.object({
   value: z.record(nonEmptyString, workflowPrimitiveValueSchema),
   outputSha256: sha256Schema,
   recordedAt: timestampSchema,
+}).strict();
+
+const appliedPatchSchema = z.object({
+  sha256: sha256Schema,
+  paths: z.array(nonEmptyString).min(1),
+  appliedAt: timestampSchema,
+}).strict();
+
+const repositoryPatchStateSchema = z.object({
+  baselineSha256: sha256Schema,
+  currentSha256: sha256Schema,
 }).strict();
 
 const workflowDefinitionSchema = z
@@ -116,6 +128,8 @@ const runAgentStepSchema = z
     declaredOutput: declaredWorkflowOutputSchema,
     effectiveParameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
     declaredResult: workflowResultSchema.optional(),
+    patch: workflowPatchSchema.optional(),
+    appliedPatch: appliedPatchSchema.optional(),
     when: workflowConditionSchema.optional(),
     result: structuredResultSchema.optional(),
     conditionDecision: z.object({
@@ -208,6 +222,7 @@ export const runStateSchema = z
     request: z.string().trim().min(1).max(20_000).optional(),
     parameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
     repositoryDirectory: nonEmptyString.optional(),
+    repositoryPatch: repositoryPatchStateSchema.optional(),
     workflow: z
       .object({
         id: nonEmptyString,
@@ -259,6 +274,7 @@ export function createRunState(input: {
     };
     readonly effectiveParameters?: Readonly<Record<string, z.input<typeof workflowPrimitiveValueSchema>>>;
     readonly result?: z.input<typeof workflowResultSchema>;
+    readonly patch?: z.input<typeof workflowPatchSchema>;
     readonly when?: z.input<typeof workflowConditionSchema>;
     readonly cycle?: {
       readonly id: string;
@@ -332,6 +348,7 @@ export function createRunState(input: {
         declaredOutput: step.output,
         ...(step.effectiveParameters ? { effectiveParameters: step.effectiveParameters } : {}),
         ...(step.result ? { declaredResult: step.result } : {}),
+        ...(step.patch ? { patch: step.patch } : {}),
         ...(step.when ? { when: step.when } : {}),
         ...(step.cycle ? { cycle: step.cycle } : {}),
         ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
