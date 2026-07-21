@@ -8,6 +8,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Added
 
+- Declarative terminal verdict policies with bounded retries, halted-run surfacing and an audited `acknowledge` command.
 - V0 local CLI foundation for durable, human-gated engineering workflows.
 - Built-in `feature` and `quick-fix` YAML workflows.
 - Frozen Claude Code, Codex and OpenCode profile resolution, including OpenCode model aliases.

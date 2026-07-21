@@ -157,3 +157,51 @@ implicit default. `reviewer` must differ from `actor`. The canonical output uses
 the run directory instead; generated review artifacts always use internal storage.
 Workflow YAML is expanded and frozen when a run starts, so edits to these fields do
 not migrate or alter an existing run.
+
+## Terminal verdict policies
+
+Any `agent` step may declare how its final `VERDICT:` line drives the workflow.
+The policy is never inferred from a step name, action or capability; it must be
+declared:
+
+```yaml
+- id: verify
+  type: agent
+  actor: adversary
+  action: verification
+  output:
+    id: verification
+    filename: "03 - Verification.md"
+  verdictPolicy:
+    approved: continue          # optional; the only accepted value
+    changesRequested:
+      retryFrom: implement      # required; must name an earlier agent step
+      maxIterations: 2          # required; integer from 1 through 10
+    blocked: stop               # optional; the only accepted value
+```
+
+A step carrying a `verdictPolicy` must produce an artifact whose final line is
+exactly one of `VERDICT: APPROVED`, `VERDICT: CHANGES_REQUESTED` or
+`VERDICT: BLOCKED`. A missing or malformed verdict marks the step `failed`;
+correct the artifact source and `retry`.
+
+Defaults and behavior:
+
+- Without a `verdictPolicy` block the step keeps the V0 behavior: no verdict is
+  read.
+- `APPROVED` lets the run continue (or complete).
+- `CHANGES_REQUESTED` reopens the `retryFrom` step, marks the intermediate work
+  and the verdict step itself stale, and injects the verdict artifact into the
+  reopened step as reviewer feedback. Each pass consumes one of
+  `maxIterations`; when the budget is exhausted the run halts for a human
+  decision instead of completing. Without a `changesRequested` block a
+  `CHANGES_REQUESTED` verdict halts immediately.
+- `BLOCKED` always halts the run with a persistent warning and a
+  `verdict.blocked` event. There is no implicit success.
+- `verdictPolicy` is rejected on `gate` and `review-cycle` steps; bounded
+  review cycles keep their built-in verdict handling.
+
+The built-in `quick-fix` workflow declares a policy on `verify`
+(`retryFrom: implement`) and the built-in `feature` workflow declares one on
+`final-review` (`retryFrom: implementation`). Policies are frozen into the run
+at `start`; editing a workflow file never changes an in-progress run.

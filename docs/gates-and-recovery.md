@@ -65,6 +65,31 @@ ordered prerequisite sequence has been retried and completed, `next` reopens
 that gate as `pending`; its old approval is never restored and the human must
 approve the rebuilt artifact again.
 
+## Halted verdicts
+
+A step with a `verdictPolicy` halts the run when it ends with
+`VERDICT: BLOCKED`, or when it ends with `VERDICT: CHANGES_REQUESTED` after its
+retry budget is exhausted. `next` and `advance` then print a persistent warning
+followed by `blocked: <step-id>`, and `status` repeats the warning until a
+human resolves the halt. The run can never complete while an unresolved halt
+exists.
+
+Two audited recovery paths exist:
+
+```bash
+impresairio retry <run-id> <step-id>
+impresairio acknowledge <run-id> <step-id> --comment "Verified locally outside the sandbox"
+```
+
+`retry` reruns the verification itself: the step returns to `pending`, its
+verdict is cleared, and the next `next` or `advance` executes it again. Use it
+when the underlying cause (for example a sandbox restriction) has been fixed.
+
+`acknowledge` records a required human comment on the step, appends a
+`verdict.acknowledged` event, and lets the run continue. The negative verdict
+and its artifact remain in the state and event log for audit; acknowledging is
+an explicit human decision, not a retroactive approval.
+
 ## Manual documents and filesystem scope
 
 The V0 filesystem target is designed for a trusted local documentation folder.

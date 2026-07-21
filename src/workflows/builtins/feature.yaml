@@ -51,6 +51,11 @@ steps:
     output:
       id: final-review
       filename: "08 - Final Review.md"
+    verdictPolicy:
+      changesRequested:
+        retryFrom: implementation
+        maxIterations: 2
+      blocked: stop
   - id: final-report
     type: agent
     actor: launcher

@@ -55,6 +55,15 @@ following gate is either approved or reopened through `request-changes`.
 `events.jsonl` also records the corresponding `cycle.exhausted` event.
 A `VERDICT: BLOCKED` review behaves the same way and records `cycle.blocked`.
 
+## Verdict events
+
+Steps that declare a `verdictPolicy` append dedicated events to
+`events.jsonl`: `verdict.changes_requested` (with the reopened step),
+`verdict.exhausted`, `verdict.blocked` and `verdict.acknowledged` (with the
+human comment). When a halt is unresolved, `next` and `advance` print
+`blocked: <step-id>` instead of progressing and `status` repeats the warning;
+see [gates and recovery](gates-and-recovery.md) for the recovery commands.
+
 ## Single-writer lock
 
 Mutating commands use a per-run `.lock` directory. Its `metadata.json` records

@@ -22,4 +22,9 @@ steps:
     output:
       id: verification
       filename: "03 - Verification.md"
+    verdictPolicy:
+      changesRequested:
+        retryFrom: implement
+        maxIterations: 2
+      blocked: stop
 
