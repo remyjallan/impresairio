@@ -22,9 +22,9 @@ file, its approval is cleared, its producer and completed downstream work become
 `stale`, and the command stops. Retry the affected work before progressing.
 
 For an agent step, `next` records hashes of all completed earlier artifacts it
-uses as inputs. If a design is edited after its challenge completed but before
-the design gate is approved, approval detects the mismatch and stales the
-challenge. The challenge must be retried against the revised design.
+uses as inputs. If a design is edited after a review completed but before the
+design gate is approved, approval detects the mismatch and stales that review.
+The review must be retried against the revised design.
 
 ## Requesting changes
 
@@ -36,7 +36,8 @@ impresairio request-changes <run-id> <gate-id> --comment "Clarify permissions an
 
 This resets the producer to `pending`, stores the comment on the gate, clears
 the gate approval, and recursively marks completed or in-progress successors
-`stale`. Pending work stays pending. V0 derives this recursive relationship from
+`stale`. Previously skipped review-cycle work is returned to `pending`, and the
+feedback is injected into the producer's next handoff. Pending work stays pending. V0 derives this recursive relationship from
 the fixed ordered workflow stored in the run; it is not a user-configurable DAG
 or rules engine.
 
@@ -52,6 +53,12 @@ impresairio next <run-id>
 `retry` returns the step to `pending`, clears its current output metadata and
 keeps its prior attempt records. The next `next` call creates a new attempt and
 captures fresh input hashes. Gates cannot be retried directly.
+
+An invalid or missing agent output, including a review without a final verdict,
+makes `complete` or `advance` return an error and marks the step `failed`. The
+failed attempt remains in history; correct the cause, run `retry`, then `next`
+or `advance` to create a new attempt. This is intentionally different from a
+validation error that leaves an in-progress step untouched.
 
 If an earlier approval was invalidated, its gate is initially `stale`. Once the
 ordered prerequisite sequence has been retried and completed, `next` reopens

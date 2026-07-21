@@ -129,6 +129,32 @@ describe('ArtifactService', () => {
     expect(existsSync(join(outside, '01 - Feature Design.md'))).toBe(false);
   });
 
+  it('revalidates containment when advance publishes returned Markdown', () => {
+    const root = temporaryDirectory();
+    const outside = temporaryDirectory();
+    let replaceOnWrite = false;
+    const artifactService = new ArtifactService(
+      new PathRendererService(),
+      new FilesystemDocumentationTarget({
+        beforeFileWrite: (outputPath) => {
+          if (!replaceOnWrite) return;
+          const outputDirectory = dirname(outputPath);
+          rmSync(outputDirectory, { recursive: true, force: true });
+          symlinkSync(outside, outputDirectory, 'dir');
+        },
+      }),
+    );
+    const prepared = artifactService.prepareOutput({
+      target: { kind: 'filesystem', root, defaultFormat: 'markdown' },
+      featurePath: 'Features/{{ feature.id }}', bindings,
+      output: { id: 'report', filename: 'Report.md' },
+    });
+    replaceOnWrite = true;
+
+    expect(() => artifactService.publishMarkdown(prepared, '# Report\n')).toThrow(FilesystemDocumentationTargetError);
+    expect(existsSync(join(outside, 'Report.md'))).toBe(false);
+  });
+
   it('detects a controlled symlink replacement immediately before directory creation', () => {
     const root = temporaryDirectory();
     const outside = temporaryDirectory();

@@ -34,6 +34,12 @@ current step, number of resolved steps and the status of every step. Use it to
 identify stale or failed work before `retry`, then use `next` to prepare the
 next agent handoff or reveal the next human approval gate.
 
+If a bounded review cycle reaches its final iteration with
+`VERDICT: CHANGES_REQUESTED`, `status` shows a persistent warning until the
+following gate is either approved or reopened through `request-changes`.
+`events.jsonl` also records the corresponding `cycle.exhausted` event.
+A `VERDICT: BLOCKED` review behaves the same way and records `cycle.blocked`.
+
 ## Single-writer lock
 
 Mutating commands use a per-run `.lock` directory. Its `metadata.json` records
@@ -68,3 +74,8 @@ Then use `unlock --force` only after checking the lock owner is not active. The
 state file remains the source of truth; never edit it to work around a lock.
 Run IDs are intentionally restricted to letters, numbers, `_` and `-`; paths,
 separators and traversal-like IDs are rejected before any run file is accessed.
+
+## Listing runs
+
+Use `impresairio list` to find durable run IDs. It lists readable runs newest
+first; a damaged state file does not hide the other runs.

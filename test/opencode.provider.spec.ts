@@ -25,4 +25,18 @@ describe('OpenCodeProvider', () => {
       command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2'], model: 'z-ai/glm-5.2',
     });
   });
+
+  it('uses the same resolved model ID for a live health probe', () => {
+    expect(provider.prepareHealthCheck({
+      profile: 'opencode-glm',
+      agent: {
+        profile: 'opencode-glm', provider: 'opencode', modelAlias: 'glm-5.2', model: 'openrouter/z-ai/glm-5.2',
+      },
+      live: true,
+    })).toEqual({
+      command: 'opencode',
+      args: ['run', '--model', 'openrouter/z-ai/glm-5.2'],
+      input: 'Reply with exactly OK. Do not use tools or modify files.',
+    });
+  });
 });

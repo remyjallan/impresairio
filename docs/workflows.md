@@ -73,7 +73,12 @@ A `gate` is a human approval boundary. It refers to an output from an earlier ag
   artifact: design
 ```
 
-The initial package workflows are `feature` and `quick-fix`. `feature` contains design, challenge, three human approval gates, specification, plan, implementation and cross-agent review/report steps. `quick-fix` contains investigate, implement and verify.
+The initial package workflows are `feature` and `quick-fix`. `feature` contains
+bounded author/reviewer cycles for design, specification and integration plan,
+each followed by a human approval gate, then implementation, final review and
+report steps. Its public documents retain the historical sequence numbers 01,
+03, 05, 07, 08 and 09; generated reviews are internal rather than occupying
+02, 04 and 06. `quick-fix` contains investigate, implement and verify.
 
 ## Scheduling
 
@@ -82,9 +87,11 @@ The initial package workflows are `feature` and `quick-fix`. `feature` contains 
 - it starts only the first pending agent step;
 - it returns an already in-progress current agent step without starting another;
 - it reports the first pending gate and stops there;
-- it returns `complete` only when every recorded step is complete.
+- it ignores review-cycle steps explicitly marked `skipped`;
+- it returns `complete` only when every recorded step is complete or skipped.
 
-`complete` remains the only way to mark an agent step complete. `approve`,
+`complete` records manually executed agent output. `advance` executes prepared
+agent invocations and calls the same completion path automatically. `approve`,
 `request-changes` and `retry` own gate approval, stale invalidation and recovery.
 
 ## Security boundary
@@ -94,3 +101,44 @@ Validation is closed by default. Unknown YAML fields are errors. Therefore a wor
 `promptFile` must be a relative `.md` path and cannot be absolute or contain traversal segments. Output filenames must be Markdown filenames, not paths. Template values are identifiers only. Bindings for documentation paths remain owned by the repository configuration rather than arbitrary workflow expressions. The V0 fixed keys are resolved during `start`, then stored in the run: `project.name`, `project.slug`, `feature.id`, `feature.slug` and `run.id`.
 
 This protects the V0 workflow surface. It does not make locally installed workflow files trustworthy: teams should review repository workflow changes like source code.
+
+## Bounded review cycles
+
+`review-cycle` keeps a single canonical documentation artifact while repeating
+an author/reviewer exchange up to `maxIterations` times. Reviewer outputs are
+stored under the run directory, not in the documentation target. A reviewer
+must end its output with `VERDICT: APPROVED`, `VERDICT: CHANGES_REQUESTED`, or
+`VERDICT: BLOCKED`. Approval or blocking skips remaining cycle work and reaches
+the named human gate; changes requested advances to the next consolidation.
+If the final allowed review still requests changes, the cycle is marked
+exhausted and emits `cycle.exhausted`. `next` and `advance` print a warning
+before the gate, and `status` retains that warning so the human cannot mistake
+the exhausted cycle for reviewer approval. A `BLOCKED` verdict similarly emits
+`cycle.blocked` and remains visible through the same commands. The gate remains
+a deliberate human decision point: approve the current artifact or request
+changes to reopen it.
+Generated `<id>-review-N`, `<id>-consolidate-N`, and `gateId` values are reserved
+step IDs. Generated review output IDs are also reserved and cannot collide with
+explicit workflow outputs.
+
+```yaml
+- id: design
+  type: review-cycle
+  actor: launcher
+  reviewer: adversary
+  action: feature-design
+  reviewAction: adversarial-review
+  maxIterations: 3
+  output:
+    id: design
+    filename: "01 - Feature Design.md"
+    template: feature-design
+  gateId: approve-design
+```
+
+`maxIterations` is required and accepts values from 1 through 10. There is no
+implicit default. `reviewer` must differ from `actor`. The canonical output uses
+`storage: documentation` by default. Setting `storage: internal` stores it beneath
+the run directory instead; generated review artifacts always use internal storage.
+Workflow YAML is expanded and frozen when a run starts, so edits to these fields do
+not migrate or alter an existing run.

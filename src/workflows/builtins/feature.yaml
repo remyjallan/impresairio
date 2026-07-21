@@ -2,59 +2,41 @@ id: feature
 name: Feature
 steps:
   - id: design
-    type: agent
+    type: review-cycle
     actor: launcher
+    reviewer: adversary
     action: feature-design
+    reviewAction: adversarial-review
+    maxIterations: 3
     output:
       id: design
       filename: "01 - Feature Design.md"
       template: feature-design
-  - id: challenge
-    type: agent
-    actor: adversary
-    action: adversarial-review
-    output:
-      id: design-challenge
-      filename: "02 - Design Challenge.md"
-  - id: approve-design
-    type: gate
-    artifact: design
+    gateId: approve-design
   - id: specification
-    type: agent
+    type: review-cycle
     actor: launcher
+    reviewer: adversary
     action: specification
+    reviewAction: spec-review
+    maxIterations: 2
     output:
       id: specification
       filename: "03 - Specification.md"
       template: specification
-  - id: review-specification
-    type: agent
-    actor: adversary
-    action: spec-review
-    output:
-      id: specification-review
-      filename: "04 - Specification Review.md"
-  - id: approve-specification
-    type: gate
-    artifact: specification
+    gateId: approve-specification
   - id: integration-plan
-    type: agent
+    type: review-cycle
     actor: launcher
+    reviewer: adversary
     action: integration-plan
+    reviewAction: plan-review
+    maxIterations: 2
     output:
       id: integration-plan
       filename: "05 - Integration Plan.md"
       template: integration-plan
-  - id: review-plan
-    type: agent
-    actor: adversary
-    action: plan-review
-    output:
-      id: plan-review
-      filename: "06 - Plan Review.md"
-  - id: approve-plan
-    type: gate
-    artifact: integration-plan
+    gateId: approve-plan
   - id: implementation
     type: agent
     actor: implementer
@@ -77,4 +59,3 @@ steps:
       id: final-report
       filename: "09 - Final Report.md"
       template: final-report
-

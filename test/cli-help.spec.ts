@@ -26,6 +26,8 @@ describe('CLI help', () => {
     expect(result.stdout).toContain('retry');
     expect(result.stdout).toContain('complete');
     expect(result.stdout).toContain('status');
+    expect(result.stdout).toContain('list');
+    expect(result.stdout).toContain('doctor');
     expect(result.stdout).toContain('unlock');
   });
 

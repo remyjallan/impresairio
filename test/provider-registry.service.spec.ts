@@ -17,9 +17,7 @@ describe('ProviderRegistryService', () => {
   });
 
   it('uses a native skill only when the provider declares the action', () => {
-    expect(registry.get('claude-code').nativeSkillFor('feature-design')).toBe(
-      'superremy-codex:brainstorming',
-    );
+    expect(registry.get('claude-code').nativeSkillFor('feature-design')).toBeUndefined();
     expect(registry.get('codex').nativeSkillFor('feature-design')).toBeUndefined();
   });
 });

@@ -54,6 +54,7 @@ export class UnlockRefusedError extends Error {
 @Injectable()
 export class RunLockService {
   private readonly runtime: RunLockRuntime;
+  private readonly locallyHeld = new Map<string, { depth: number; token: string; reentrant: boolean }>();
 
   constructor(
     @Inject(FileStateStore)
@@ -67,7 +68,22 @@ export class RunLockService {
   }
 
   acquire(runId: string, command: string): () => void {
+    return this.acquireInternal(runId, command, false);
+  }
+
+  /** Own a run across a composite command whose internal services also lock it. */
+  acquireReentrant(runId: string, command: string): () => void {
+    return this.acquireInternal(runId, command, true);
+  }
+
+  private acquireInternal(runId: string, command: string, reentrant: boolean): () => void {
     assertValidRunId(runId);
+    const held = this.locallyHeld.get(runId);
+    if (held) {
+      if (!held.reentrant) throw new RunBusyError(runId);
+      held.depth += 1;
+      return this.releaseLocal(runId, held.token);
+    }
     const metadata: RunLockMetadata = {
       pid: this.runtime.pid,
       hostname: this.runtime.hostname,
@@ -93,16 +109,22 @@ export class RunLockService {
       }
     }
 
+    this.locallyHeld.set(runId, { depth: 1, token: metadata.token, reentrant });
+    return this.releaseLocal(runId, metadata.token);
+  }
+
+  private releaseLocal(runId: string, token: string): () => void {
     let released = false;
     return () => {
-      if (released) {
-        return;
-      }
+      if (released) return;
       released = true;
+      const held = this.locallyHeld.get(runId);
+      if (!held || held.token !== token) return;
+      held.depth -= 1;
+      if (held.depth > 0) return;
+      this.locallyHeld.delete(runId);
       const current = this.read(runId);
-      if (current?.token === metadata.token) {
-        this.remove(runId);
-      }
+      if (current?.token === token) this.remove(runId);
     };
   }
 

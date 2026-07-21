@@ -86,6 +86,7 @@ export class StaleInvalidationService {
           approval: undefined,
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
+          reviewOutcome: undefined,
         };
       }
       if (step.id === gate.id && step.kind === 'gate') {
@@ -124,6 +125,9 @@ export class StaleInvalidationService {
     if (step.status !== 'stale' && step.status !== 'failed') {
       throw new RunStateError(`Step ${stepId} can only be retried when stale or failed`);
     }
+    if (step.declaredOutput.storage === 'internal' && step.expectedOutput) {
+      this.artifacts.discardOutput(step.expectedOutput);
+    }
     const timestamp = this.now().toISOString();
     const steps = state.steps.map((candidate) => candidate.id === stepId && candidate.kind === 'agent'
       ? {
@@ -133,6 +137,7 @@ export class StaleInvalidationService {
           approval: undefined,
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
+          reviewOutcome: undefined,
         }
       : candidate);
     const next = this.withTimestamp({
@@ -156,7 +161,7 @@ export class StaleInvalidationService {
     if (!gate || gate.kind !== 'gate' || gate.status !== 'stale') {
       return undefined;
     }
-    if (state.steps.slice(0, gateIndex).some((step) => step.status !== 'complete')) {
+    if (state.steps.slice(0, gateIndex).some((step) => step.status !== 'complete' && step.status !== 'skipped')) {
       return undefined;
     }
     const timestamp = this.now().toISOString();
@@ -178,7 +183,7 @@ export class StaleInvalidationService {
       throw new RunStateError(`Gate ${gateId} must be pending before approval`);
     }
     const gateIndex = state.steps.findIndex((step) => step.id === gateId);
-    if (state.steps.slice(0, gateIndex).some((step) => step.status !== 'complete')) {
+    if (state.steps.slice(0, gateIndex).some((step) => step.status !== 'complete' && step.status !== 'skipped')) {
       throw new RunStateError(`Gate ${gateId} has incomplete prerequisite steps`);
     }
     const producer = this.producerForArtifact(state, gate.artifact);
@@ -257,7 +262,17 @@ export class StaleInvalidationService {
       if (step.status === 'complete' || step.status === 'in_progress') {
         return step.kind === 'gate'
           ? { ...step, status: 'stale' as const, approval: undefined }
-          : { ...step, status: 'stale' as const, approval: undefined };
+          : { ...step, status: 'stale' as const, approval: undefined, reviewOutcome: undefined };
+      }
+      if (step.status === 'skipped' && step.kind === 'agent') {
+        return {
+          ...step,
+          status: 'pending' as const,
+          output: undefined,
+          inputArtifactHashes: undefined,
+          dispatchPreparedAt: undefined,
+          reviewOutcome: undefined,
+        };
       }
       return step;
     });
@@ -269,15 +284,22 @@ export class StaleInvalidationService {
     artifactId: string,
     currentHash: string,
   ): AgentRunStep[] {
-    return state.steps.filter((step): step is AgentRunStep => step.kind === 'agent'
+    return state.steps.filter((step, index): step is AgentRunStep => step.kind === 'agent'
       && step.status === 'complete'
       && step.inputArtifactHashes?.[artifactId] !== undefined
-      && step.inputArtifactHashes[artifactId] !== currentHash);
+      && step.inputArtifactHashes[artifactId] !== currentHash
+      && step.declaredOutput.id !== artifactId
+      // A later consolidation of the same canonical artifact supersedes this
+      // consumer. Only the final review of a bounded cycle can block approval.
+      && !state.steps.slice(index + 1).some((later) => later.kind === 'agent'
+        && later.status === 'complete'
+        && later.declaredOutput.id === artifactId
+        && Boolean(later.output)));
   }
 
   private producerForArtifact(state: RunState, artifactId: string): AgentRunStep & { output: NonNullable<AgentRunStep['output']> } {
-    const producer = state.steps.find((step): step is AgentRunStep => step.kind === 'agent'
-      && step.declaredOutput.id === artifactId);
+    const producer = state.steps.findLast((step): step is AgentRunStep => step.kind === 'agent'
+      && step.declaredOutput.id === artifactId && step.status === 'complete' && Boolean(step.output));
     if (!producer || !producer.output) {
       throw new RunStateError(`Artifact ${artifactId} has no completed producer output`);
     }

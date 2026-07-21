@@ -3,6 +3,7 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -23,6 +24,7 @@ import type { StateStore } from './state-store';
 export interface StateFileOperations {
   readonly existsSync: typeof existsSync;
   readonly mkdirSync: typeof mkdirSync;
+  readonly readdirSync: typeof readdirSync;
   readonly readFileSync: typeof readFileSync;
   readonly renameSync: typeof renameSync;
   readonly rmSync: typeof rmSync;
@@ -33,6 +35,7 @@ export interface StateFileOperations {
 const nativeFileOperations: StateFileOperations = {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -96,6 +99,25 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     return parsed.data;
   }
 
+  /** Returns readable runs newest first; a damaged run never hides the others. */
+  listStates(): readonly RunState[] {
+    const runsDirectory = join(this.homeDirectoryResolver.resolve(), 'runs');
+    if (!this.fileOperations.existsSync(runsDirectory)) return [];
+    const states: RunState[] = [];
+    for (const entry of this.fileOperations.readdirSync(runsDirectory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      try {
+        const state = this.findState(entry.name);
+        if (state) states.push(state);
+      } catch (error) {
+        // Listing is recovery-oriented: a damaged state is still accessible by
+        // its ID for diagnosis, but must not hide valid sibling runs.
+        if (!(error instanceof RunStateError)) throw error;
+      }
+    }
+    return states.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
   save(state: RunState): void {
     const parsed = runStateSchema.parse(state);
     if (!this.fileOperations.existsSync(this.statePath(parsed.id))) {
@@ -121,6 +143,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         id: step.id,
         kind: step.kind,
         status: step.status,
+        ...(step.kind === 'agent' && step.cycle ? { cycle: step.cycle } : {}),
         ...(step.kind === 'agent' && step.expectedOutput
           ? { output: step.expectedOutput }
           : {}),
@@ -135,7 +158,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       throw new RunStateError(`Step not found in run ${runId}: ${completion.stepId}`);
     }
     const completedAt = new Date().toISOString();
-    const steps = state.steps.map((step, index) => {
+    let steps = state.steps.map((step, index) => {
       if (index !== stepIndex) {
         return step;
       }
@@ -150,6 +173,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         ...step,
         status: 'complete' as const,
         output: { ...completion.output, completedAt },
+        ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
         attempts: [
           ...step.attempts.slice(0, -1),
           {
@@ -160,11 +184,30 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         ],
       };
     });
+    const skipped = new Set(completion.skipStepIds ?? []);
+    steps = steps.map((step) => skipped.has(step.id) && step.kind === 'agent' && step.status === 'pending'
+      ? { ...step, status: 'skipped' as const }
+      : step);
     this.save({ ...state, steps, updatedAt: completedAt });
   }
 
   appendEvent(runId: string, event: CompletionEvent): void {
     this.appendJsonLine(runId, { ...event });
+  }
+
+  markFailed(runId: string, stepId: string, detail: string): void {
+    const state = this.requiredState(runId);
+    const failedStep = state.steps.find((step) => step.id === stepId);
+    if (!failedStep || failedStep.kind !== 'agent' || failedStep.status !== 'in_progress') return;
+    const timestamp = new Date().toISOString();
+    const steps = state.steps.map((step) => step.id === stepId && step.kind === 'agent' && step.status === 'in_progress'
+      ? { ...step, status: 'failed' as const, dispatchPreparedAt: undefined }
+      : step);
+    this.save({ ...state, steps, updatedAt: timestamp });
+    this.appendJsonLine(runId, {
+      type: 'step.failed', at: timestamp, stepId,
+      detail: detail.length > 1000 ? `${detail.slice(0, 997)}...` : detail,
+    });
   }
 
   runDirectory(runId: string): string {

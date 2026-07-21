@@ -3,7 +3,7 @@ import { z } from 'zod';
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const timestampSchema = z.string().datetime();
 const nonEmptyString = z.string().trim().min(1);
-const stepStatusSchema = z.enum(['pending', 'in_progress', 'complete', 'stale', 'failed']);
+const stepStatusSchema = z.enum(['pending', 'in_progress', 'complete', 'skipped', 'stale', 'failed']);
 
 const attemptSchema = z
   .object({
@@ -30,6 +30,7 @@ const declaredWorkflowOutputSchema = z
     id: nonEmptyString,
     filename: nonEmptyString,
     template: nonEmptyString.optional(),
+    storage: z.enum(['documentation', 'internal']).default('documentation'),
   })
   .strict();
 
@@ -42,16 +43,19 @@ const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
     provider: z.literal('claude-code'),
+    skills: z.record(nonEmptyString, nonEmptyString).optional(),
   }).strict(),
   z.object({
     profile: nonEmptyString,
     provider: z.literal('codex'),
+    skills: z.record(nonEmptyString, nonEmptyString).optional(),
   }).strict(),
   z.object({
     profile: nonEmptyString,
     provider: z.literal('opencode'),
     modelAlias: nonEmptyString,
     model: nonEmptyString,
+    skills: z.record(nonEmptyString, nonEmptyString).optional(),
   }).strict(),
 ]);
 
@@ -98,6 +102,15 @@ const runAgentStepSchema = z
       .optional(),
     inputArtifactHashes: z.record(nonEmptyString, sha256Schema).optional(),
     attempts: z.array(attemptSchema),
+    cycle: z.object({
+      id: nonEmptyString,
+      role: z.enum(['review', 'consolidate']),
+      iteration: z.number().int().positive(),
+    }).strict().optional(),
+    reviewOutcome: z.object({
+      verdict: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'BLOCKED']),
+      exhausted: z.boolean(),
+    }).strict().optional(),
     approval: z
       .object({
         approvedArtifactHash: sha256Schema,
@@ -148,6 +161,9 @@ export const runStateSchema = z
     roles: z.record(nonEmptyString, nonEmptyString),
     resolvedActors: z.record(nonEmptyString, resolvedActorProfileSchema),
     documentation: documentationContextSchema,
+    execution: z.object({
+      agentTimeoutSeconds: z.number().int().min(1).max(86_400),
+    }).strict().default({ agentTimeoutSeconds: 1_800 }),
     currentStepId: nonEmptyString.optional(),
     steps: z.array(runStepSchema),
     createdAt: timestampSchema,
@@ -164,6 +180,7 @@ export function createRunState(input: {
   readonly roles: Readonly<Record<string, string>>;
   readonly resolvedActors?: z.input<typeof runStateSchema>['resolvedActors'];
   readonly documentation: z.input<typeof documentationContextSchema>;
+  readonly execution?: { readonly agentTimeoutSeconds: number };
   readonly steps: readonly {
     readonly id: string;
     readonly kind: 'agent' | 'gate';
@@ -175,11 +192,21 @@ export function createRunState(input: {
       readonly id: string;
       readonly filename: string;
       readonly template?: string;
+      readonly storage?: 'documentation' | 'internal';
+    };
+    readonly cycle?: {
+      readonly id: string;
+      readonly role: 'review' | 'consolidate';
+      readonly iteration: number;
     };
     readonly artifact?: string;
   }[];
   readonly now: string;
 }): RunState {
+  const stepIds = input.steps.map((step) => step.id);
+  if (new Set(stepIds).size !== stepIds.length) {
+    throw new Error('Run steps must have unique IDs');
+  }
   return runStateSchema.parse({
     version: 1,
     id: input.id,
@@ -196,6 +223,7 @@ export function createRunState(input: {
     roles: input.roles,
     resolvedActors: input.resolvedActors ?? {},
     documentation: input.documentation,
+    execution: input.execution ?? { agentTimeoutSeconds: 1_800 },
     steps: input.steps.map((step) => {
       if (step.kind === 'gate') {
         if (!step.artifact) {
@@ -225,6 +253,7 @@ export function createRunState(input: {
         actor: step.actor,
         method,
         declaredOutput: step.output,
+        ...(step.cycle ? { cycle: step.cycle } : {}),
         attempts: [],
       };
     }),

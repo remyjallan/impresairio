@@ -45,6 +45,20 @@ describe('RunLockService', () => {
     expect(() => lock.acquire('run-1', 'status')).not.toThrow();
   });
 
+  it('allows nested service locks only inside an explicit reentrant command scope', () => {
+    const { lock, stateStore, eventLog } = createServices();
+    const releaseOuter = lock.acquireReentrant('run-1', 'advance');
+    const releaseInner = lock.acquire('run-1', 'next');
+    const contender = new RunLockService(stateStore, eventLog, {
+      hostname: 'local-machine', pid: 9999, isPidActive: () => true,
+    });
+
+    releaseInner();
+    expect(() => contender.acquire('run-1', 'status')).toThrow(RunBusyError);
+    releaseOuter();
+    expect(() => contender.acquire('run-1', 'status')).not.toThrow();
+  });
+
   it('refuses an active local PID', () => {
     const { stateStore, eventLog } = createServices();
     const owner = new RunLockService(stateStore, eventLog, {

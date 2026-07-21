@@ -7,6 +7,8 @@ documentationTargets:
 agentProfiles:
   claude:
     provider: claude-code
+    skills:
+      feature-design: example:brainstorming
   codex:
     provider: codex
   opencode-glm:
@@ -14,4 +16,4 @@ agentProfiles:
     modelAlias: glm-5.2
 
 models:
-  glm-5.2: z-ai/glm-5.2
+  glm-5.2: openrouter/z-ai/glm-5.2

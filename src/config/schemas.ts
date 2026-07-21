@@ -19,12 +19,14 @@ const filesystemDocumentationTargetSchema = z
 const claudeCodeProfileSchema = z
   .object({
     provider: z.literal('claude-code'),
+    skills: z.record(nonEmptyString, nonEmptyString).default({}),
   })
   .strict();
 
 const codexProfileSchema = z
   .object({
     provider: z.literal('codex'),
+    skills: z.record(nonEmptyString, nonEmptyString).default({}),
   })
   .strict();
 
@@ -32,6 +34,7 @@ const openCodeProfileSchema = z
   .object({
     provider: z.literal('opencode'),
     modelAlias: nonEmptyString,
+    skills: z.record(nonEmptyString, nonEmptyString).default({}),
   })
   .strict();
 
@@ -50,6 +53,9 @@ export const globalConfigSchema = z
       ]),
     ),
     models: z.record(nonEmptyString, nonEmptyString).default({}),
+    execution: z.object({
+      agentTimeoutSeconds: z.number().int().min(1).max(86_400).default(1_800),
+    }).strict().default({ agentTimeoutSeconds: 1_800 }),
   })
   .strict();
 

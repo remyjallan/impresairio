@@ -13,6 +13,10 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Frozen Claude Code, Codex and OpenCode profile resolution, including OpenCode model aliases.
 - Filesystem Markdown documentation targets with fixed path bindings.
 - Durable run state, event logs, locks, approval integrity and stale recovery.
+- `advance` execution with bounded review/consolidation cycles and explicit human gates.
+- `doctor` provider diagnostics and `list` run discovery commands.
+- Request-change feedback propagation, failed-step recovery and safe artifact publication.
+- Visible exhausted or blocked review-cycle warnings and configurable agent execution timeouts.
 
 ## [0.1.0] - 2026-07-20
 

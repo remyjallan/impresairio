@@ -8,9 +8,9 @@ V0 is intentionally pragmatic:
 - Abstract roles (`launcher`, `adversary`, `implementer`) bound to Claude Code, Codex or OpenCode profiles at run start.
 - Explicit human approval gates, retry and stale-artifact invalidation.
 - Markdown output to a configurable local filesystem destination, including a folder that happens to be an Obsidian vault.
-- Handoff preparation only: V0 never starts an agent process itself.
+- Prepared handoffs plus explicit `advance` execution through the configured local CLIs.
 
-It is **not** a hosted project-management tool, a generic workflow engine, an agent marketplace or an automatic multi-agent runtime.
+It is **not** a hosted project-management tool, a generic workflow engine, an agent marketplace or an autonomous multi-agent runtime.
 
 ## Community
 
@@ -18,7 +18,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change, [SECURITY.md]
 
 ## Requirements and installation
 
-- Node.js 22 or newer
 - Node.js 22 or newer
 
 Once published to npm:
@@ -63,7 +62,7 @@ agentProfiles:
     modelAlias: glm-5.2
 
 models:
-  glm-5.2: z-ai/glm-5.2
+  glm-5.2: openrouter/z-ai/glm-5.2
 ```
 
 Each participating repository commits its own `.impresairio.yaml`:
@@ -96,18 +95,26 @@ impresairio start feature \
   --feature-slug account-merge
 ```
 
-The command prints a run ID. Continue it one bounded step at a time:
+The command prints a run ID. Execute configured agents until the next human gate:
+
+```bash
+impresairio advance <run-id>
+impresairio approve <run-id> approve-design --comment "Reviewed"
+impresairio advance <run-id>
+```
+
+For a manual handoff, continue one bounded step at a time instead:
 
 ```bash
 impresairio next <run-id>
 impresairio complete <run-id> design
 impresairio next <run-id>
-impresairio complete <run-id> challenge
+impresairio complete <run-id> design-review-1
 impresairio next <run-id>
 impresairio approve <run-id> approve-design --comment "Reviewed"
 ```
 
-`next` emits a structured handoff containing the exact expected output path. The active agent writes that Markdown file, then the human or agent session runs `complete`. A launcher handoff is interactive; adversary and implementer handoffs also contain a prepared invocation, but V0 does not execute it.
+`next` emits a structured handoff containing a prepared invocation and the exact expected output path. After executing the handoff manually, record its artifact with `complete`. `advance` executes the same prepared invocations, publishes returned Markdown through the verified filesystem target, and always stops at a human gate, provider failure or workflow completion.
 
 If an approval needs revision:
 
@@ -118,6 +125,21 @@ impresairio retry <run-id> design
 ```
 
 Run state and events live beneath `<impresairio-home>/runs/<run-id>/`. The workflow, documentation context and resolved agent/model profiles are frozen at start, so later configuration edits do not change an in-progress run.
+
+## Check agent connectivity
+
+From a repository containing `.impresairio.yaml`, check that every configured CLI is installed and callable:
+
+```bash
+impresairio doctor
+```
+
+Use `--live` to send each selected profile a minimal `OK` request. This verifies authentication and, for OpenCode, the resolved model ID; it may consume provider credits.
+
+```bash
+impresairio doctor --live
+impresairio doctor --live --profile opencode-glm
+```
 
 ## Built-in workflows and customization
 

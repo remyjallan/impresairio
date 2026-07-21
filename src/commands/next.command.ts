@@ -34,6 +34,9 @@ export class NextCommand extends CommandRunner {
       this.write('complete\n');
       return;
     }
+    if (result.kind === 'gate') {
+      for (const warning of result.warnings ?? []) this.write(`warning: ${warning}\n`);
+    }
     this.write(`${result.kind}: ${result.stepId}\n`);
   }
 }

@@ -16,5 +16,7 @@ export interface CompletedDocumentationOutput {
 export interface DocumentationTarget {
   ensureDirectory(output: PreparedDocumentationOutput): void;
   initializeIfAbsent(output: PreparedDocumentationOutput, content: string): void;
+  writeVerifiedMarkdown(output: PreparedDocumentationOutput, content: string): void;
+  removeVerifiedMarkdown(output: PreparedDocumentationOutput): void;
   readVerifiedMarkdown(output: PreparedDocumentationOutput): string;
 }

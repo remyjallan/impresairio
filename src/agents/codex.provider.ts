@@ -1,5 +1,7 @@
 import type {
   AgentAction,
+  AgentHealthCheckInvocation,
+  AgentHealthCheckRequest,
   AgentProvider,
   PreparedAgentInvocation,
   ProviderPreparationRequest,
@@ -16,8 +18,18 @@ export class CodexProvider implements AgentProvider {
   prepareInvocation(request: ProviderPreparationRequest): PreparedAgentInvocation {
     return {
       command: 'codex',
-      args: ['exec'],
+      args: ['exec', '--output-last-message', request.expectedOutput],
       input: `${renderInstruction(request.instruction)}\n\nExpected Markdown output: ${request.expectedOutput}`,
     };
+  }
+
+  prepareHealthCheck({ live }: AgentHealthCheckRequest): AgentHealthCheckInvocation {
+    return live
+      ? {
+          command: 'codex',
+          args: ['exec', '--sandbox', 'read-only', '--skip-git-repo-check'],
+          input: 'Reply with exactly OK. Do not use tools or modify files.',
+        }
+      : { command: 'codex', args: ['--version'] };
   }
 }

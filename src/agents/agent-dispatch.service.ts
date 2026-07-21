@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import { RunLockService } from '../runs/run-lock.service';
@@ -18,7 +19,7 @@ export interface AgentHandoff {
   readonly actor: string;
   readonly profile: string;
   readonly provider: string;
-  readonly mode: 'interactive-handoff' | 'prepared-non-interactive';
+  readonly mode: 'prepared-non-interactive';
   readonly instruction: PreparedInstruction;
   readonly expectedOutput: {
     readonly id: string;
@@ -53,17 +54,24 @@ export class AgentDispatchService {
       throw new RunStateError(`Agent profile is not frozen for actor ${step.actor}`);
     }
     const provider = this.providers.get(agent.provider);
-    const instruction = this.instructionFor(step.method, provider);
+    const baseInstruction = this.instructionFor(step.method, provider, agent.skills);
+    const context = this.contextFor(state, step.id);
+    const feedback = this.feedbackFor(state, step.declaredOutput.id);
+    const additions = [
+      context ? `Input artifacts:\n${context}` : undefined,
+      feedback ? `Human feedback to address:\n${feedback}` : undefined,
+    ].filter((value): value is string => Boolean(value)).join('\n\n');
+    const instruction = additions ? this.withAdditions(baseInstruction, additions) : baseInstruction;
     const expectedOutput = {
       id: step.expectedOutput.id,
       path: step.expectedOutput.path,
       format: step.expectedOutput.format,
     } as const;
-    const isLauncher = step.actor === 'launcher';
     const alreadyPrepared = Boolean(step.dispatchPreparedAt);
-    const invocation = isLauncher ? undefined : this.processRunner.prepare(provider.prepareInvocation({
+    const invocation = this.processRunner.prepare(provider.prepareInvocation({
       runId,
       stepId: step.id,
+      ...('action' in step.method ? { action: step.method.action } : {}),
       profile: agent.profile,
       agent,
       instruction,
@@ -75,7 +83,7 @@ export class AgentDispatchService {
       actor: step.actor,
       profile: agent.profile,
       provider: agent.provider,
-      mode: isLauncher ? 'interactive-handoff' : 'prepared-non-interactive',
+      mode: 'prepared-non-interactive',
       instruction,
       expectedOutput,
       ...(invocation ? { invocation } : {}),
@@ -107,13 +115,38 @@ export class AgentDispatchService {
   private instructionFor(
     method: Extract<NonNullable<ReturnType<FileStateStore['findState']>>['steps'][number], { readonly kind: 'agent' }>['method'],
     provider: ReturnType<ProviderRegistryService['get']>,
+    skills: Readonly<Record<string, string>> | undefined,
   ): PreparedInstruction {
     if ('promptFile' in method) {
       return { kind: 'prompt-file', source: method.promptFile, content: method.content };
     }
-    const nativeSkill = provider.nativeSkillFor(method.action);
+    const nativeSkill = skills?.[method.action] ?? provider.nativeSkillFor(method.action);
     return nativeSkill
       ? { kind: 'native-skill', skill: nativeSkill }
       : { kind: 'fallback-prompt', content: fallbackPromptFor(method.action) };
+  }
+
+  private contextFor(state: NonNullable<ReturnType<FileStateStore['findState']>>, stepId: string): string {
+    const index = state.steps.findIndex((step) => step.id === stepId);
+    const artifacts = new Map<string, string>();
+    for (const step of state.steps.slice(0, index)) {
+      if (step.kind !== 'agent' || step.status !== 'complete' || !step.output) continue;
+      try { artifacts.set(step.declaredOutput.id, readFileSync(step.output.path, 'utf8')); } catch { /* completion will surface missing inputs */ }
+    }
+    return [...artifacts.entries()].map(([id, content]) => `## ${id}\n${content}`).join('\n\n');
+  }
+
+  private feedbackFor(state: NonNullable<ReturnType<FileStateStore['findState']>>, outputId: string): string {
+    return state.steps
+      .filter((step): step is Extract<typeof state.steps[number], { readonly kind: 'gate' }> => step.kind === 'gate' && step.artifact === outputId)
+      .flatMap((step) => step.feedback.map((item) => `- ${item.comment}`))
+      .join('\n');
+  }
+
+  private withAdditions(instruction: PreparedInstruction, additions: string): PreparedInstruction {
+    if (instruction.kind === 'native-skill') {
+      return { ...instruction, additions };
+    }
+    return { ...instruction, content: `${instruction.content}\n\n${additions}` };
   }
 }

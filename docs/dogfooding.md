@@ -9,7 +9,7 @@ Run exactly two representative pieces of work before extending the runtime:
 1. One non-trivial `feature` workflow, from design through final report.
 2. One scoped `quick-fix` workflow, from investigation through verification.
 
-Use the agents that reflect normal practice: a launcher (Claude Code or Codex), an independent adversary, and an OpenCode implementer profile with a pinned model when appropriate. Do not enable automatic execution or add a provider solely for the experiment.
+Use the agents that reflect normal practice: a launcher (Claude Code or Codex), an independent adversary, and an OpenCode implementer profile with a pinned model when appropriate. Use the explicit `advance` command when testing execution, but do not bypass human gates or add a provider solely for the experiment.
 
 ## Record sheet
 
@@ -33,7 +33,7 @@ Investigate before extending V0 when either run requires more than one manual re
 
 Only then select the smallest response to the observed problem. Examples:
 
-- Repeated provider invocation mistakes may justify executing one prepared invocation behind an explicit `--auto` flag.
+- Repeated provider invocation mistakes may justify a narrowly scoped provider adapter or fallback policy.
 - Repeated workflow duplication may justify one reusable YAML component.
 - Repeated path configuration mistakes may justify another documentation target kind.
 - No observed problem does **not** justify a generic provider API, expression engine, database, UI, marketplace or new runtime.

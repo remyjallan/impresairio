@@ -7,6 +7,7 @@ import { createRunState, type RunState } from './run-state.schema';
 import { WorkflowRegistryService } from '../workflows/workflow-registry.service';
 import { ConfigService } from '../config/config.service';
 import { AgentProfileService } from '../agents/agent-profile.service';
+import type { Workflow, WorkflowStep } from '../workflows/workflow.schema';
 
 export interface StartRunRequest {
   readonly id?: string;
@@ -49,7 +50,8 @@ export class RunService {
       request.workflowId,
       request.repositoryDirectory,
     );
-    const actors = [...new Set(resolvedWorkflow.workflow.steps.flatMap((step) => (
+    const steps = expandWorkflow(resolvedWorkflow.workflow);
+    const actors = [...new Set(steps.flatMap((step) => (
       step.type === 'agent' ? [step.actor] : []
     )))];
     const resolvedActors = this.agentProfiles.resolveForActors(
@@ -70,9 +72,10 @@ export class RunService {
           run: { id },
         },
       },
+      execution: configuration.execution,
       workflowSha256: resolvedWorkflow.sha256,
       resolvedActors,
-      steps: resolvedWorkflow.workflow.steps.map((step) => ({
+      steps: steps.map((step) => ({
         id: step.id,
         kind: step.type,
         ...(step.type === 'agent'
@@ -86,8 +89,9 @@ export class RunService {
                       resolvedWorkflow,
                       step.promptFile,
                     ),
-                  }),
+              }),
               output: step.output,
+              ...(step.cycle ? { cycle: step.cycle } : {}),
             }
           : { artifact: step.artifact }),
       })),
@@ -127,4 +131,24 @@ export class RunService {
       throw new RunStateError('Feature slug must use lowercase letters, numbers, hyphens or underscores');
     }
   }
+}
+
+type ExpandedStep = Exclude<WorkflowStep, { readonly type: 'review-cycle' }> & {
+  readonly cycle?: { readonly id: string; readonly role: 'review' | 'consolidate'; readonly iteration: number };
+};
+
+function expandWorkflow(workflow: Workflow): readonly ExpandedStep[] {
+  return workflow.steps.flatMap((step): readonly ExpandedStep[] => {
+    if (step.type !== 'review-cycle') return [step];
+    const expanded: ExpandedStep[] = [{ id: step.id, type: 'agent', actor: step.actor, action: step.action, output: step.output }];
+    for (let index = 1; index <= step.maxIterations; index += 1) {
+      expanded.push({ id: `${step.id}-review-${index}`, type: 'agent', actor: step.reviewer, action: step.reviewAction,
+        output: { id: `${step.id}-review-${index}`, filename: `.review-${step.id}-${index}.md`, storage: 'internal' },
+        cycle: { id: step.id, role: 'review', iteration: index } });
+      if (index < step.maxIterations) expanded.push({ id: `${step.id}-consolidate-${index}`, type: 'agent', actor: step.actor, action: step.action, output: step.output,
+        cycle: { id: step.id, role: 'consolidate', iteration: index } });
+    }
+    expanded.push({ id: step.gateId, type: 'gate', artifact: step.output.id });
+    return expanded;
+  });
 }

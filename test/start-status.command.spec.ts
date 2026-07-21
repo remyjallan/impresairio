@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { StartCommand } from '../src/commands/start.command';
 import { StatusCommand } from '../src/commands/status.command';
+import { ListCommand } from '../src/commands/list.command';
 import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
 import { ConfigService } from '../src/config/config.service';
 import { EventLogService } from '../src/runs/event-log.service';
@@ -39,7 +40,7 @@ agentProfiles:
     provider: opencode
     modelAlias: glm-5.2
 models:
-  glm-5.2: z-ai/glm-5.2
+  glm-5.2: openrouter/z-ai/glm-5.2
 `);
   writeFileSync(join(repository, '.impresairio.yaml'), `project:
   name: Example Project
@@ -128,6 +129,7 @@ describe('start and status commands', () => {
 
     expect(store.findState('run-quick-fix')).toEqual(expect.objectContaining({
       workflow: expect.objectContaining({ id: 'quick-fix' }),
+      execution: { agentTimeoutSeconds: 1_800 },
       roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
       documentation: expect.objectContaining({
         target: expect.objectContaining({ root: documentationRoot }),
@@ -145,6 +147,27 @@ describe('start and status commands', () => {
     expect(output.join('')).toContain('steps: 3');
     expect(output.join('')).toContain('investigate: pending');
     expect(output.join('')).toContain('verify: pending');
+  });
+
+  it('lists resumable runs newest first', async () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    service.start({
+      id: 'run-first', workflowId: 'quick-fix', roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'IMP-45', slug: 'first' }, repositoryDirectory: repository,
+    });
+    service.start({
+      id: 'run-second', workflowId: 'quick-fix', roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'IMP-46', slug: 'second' }, repositoryDirectory: repository,
+    });
+    const output: string[] = [];
+    await new ListCommand(store, (line) => output.push(line)).run();
+
+    expect(output.join('')).toContain('RUN ID\tWORKFLOW\tCURRENT STEP\tUPDATED');
+    expect(output.join('')).toContain('run-first\tquick-fix\tnot-started');
+    expect(output.join('')).toContain('run-second\tquick-fix\tnot-started');
   });
 
   it('keeps the resolved step contract through start, next and completion', () => {

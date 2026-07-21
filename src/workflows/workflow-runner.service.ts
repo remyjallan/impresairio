@@ -5,10 +5,11 @@ import { RunLockService } from '../runs/run-lock.service';
 import type { RunState } from '../runs/run-state.schema';
 import { ArtifactService } from '../documentation/artifact.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
+import { cycleReviewWarnings } from './review-cycle-completion.policy';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
-  | { readonly kind: 'gate'; readonly stepId: string }
+  | { readonly kind: 'gate'; readonly stepId: string; readonly warnings?: readonly string[] }
   | { readonly kind: 'complete' };
 
 export const WORKFLOW_CLOCK = Symbol('WORKFLOW_CLOCK');
@@ -31,7 +32,7 @@ export class WorkflowRunnerService {
         runId,
         this.requiredState(runId),
       );
-      const step = state.steps.find((candidate) => candidate.status !== 'complete');
+      const step = state.steps.find((candidate) => candidate.status !== 'complete' && candidate.status !== 'skipped');
       if (!step) {
         return { kind: 'complete' };
       }
@@ -48,19 +49,22 @@ export class WorkflowRunnerService {
         throw new RunStateError(`Step ${step.id} failed and must be retried before continuing`);
       }
       if (step.kind === 'gate') {
-        return { kind: 'gate', stepId: step.id };
+        const warnings = cycleReviewWarnings(state, step.id);
+        return { kind: 'gate', stepId: step.id, ...(warnings.length > 0 ? { warnings } : {}) };
       }
       if (step.status === 'in_progress') {
         return { kind: 'agent', stepId: step.id };
       }
 
       const timestamp = this.now().toISOString();
-      const expectedOutput = this.artifacts.prepareOutput({
-        target: state.documentation.target,
-        featurePath: state.documentation.featurePath,
-        bindings: state.documentation.bindings,
-        output: step.declaredOutput,
-      });
+      const expectedOutput = step.declaredOutput.storage === 'internal'
+        ? this.artifacts.prepareInternalOutput(this.stateStore.runDirectory(runId), step.declaredOutput)
+        : this.artifacts.prepareOutput({
+            target: state.documentation.target,
+            featurePath: state.documentation.featurePath,
+            bindings: state.documentation.bindings,
+            output: step.declaredOutput,
+          });
       const inputArtifactHashes = this.inputArtifactHashes(state, step.id);
       const steps = state.steps.map((candidate) => candidate.id === step.id && candidate.kind === 'agent'
         ? {
@@ -100,16 +104,16 @@ export class WorkflowRunnerService {
 
   private inputArtifactHashes(state: RunState, stepId: string): Record<string, string> {
     const stepIndex = state.steps.findIndex((step) => step.id === stepId);
-    return Object.fromEntries(
-      state.steps.slice(0, stepIndex).flatMap((step) => {
+    const hashes = new Map<string, string>();
+    for (const step of state.steps.slice(0, stepIndex)) {
         if (step.kind !== 'agent' || step.status !== 'complete' || !step.output) {
-          return [];
+          continue;
         }
-        return [[
+        hashes.set(
           step.declaredOutput.id,
-          this.artifacts.currentHash(step.output, state.documentation.target.root),
-        ]];
-      }),
-    );
+          this.artifacts.currentHash(step.output, step.expectedOutput?.targetRoot ?? state.documentation.target.root),
+        );
+    }
+    return Object.fromEntries(hashes);
   }
 }

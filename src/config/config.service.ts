@@ -31,11 +31,13 @@ export type ResolvedAgentProfile =
       readonly provider: 'claude-code' | 'codex';
       readonly modelAlias?: undefined;
       readonly model?: undefined;
+      readonly skills?: Readonly<Record<string, string>>;
     }
   | {
       readonly provider: 'opencode';
       readonly modelAlias: string;
       readonly model: string;
+      readonly skills?: Readonly<Record<string, string>>;
     };
 
 export interface LoadedConfiguration {
@@ -53,6 +55,9 @@ export interface LoadedConfiguration {
   };
   readonly agentProfiles: Readonly<Record<string, ResolvedAgentProfile>>;
   readonly models: Readonly<Record<string, string>>;
+  readonly execution: {
+    readonly agentTimeoutSeconds: number;
+  };
 }
 
 @Injectable()
@@ -106,6 +111,7 @@ export class ConfigService {
         globalConfigPath,
       ),
       models: globalConfig.models,
+      execution: globalConfig.execution,
     };
   }
 
@@ -129,7 +135,7 @@ export class ConfigService {
     source: string,
   ): ResolvedAgentProfile {
     if (profile.provider !== 'opencode') {
-      return { provider: profile.provider };
+      return { provider: profile.provider, ...(Object.keys(profile.skills).length > 0 ? { skills: profile.skills } : {}) };
     }
 
     const model = Object.hasOwn(models, profile.modelAlias)
@@ -147,6 +153,7 @@ export class ConfigService {
       provider: 'opencode',
       modelAlias: profile.modelAlias,
       model,
+      ...(Object.keys(profile.skills).length > 0 ? { skills: profile.skills } : {}),
     };
   }
 

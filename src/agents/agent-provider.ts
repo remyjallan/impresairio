@@ -8,13 +8,14 @@ export type AgentAction = Extract<
 >['action'];
 
 export type PreparedInstruction =
-  | { readonly kind: 'native-skill'; readonly skill: string }
+  | { readonly kind: 'native-skill'; readonly skill: string; readonly additions?: string }
   | { readonly kind: 'fallback-prompt'; readonly content: string }
   | { readonly kind: 'prompt-file'; readonly source: string; readonly content: string };
 
 export interface ProviderPreparationRequest {
   readonly runId: string;
   readonly stepId: string;
+  readonly action?: AgentAction;
   readonly profile: string;
   /** The port validates its own provider-specific requirements before use. */
   readonly agent: {
@@ -34,14 +35,28 @@ export interface PreparedAgentInvocation {
   readonly model?: string;
 }
 
+/** A provider-owned, side-effect-free or minimal live connectivity probe. */
+export interface AgentHealthCheckInvocation {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly input?: string;
+}
+
+export interface AgentHealthCheckRequest {
+  readonly profile: string;
+  readonly agent: ProviderPreparationRequest['agent'];
+  readonly live: boolean;
+}
+
 /**
- * This is intentionally a preparation port. V0 never asks a provider to start
- * a real CLI process; automatic execution is a later opt-in mode.
+ * This port prepares invocations only. `next` exposes them as handoffs, while
+ * the explicit `advance` command is the sole component allowed to execute one.
  */
 export interface AgentProvider {
   readonly name: AgentProviderName;
   nativeSkillFor(action: AgentAction): string | undefined;
   prepareInvocation(request: ProviderPreparationRequest): PreparedAgentInvocation;
+  prepareHealthCheck(request: AgentHealthCheckRequest): AgentHealthCheckInvocation;
 }
 
 export interface AgentProcessRunner {

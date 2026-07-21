@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { dirname, extname } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import type { ResolvedDocumentationTarget } from '../config/config.service';
 import type {
@@ -85,6 +85,16 @@ export class ArtifactService implements OutputVerifier {
     return prepared;
   }
 
+  prepareInternalOutput(runDirectory: string, output: DeclaredOutput): PreparedDocumentationOutput {
+    const directory = join(runDirectory, 'artifacts');
+    const prepared: PreparedDocumentationOutput = {
+      id: output.id, targetRoot: runDirectory, directory,
+      path: join(directory, output.filename), format: 'markdown',
+    };
+    this.filesystemTarget.ensureDirectory(prepared);
+    return prepared;
+  }
+
   completeOutput(
     output: PreparedDocumentationOutput,
   ): CompletedDocumentationOutput {
@@ -95,6 +105,14 @@ export class ArtifactService implements OutputVerifier {
       format: output.format,
       sha256: createHash('sha256').update(content, 'utf8').digest('hex'),
     };
+  }
+
+  publishMarkdown(output: PreparedDocumentationOutput, content: string): void {
+    this.filesystemTarget.writeVerifiedMarkdown(output, content);
+  }
+
+  discardOutput(output: PreparedDocumentationOutput): void {
+    this.filesystemTarget.removeVerifiedMarkdown(output);
   }
 
   currentHash(

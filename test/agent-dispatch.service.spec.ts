@@ -59,10 +59,13 @@ function setup(actor: 'launcher' | 'implementer') {
         feature: { id: 'IMP-1', slug: 'dispatch' }, run: { id: 'run-agent' },
       },
     },
-    steps: [{
-      id: 'work', kind: 'agent', actor, action: actor === 'launcher' ? 'feature-design' : 'implementation',
-      output: { id: 'report', filename: '01 - Report.md' },
-    }],
+    steps: [
+      {
+        id: 'work', kind: 'agent', actor, action: actor === 'launcher' ? 'feature-design' : 'implementation',
+        output: { id: 'report', filename: '01 - Report.md' },
+      },
+      { id: 'approve-report', kind: 'gate', artifact: 'report' },
+    ],
     now: '2026-07-20T10:00:00.000Z',
   }));
   const runner = new WorkflowRunnerService(
@@ -86,17 +89,18 @@ afterEach(() => {
 });
 
 describe('AgentDispatchService', () => {
-  it('returns a launcher handoff without asking a process runner to execute anything', () => {
+  it('returns a prepared launcher handoff without executing it', () => {
     const { runner, dispatch, processRunner } = setup('launcher');
 
     const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
 
     expect(handoff).toMatchObject({
-      mode: 'interactive-handoff',
-      instruction: { kind: 'native-skill', skill: 'superremy-codex:brainstorming' },
+      mode: 'prepared-non-interactive',
+      instruction: expect.objectContaining({ kind: 'fallback-prompt' }),
       expectedOutput: { id: 'report' },
+      invocation: { command: 'claude' },
     });
-    expect(processRunner.calls).toEqual([]);
+    expect(processRunner.calls).toHaveLength(1);
   });
 
   it('renders the launcher result from next as structured handoff JSON', async () => {
@@ -106,9 +110,22 @@ describe('AgentDispatchService', () => {
     await new NextCommand(runner, dispatch, (line) => output.push(line)).run(['run-agent']);
 
     expect(JSON.parse(output.join(''))).toMatchObject({
-      kind: 'agent', mode: 'interactive-handoff', stepId: 'work',
+      kind: 'agent', mode: 'prepared-non-interactive', stepId: 'work',
     });
-    expect(processRunner.calls).toEqual([]);
+    expect(processRunner.calls).toHaveLength(1);
+  });
+
+  it('prints cycle exhaustion warnings before a human gate', async () => {
+    const output: string[] = [];
+    const command = new NextCommand(
+      { next: () => ({ kind: 'gate', stepId: 'approve-design', warnings: ['cycle design exhausted'] }) } as never,
+      { prepare: () => undefined } as never,
+      (line) => output.push(line),
+    );
+
+    await command.run(['run-agent']);
+
+    expect(output.join('')).toBe('warning: cycle design exhausted\ngate: approve-design\n');
   });
 
   it('prepares OpenCode with its frozen model and records that preparation', () => {
@@ -135,5 +152,55 @@ describe('AgentDispatchService', () => {
     expect(dispatch.prepare('run-agent', result)?.invocation).toBeDefined();
     expect(processRunner.calls).toHaveLength(2);
     expect(events.read('run-agent').filter((event) => event.type === 'agent.invocation.prepared')).toHaveLength(1);
+  });
+
+  it('injects persisted human gate feedback when a producer is dispatched again', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.kind === 'gate'
+        ? { ...step, feedback: [{ requestedAt: '2026-07-20T10:00:00.000Z', comment: 'Clarify empty names.' }] }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.invocation?.input).toContain('Human feedback to address:');
+    expect(handoff?.invocation?.input).toContain('Clarify empty names.');
+  });
+
+  it('preserves context additions for configured skills and prompt files', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      resolvedActors: {
+        ...state.resolvedActors,
+        launcher: { ...state.resolvedActors.launcher, skills: { 'feature-design': 'local:brainstorming' } },
+      },
+      steps: state.steps.map((step) => step.kind === 'gate'
+        ? { ...step, feedback: [{ requestedAt: '2026-07-20T10:00:00.000Z', comment: 'Keep it small.' }] }
+        : step),
+    });
+    const skillHandoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+    expect(skillHandoff?.instruction).toMatchObject({ kind: 'native-skill', skill: 'local:brainstorming' });
+    expect(skillHandoff?.invocation?.input).toContain('Use skill: local:brainstorming');
+    expect(skillHandoff?.invocation?.input).toContain('Keep it small.');
+
+    const current = store.findState('run-agent');
+    if (!current) throw new Error('missing current state');
+    store.save({
+      ...current,
+      resolvedActors: { ...current.resolvedActors, launcher: { profile: 'claude', provider: 'claude-code' } },
+      steps: current.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? { ...step, method: { promptFile: 'prompts/custom.md', content: 'Custom instructions.' } }
+        : step),
+    });
+    const promptHandoff = dispatch.prepare('run-agent', { kind: 'agent', stepId: 'work' });
+    expect(promptHandoff?.invocation?.input).toContain('Custom instructions.');
+    expect(promptHandoff?.invocation?.input).toContain('Keep it small.');
   });
 });

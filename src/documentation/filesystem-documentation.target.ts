@@ -3,6 +3,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
@@ -71,6 +72,16 @@ export class FilesystemDocumentationTarget implements DocumentationTarget {
     }
   }
 
+  writeVerifiedMarkdown(output: PreparedDocumentationOutput, content: string): void {
+    if (content.trim().length === 0) {
+      throw new FilesystemDocumentationTargetError('Documentation output must not be empty');
+    }
+    this.ensureDirectory(output);
+    this.hooks.beforeFileWrite?.(output.path);
+    this.assertSafeLocation(output);
+    writeFileSync(output.path, content, 'utf8');
+  }
+
   readVerifiedMarkdown(output: PreparedDocumentationOutput): string {
     this.assertSafeLocation(output);
     if (!existsSync(output.path)) {
@@ -93,6 +104,16 @@ export class FilesystemDocumentationTarget implements DocumentationTarget {
       );
     }
     return content;
+  }
+
+  removeVerifiedMarkdown(output: PreparedDocumentationOutput): void {
+    this.assertSafeLocation(output);
+    if (!existsSync(output.path)) return;
+    const stat = lstatSync(output.path);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new FilesystemDocumentationTargetError(`Expected output must be a regular file: ${output.path}`);
+    }
+    rmSync(output.path);
   }
 
   private ensureTargetRoot(output: PreparedDocumentationOutput): void {

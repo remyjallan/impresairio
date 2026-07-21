@@ -8,6 +8,9 @@ import { RetryCommand } from './commands/retry.command';
 import { StartCommand, START_WRITER } from './commands/start.command';
 import { StatusCommand, STATUS_WRITER } from './commands/status.command';
 import { UnlockCommand } from './commands/unlock.command';
+import { ListCommand, LIST_WRITER } from './commands/list.command';
+import { AdvanceCommand } from './commands/advance.command';
+import { DoctorCommand, DOCTOR_WRITER } from './commands/doctor.command';
 import { ConfigService } from './config/config.service';
 import { HomeDirectoryResolver } from './config/home-directory.resolver';
 import { ArtifactService } from './documentation/artifact.service';
@@ -17,6 +20,7 @@ import {
   COMPLETION_RUN_STORE,
   COMPLETION_CLOCK,
   COMPLETION_LOCK,
+  COMPLETION_POLICY,
   CompletionService,
   OUTPUT_VERIFIER,
 } from './runs/completion.service';
@@ -38,6 +42,8 @@ import { ClaudeCodeProvider } from './agents/claude-code.provider';
 import { CodexProvider } from './agents/codex.provider';
 import { OpenCodeProvider } from './agents/opencode.provider';
 import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-registry.service';
+import { AGENT_COMMAND_EXECUTOR, AgentHealthService, LocalAgentCommandExecutor } from './agents/agent-health.service';
+import { ReviewCycleCompletionPolicy } from './workflows/review-cycle-completion.policy';
 
 @Module({
   providers: [
@@ -45,6 +51,9 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
     StatusCommand,
     StartCommand,
     UnlockCommand,
+    ListCommand,
+    AdvanceCommand,
+    DoctorCommand,
     CompleteCommand,
     ApproveCommand,
     RequestChangesCommand,
@@ -52,6 +61,7 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
     NextCommand,
     AgentProfileService,
     AgentDispatchService,
+    AgentHealthService,
     ProviderRegistryService,
     ClaudeCodeProvider,
     CodexProvider,
@@ -73,6 +83,7 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
     WorkflowRunnerService,
     GateService,
     StaleInvalidationService,
+    ReviewCycleCompletionPolicy,
     {
       provide: FILE_STATE_OPERATIONS,
       useValue: {},
@@ -114,6 +125,10 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
       useExisting: RunLockService,
     },
     {
+      provide: COMPLETION_POLICY,
+      useExisting: ReviewCycleCompletionPolicy,
+    },
+    {
       provide: STATUS_WRITER,
       useValue: (line: string) => process.stdout.write(line),
     },
@@ -124,6 +139,18 @@ import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-regi
     {
       provide: NEXT_WRITER,
       useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: LIST_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: DOCTOR_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: AGENT_COMMAND_EXECUTOR,
+      useClass: LocalAgentCommandExecutor,
     },
     {
       provide: AGENT_PROVIDERS,

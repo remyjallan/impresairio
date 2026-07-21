@@ -23,6 +23,8 @@ documentationTargets:
 agentProfiles:
   claude:
     provider: claude-code
+    skills:
+      feature-design: superpowers:brainstorming
   codex:
     provider: codex
   opencode-glm:
@@ -33,8 +35,11 @@ agentProfiles:
     modelAlias: kimi-3
 
 models:
-  glm-5.2: z-ai/glm-5.2
-  kimi-3: moonshotai/kimi-k2
+  glm-5.2: openrouter/z-ai/glm-5.2
+  kimi-3: openrouter/moonshotai/kimi-k2
+
+execution:
+  agentTimeoutSeconds: 1800
 ```
 
 `documentationTargets` describes where documentation is delivered. The only
@@ -46,6 +51,20 @@ it only writes Markdown files to the configured directory.
 The built-in providers are `claude-code`, `codex`, and `opencode`. An
 `opencode` profile must refer to a key in `models`; the alias and resolved model
 identifier are retained by later run-state functionality.
+
+Every profile may define an optional `skills` mapping from a built-in action name
+to a locally installed skill name. The default is an empty mapping. When no mapping
+exists, Impresairio uses its portable fallback prompt. Skill names are local user
+configuration: repository workflows and open-source defaults must not assume that a
+personal skill is installed. Profile and skill mappings are resolved and frozen at
+run start; changing `config.yaml` does not alter an in-progress run.
+
+`execution.agentTimeoutSeconds` limits each provider process launched by
+`advance`. It is an integer from 1 through 86400 seconds and defaults to 1800
+(30 minutes). The resolved value is frozen into a run at `start`; changing the
+global configuration affects only new runs. Runs created before this setting
+existed also read with the 1800-second default. A timeout marks the active step
+`failed`, after which it can be resumed through `retry`.
 
 ## Repository configuration
 

@@ -55,8 +55,10 @@ describe('ConfigService', () => {
     expect(configuration.agentProfiles['opencode-glm']).toEqual({
       provider: 'opencode',
       modelAlias: 'glm-5.2',
-      model: 'z-ai/glm-5.2',
+      model: 'openrouter/z-ai/glm-5.2',
     });
+    expect(configuration.agentProfiles.claude.skills).toEqual({ 'feature-design': 'example:brainstorming' });
+    expect(configuration.execution).toEqual({ agentTimeoutSeconds: 1_800 });
   });
 
   it('uses IMPRESAIRIO_HOME instead of the operating-system default', () => {
@@ -71,6 +73,34 @@ describe('ConfigService', () => {
     expect(new ConfigService(resolver).load(repository).homeDirectory).toBe(
       overrideHome,
     );
+  });
+
+  it('loads a configured agent timeout', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    writeFileSync(
+      join(home, 'config.yaml'),
+      `${readFileSync(join(home, 'config.yaml'), 'utf8')}\nexecution:\n  agentTimeoutSeconds: 3600\n`,
+      'utf8',
+    );
+
+    expect(new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }))
+      .load(repository).execution).toEqual({ agentTimeoutSeconds: 3_600 });
+  });
+
+  it('rejects an out-of-range agent timeout', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    writeFileSync(
+      join(home, 'config.yaml'),
+      `${readFileSync(join(home, 'config.yaml'), 'utf8')}\nexecution:\n  agentTimeoutSeconds: 0\n`,
+      'utf8',
+    );
+
+    expect(() => new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home })).load(repository))
+      .toThrow(`${join(home, 'config.yaml')}: execution.agentTimeoutSeconds`);
   });
 
   it('reports the repository source when its documentation target is unknown', () => {

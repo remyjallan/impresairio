@@ -114,4 +114,64 @@ steps:
 
     expect(() => createRegistry(home, packageDirectory).resolve('custom', home)).toThrow(WorkflowError);
   });
+
+  it('rejects explicit step IDs reserved by review-cycle expansion', () => {
+    const home = temporaryDirectory('impresairio-workflow-home-');
+    const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
+    writeFileSync(join(packageDirectory, 'custom.yaml'), `id: custom
+name: Custom
+steps:
+  - id: design
+    type: review-cycle
+    actor: launcher
+    reviewer: adversary
+    action: feature-design
+    reviewAction: adversarial-review
+    maxIterations: 2
+    output:
+      id: design
+      filename: "01 - Design.md"
+    gateId: approve-design
+  - id: design-review-1
+    type: agent
+    actor: launcher
+    action: final-report
+    output:
+      id: report
+      filename: "02 - Report.md"
+`);
+
+    expect(() => createRegistry(home, packageDirectory).resolve('custom', home))
+      .toThrow('collides with review-cycle generated step ID');
+  });
+
+  it('rejects explicit output IDs reserved by review-cycle expansion', () => {
+    const home = temporaryDirectory('impresairio-workflow-home-');
+    const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
+    writeFileSync(join(packageDirectory, 'custom.yaml'), `id: custom
+name: Custom
+steps:
+  - id: report
+    type: agent
+    actor: launcher
+    action: final-report
+    output:
+      id: design-review-1
+      filename: "01 - Report.md"
+  - id: design
+    type: review-cycle
+    actor: launcher
+    reviewer: adversary
+    action: feature-design
+    reviewAction: adversarial-review
+    maxIterations: 2
+    output:
+      id: design
+      filename: "02 - Design.md"
+    gateId: approve-design
+`);
+
+    expect(() => createRegistry(home, packageDirectory).resolve('custom', home))
+      .toThrow('generated review output ID "design-review-1" collides with an explicit workflow output ID');
+  });
 });

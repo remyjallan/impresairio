@@ -1,5 +1,7 @@
 import type {
   AgentAction,
+  AgentHealthCheckInvocation,
+  AgentHealthCheckRequest,
   AgentProvider,
   PreparedAgentInvocation,
   ProviderPreparationRequest,
@@ -32,5 +34,18 @@ export class OpenCodeProvider implements AgentProvider {
       input: `${renderInstruction(request.instruction)}\n\nExpected Markdown output: ${request.expectedOutput}`,
       model: request.agent.model,
     };
+  }
+
+  prepareHealthCheck({ agent, live }: AgentHealthCheckRequest): AgentHealthCheckInvocation {
+    if (agent.provider !== 'opencode' || !agent.model) {
+      throw new OpenCodeProviderError('OpenCode health checks require a resolved model ID');
+    }
+    return live
+      ? {
+          command: 'opencode',
+          args: ['run', '--model', agent.model],
+          input: 'Reply with exactly OK. Do not use tools or modify files.',
+        }
+      : { command: 'opencode', args: ['--version'] };
   }
 }
