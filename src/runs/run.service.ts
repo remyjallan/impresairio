@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { EventLogService } from './event-log.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
@@ -47,10 +48,11 @@ export class RunService {
     const workRequest = this.validateRequest(request.request);
     const id = request.id ?? `run-${randomUUID()}`;
     const timestamp = this.now().toISOString();
-    const configuration = this.configService.load(request.repositoryDirectory ?? process.cwd());
+    const repositoryDirectory = realpathSync(request.repositoryDirectory ?? process.cwd());
+    const configuration = this.configService.load(repositoryDirectory);
     const resolvedWorkflow = this.workflowRegistry.resolve(
       request.workflowId,
-      request.repositoryDirectory,
+      repositoryDirectory,
     );
     const steps = expandWorkflow(resolvedWorkflow.workflow);
     const actors = [...new Set(steps.flatMap((step) => (
@@ -64,6 +66,7 @@ export class RunService {
     const state = createRunState({
       ...request,
       request: workRequest,
+      repositoryDirectory,
       id,
       now: timestamp,
       documentation: {
@@ -109,6 +112,7 @@ export class RunService {
         workflowSha256: state.workflow.sha256,
         workflowSource: resolvedWorkflow.source,
         documentationTarget: state.documentation.target.name,
+        repositoryDirectory: state.repositoryDirectory,
         roles: state.roles,
         resolvedActors: state.resolvedActors,
       });

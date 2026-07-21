@@ -1,7 +1,12 @@
-import { extractContent, extractDeniedWriteContent } from '../src/commands/advance.command';
+import { executionDirectory, extractContent, extractDeniedWriteContent } from '../src/commands/advance.command';
 import { describe, expect, it } from 'vitest';
 
 describe('advance command output recovery', () => {
+  it('uses the frozen repository and preserves caller-CWD fallback for legacy runs', () => {
+    expect(executionDirectory('/workspace/project', '/caller')).toBe('/workspace/project');
+    expect(executionDirectory(undefined, '/caller')).toBe('/caller');
+  });
+
   it('extracts a structured Claude response', () => {
     expect(extractContent(JSON.stringify({
       result: JSON.stringify({ markdown: '# Review', verdict: 'APPROVED' }),

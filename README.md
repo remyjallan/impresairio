@@ -125,7 +125,7 @@ impresairio request-changes <run-id> approve-design \
 impresairio retry <run-id> design
 ```
 
-Run state and events live beneath `<impresairio-home>/runs/<run-id>/`. The work request, workflow, documentation context and resolved agent/model profiles are frozen at start, so later configuration edits do not change an in-progress run.
+Run state and events live beneath `<impresairio-home>/runs/<run-id>/`. The work request, canonical repository directory, workflow, documentation context and resolved agent/model profiles are frozen at start, so later configuration edits or the directory from which `advance` is invoked do not change an in-progress run.
 
 ## Check agent connectivity
 

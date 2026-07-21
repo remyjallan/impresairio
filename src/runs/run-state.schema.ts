@@ -152,6 +152,7 @@ export const runStateSchema = z
     version: z.literal(1),
     id: nonEmptyString,
     request: z.string().trim().min(1).max(20_000).optional(),
+    repositoryDirectory: nonEmptyString.optional(),
     workflow: z
       .object({
         id: nonEmptyString,
@@ -178,6 +179,7 @@ export function createRunState(input: {
   readonly id: string;
   readonly workflowId: string;
   readonly request?: string;
+  readonly repositoryDirectory?: string;
   readonly workflowSha256: string;
   readonly roles: Readonly<Record<string, string>>;
   readonly resolvedActors?: z.input<typeof runStateSchema>['resolvedActors'];
@@ -213,6 +215,7 @@ export function createRunState(input: {
     version: 1,
     id: input.id,
     ...(input.request ? { request: input.request } : {}),
+    ...(input.repositoryDirectory ? { repositoryDirectory: input.repositoryDirectory } : {}),
     workflow: {
       id: input.workflowId,
       sha256: input.workflowSha256,

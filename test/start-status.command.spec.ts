@@ -110,7 +110,7 @@ afterEach(() => {
 
 describe('start and status commands', () => {
   it('creates a run state and renders its workflow and step status', async () => {
-    const { home, store, service } = createRunService();
+    const { home, store, events, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
     temporaryDirectories.push(documentationRoot);
     const repository = configureRepository(home, documentationRoot);
@@ -131,6 +131,7 @@ describe('start and status commands', () => {
     expect(store.findState('run-quick-fix')).toEqual(expect.objectContaining({
       workflow: expect.objectContaining({ id: 'quick-fix' }),
       request: 'Investigate and correct the sample workflow behavior.',
+      repositoryDirectory: repository,
       execution: { agentTimeoutSeconds: 1_800 },
       roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
       documentation: expect.objectContaining({
@@ -149,6 +150,10 @@ describe('start and status commands', () => {
     expect(output.join('')).toContain('steps: 3');
     expect(output.join('')).toContain('investigate: pending');
     expect(output.join('')).toContain('verify: pending');
+    expect(events.read('run-quick-fix')).toContainEqual(expect.objectContaining({
+      type: 'run.started',
+      repositoryDirectory: repository,
+    }));
   });
 
   it('requires a non-empty work request for new runs', async () => {

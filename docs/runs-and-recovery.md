@@ -16,8 +16,10 @@ one JSON event per line.
 ## Start and inspect a run
 
 `start` resolves and validates a workflow, snapshots its ordered steps and
-documentation context, and creates durable state. It also freezes the selected
-agent profiles and resolved OpenCode model identifiers for the run.
+documentation context, and creates durable state. It also freezes the canonical
+repository directory, selected agent profiles and resolved OpenCode model identifiers
+for the run. `advance` therefore executes providers in the original repository even
+when the command is invoked from another directory.
 
 ```bash
 impresairio start quick-fix \
@@ -42,6 +44,10 @@ that text in `state.json`, then supplies it to every agent handoff. Existing
 runs created before this field was introduced remain readable and continue
 without it. Requests are persisted in plaintext and may also remain in shell
 history, so they must not contain credentials or other secrets.
+
+Runs created before the repository directory was frozen also remain readable. For
+those legacy runs only, invoke `advance` from the intended repository directory;
+new runs are independent of the caller's current directory.
 
 If a bounded review cycle reaches its final iteration with
 `VERDICT: CHANGES_REQUESTED`, `status` shows a persistent warning until the

@@ -56,11 +56,11 @@ export class AdvanceCommand extends CommandRunner {
           ],
           input: handoff.invocation.input.replaceAll(handoff.expectedOutput.path, stagingPath),
         };
-        const execution = this.stateStore.findState(runId)?.execution;
-        if (!execution) throw new Error(`Run not found while executing ${result.stepId}: ${runId}`);
+        const currentRun = this.stateStore.findState(runId);
+        if (!currentRun) throw new Error(`Run not found while executing ${result.stepId}: ${runId}`);
         const child = spawnSync(invocation.command, invocation.args, {
-          encoding: 'utf8', cwd: process.cwd(), input: invocation.input,
-          timeout: execution.agentTimeoutSeconds * 1_000, maxBuffer: 16 * 1024 * 1024,
+          encoding: 'utf8', cwd: executionDirectory(currentRun.repositoryDirectory), input: invocation.input,
+          timeout: currentRun.execution.agentTimeoutSeconds * 1_000, maxBuffer: 16 * 1024 * 1024,
         });
         if (child.error) throw child.error;
         // Claude can finish generating a structured answer then fail only
@@ -94,6 +94,11 @@ export class AdvanceCommand extends CommandRunner {
       release();
     }
   }
+}
+
+/** Old run states predate the frozen repository field and retain V0's caller-CWD behavior. */
+export function executionDirectory(repositoryDirectory: string | undefined, fallback = process.cwd()): string {
+  return repositoryDirectory ?? fallback;
 }
 
 export function extractContent(stdout: string): string {

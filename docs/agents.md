@@ -55,6 +55,10 @@ Claude Code, Codex or OpenCode session.
 
 `impresairio advance <run-id>` executes successive agent steps through the configured
 local CLI until it reaches a human gate, a provider failure, or workflow completion.
+New runs freeze the repository's canonical directory at `start`, and every provider
+process executes from that directory even when `advance` is invoked elsewhere.
+Runs created by an older Impresairio version have no frozen repository field and
+retain the legacy behavior of using the `advance` caller's current directory.
 The runner owns artifact persistence: agents return Markdown, which is then saved to
 the expected documentation location. `complete` remains available when a handoff was
 executed manually.
