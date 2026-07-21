@@ -347,7 +347,7 @@ steps:
     expect(step).toMatchObject({
       kind: 'agent',
       actor: 'launcher',
-      method: { action: 'investigate' },
+      method: { capability: 'investigate', promptSource: 'package' },
       declaredOutput: { id: 'investigation', filename: '01 - Investigation.md' },
       expectedOutput: { format: 'markdown' },
       status: 'in_progress',

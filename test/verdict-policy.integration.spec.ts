@@ -19,6 +19,7 @@ import { ArtifactService } from '../src/documentation/artifact.service';
 import { FilesystemDocumentationTarget } from '../src/documentation/filesystem-documentation.target';
 import { PathRendererService } from '../src/documentation/path-renderer.service';
 import { AgentProfileService } from '../src/agents/agent-profile.service';
+import { CapabilityResolverService } from '../src/agents/capability-resolver.service';
 
 const temporaryDirectories: string[] = [];
 
@@ -61,14 +62,14 @@ steps:
   - id: implement
     type: agent
     actor: implementer
-    action: implement
+    capability: implement
     output:
       id: implementation-report
       filename: "01 - Implementation Report.md"
   - id: verify
     type: agent
     actor: adversary
-    action: verification
+    capability: verification
     output:
       id: verification
       filename: "02 - Verification.md"
@@ -97,6 +98,7 @@ steps:
   const gates = new GateService(store, locks, stale);
   const runService = new RunService(
     store, events, locks, workflows, new ConfigService(resolver), new AgentProfileService(),
+    new CapabilityResolverService(resolver),
     () => new Date('2026-07-21T10:00:00.000Z'),
   );
 
