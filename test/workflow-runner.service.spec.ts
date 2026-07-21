@@ -125,3 +125,48 @@ describe('WorkflowRunnerService', () => {
     expect(runner.next('run-workflow')).toEqual({ kind: 'complete' });
   });
 });
+
+describe('verdict halts', () => {
+  it('halts progression on an unresolved verdict until acknowledged', () => {
+    const { runner, store } = createRunner([
+      agent('implement'),
+      { ...agent('verify'), verdictPolicy: { blocked: 'stop' } },
+    ]);
+    const at = '2026-07-20T10:02:00.000Z';
+    const state = store.findState('run-workflow');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.kind === 'agent'
+        ? {
+            ...step,
+            status: 'complete' as const,
+            output: {
+              id: step.declaredOutput.id, path: `/tmp/${step.id}.md`,
+              format: 'markdown' as const, sha256: 'b'.repeat(64), completedAt: at,
+            },
+            ...(step.id === 'verify'
+              ? { reviewOutcome: { verdict: 'BLOCKED' as const, exhausted: false } }
+              : {}),
+          }
+        : step),
+    });
+
+    expect(runner.next('run-workflow')).toEqual({
+      kind: 'blocked',
+      stepId: 'verify',
+      warnings: [expect.stringContaining('BLOCKED')],
+    });
+
+    const halted = store.findState('run-workflow');
+    if (!halted) throw new Error('missing halted state');
+    store.save({
+      ...halted,
+      steps: halted.steps.map((step) => step.id === 'verify' && step.kind === 'agent'
+        ? { ...step, acknowledgment: { at, comment: 'verified locally outside the sandbox' } }
+        : step),
+    });
+
+    expect(runner.next('run-workflow')).toEqual({ kind: 'complete' });
+  });
+});

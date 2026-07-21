@@ -5,11 +5,12 @@ import { RunLockService } from '../runs/run-lock.service';
 import type { RunState } from '../runs/run-state.schema';
 import { ArtifactService } from '../documentation/artifact.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
-import { verdictWarnings } from './verdict-completion.policy';
+import { isVerdictHalted, verdictWarnings } from './verdict-completion.policy';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
   | { readonly kind: 'gate'; readonly stepId: string; readonly warnings?: readonly string[] }
+  | { readonly kind: 'blocked'; readonly stepId: string; readonly warnings: readonly string[] }
   | { readonly kind: 'complete' };
 
 export const WORKFLOW_CLOCK = Symbol('WORKFLOW_CLOCK');
@@ -32,6 +33,10 @@ export class WorkflowRunnerService {
         runId,
         this.requiredState(runId),
       );
+      const halted = state.steps.find(isVerdictHalted);
+      if (halted) {
+        return { kind: 'blocked', stepId: halted.id, warnings: verdictWarnings(state) };
+      }
       const step = state.steps.find((candidate) => candidate.status !== 'complete' && candidate.status !== 'skipped');
       if (!step) {
         return { kind: 'complete' };
