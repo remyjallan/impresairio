@@ -57,4 +57,9 @@ describe('workflow parameters', () => {
     expect(() => resolveRootParameters(definitions, { summary: 'line\nbreak' }))
       .toThrow('single-line literal string');
   });
+
+  it('rejects control characters in parameter values', () => {
+    expect(() => workflowParametersSchema.parse({ summary: { type: 'string', default: 'line\u2028break' } }))
+      .toThrow('control character');
+  });
 });

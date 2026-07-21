@@ -2,15 +2,22 @@ import { isAbsolute, win32 } from 'node:path';
 import { z } from 'zod';
 import { isKnownDocumentationTemplate } from '../documentation/templates';
 
-const identifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
+const runtimeIdentifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
   error: 'must use lowercase letters, numbers and hyphens, starting with a letter',
+});
+
+const identifier = runtimeIdentifier.refine((value) => !value.includes('--') && !value.endsWith('-'), {
+  error: 'must use lowercase letters, numbers and single hyphens, without a trailing hyphen',
 });
 
 const nonEmptyString = z.string().trim().min(1);
 
 const primitiveString = z.string().refine(
-  (value) => !value.includes('{{') && !value.includes('}}') && !value.includes('\n') && !value.includes('\r'),
-  'must not contain a dynamic expression or newline',
+  (value) => !value.includes('{{') && !value.includes('}}') && ![...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f || code === 0x7f || code === 0x2028 || code === 0x2029;
+  }),
+  'must not contain a dynamic expression or control character',
 );
 
 export const workflowPrimitiveValueSchema = z.union([
@@ -111,7 +118,7 @@ export type WorkflowResult = z.infer<typeof workflowResultSchema>;
 
 const parameterReferenceSchema = z.object({ parameter: identifier }).strict();
 const resultReferenceSchema = z.object({
-  result: z.object({ step: identifier, field: identifier }).strict(),
+  result: z.object({ step: runtimeIdentifier, field: identifier }).strict(),
 }).strict();
 export const workflowConditionOperandSchema = z.union([
   workflowPrimitiveValueSchema,

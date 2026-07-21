@@ -19,6 +19,8 @@ import { parameterValueType, resolveChildParameters, resolveRootParameters } fro
 
 type WorkflowOutput = Extract<WorkflowStep, { readonly type: 'agent' }>['output'];
 
+const MAX_COMPOSITION_DEPTH = 32;
+
 export interface WorkflowDefinitionSnapshot {
   readonly instanceId: string;
   readonly workflowId: string;
@@ -124,6 +126,9 @@ export class WorkflowExpanderService {
     definitions: WorkflowDefinitionSnapshot[],
     effectiveParameters: Readonly<Record<string, WorkflowPrimitiveValue>>,
   ): DefinitionNode {
+    if (stack.length >= MAX_COMPOSITION_DEPTH) {
+      throw new WorkflowError(`Workflow composition exceeds the maximum depth of ${MAX_COMPOSITION_DEPTH}`);
+    }
     const cycleAt = stack.findIndex((candidate) => candidate.path === resolved.path);
     if (cycleAt >= 0) {
       const chain = [...stack.slice(cycleAt), resolved]
