@@ -5,7 +5,7 @@ import { RunLockService } from '../runs/run-lock.service';
 import type { RunState } from '../runs/run-state.schema';
 import { ArtifactService } from '../documentation/artifact.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
-import { cycleReviewWarnings } from './review-cycle-completion.policy';
+import { verdictWarnings } from './verdict-completion.policy';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
@@ -49,7 +49,7 @@ export class WorkflowRunnerService {
         throw new RunStateError(`Step ${step.id} failed and must be retried before continuing`);
       }
       if (step.kind === 'gate') {
-        const warnings = cycleReviewWarnings(state, step.id);
+        const warnings = verdictWarnings(state, step.id);
         return { kind: 'gate', stepId: step.id, ...(warnings.length > 0 ? { warnings } : {}) };
       }
       if (step.status === 'in_progress') {

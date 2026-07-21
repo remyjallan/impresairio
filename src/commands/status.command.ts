@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
 import { FileStateStore } from '../runs/file-state.store';
-import { cycleReviewWarnings } from '../workflows/review-cycle-completion.policy';
+import { verdictWarnings } from '../workflows/verdict-completion.policy';
 
 export const STATUS_WRITER = Symbol('STATUS_WRITER');
 
@@ -41,7 +41,7 @@ export class StatusCommand extends CommandRunner {
       `current-step: ${run.currentStepId ?? 'not-started'}`,
       `steps: ${run.steps.length}`,
       ...run.steps.map((step) => `${step.id}: ${step.status}`),
-      ...cycleReviewWarnings(run).map((warning) => `warning: ${warning}`),
+      ...verdictWarnings(run).map((warning) => `warning: ${warning}`),
       '',
     ].join('\n'));
   }

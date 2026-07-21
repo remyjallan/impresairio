@@ -43,7 +43,7 @@ import { CodexProvider } from './agents/codex.provider';
 import { OpenCodeProvider } from './agents/opencode.provider';
 import { AGENT_PROVIDERS, ProviderRegistryService } from './agents/provider-registry.service';
 import { AGENT_COMMAND_EXECUTOR, AgentHealthService, LocalAgentCommandExecutor } from './agents/agent-health.service';
-import { ReviewCycleCompletionPolicy } from './workflows/review-cycle-completion.policy';
+import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
 
 @Module({
   providers: [
@@ -83,7 +83,7 @@ import { ReviewCycleCompletionPolicy } from './workflows/review-cycle-completion
     WorkflowRunnerService,
     GateService,
     StaleInvalidationService,
-    ReviewCycleCompletionPolicy,
+    VerdictCompletionPolicy,
     {
       provide: FILE_STATE_OPERATIONS,
       useValue: {},
@@ -126,7 +126,7 @@ import { ReviewCycleCompletionPolicy } from './workflows/review-cycle-completion
     },
     {
       provide: COMPLETION_POLICY,
-      useExisting: ReviewCycleCompletionPolicy,
+      useExisting: VerdictCompletionPolicy,
     },
     {
       provide: STATUS_WRITER,

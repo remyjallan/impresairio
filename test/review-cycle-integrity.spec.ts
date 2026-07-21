@@ -14,7 +14,7 @@ import { createRunState } from '../src/runs/run-state.schema';
 import { ApprovalIntegrityError, StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { GateService } from '../src/workflows/gate.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
-import { ReviewCycleCompletionPolicy } from '../src/workflows/review-cycle-completion.policy';
+import { VerdictCompletionPolicy } from '../src/workflows/verdict-completion.policy';
 import { StatusCommand } from '../src/commands/status.command';
 
 const directories: string[] = [];
@@ -31,7 +31,7 @@ function harness() {
   const artifacts = new ArtifactService(new PathRendererService(), new FilesystemDocumentationTarget());
   const stale = new StaleInvalidationService(store, events, artifacts, now);
   const runner = new WorkflowRunnerService(store, events, locks, artifacts, stale, now);
-  const completion = new CompletionService(store, artifacts, now, locks, new ReviewCycleCompletionPolicy(store));
+  const completion = new CompletionService(store, artifacts, now, locks, new VerdictCompletionPolicy(store));
   const gates = new GateService(store, locks, stale);
   store.create(createRunState({
     id: 'run-cycle', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {},
@@ -107,7 +107,7 @@ describe('review cycle integrity', () => {
       new ArtifactService(new PathRendererService(), new FilesystemDocumentationTarget()),
       now,
       { acquire: () => () => undefined },
-      new ReviewCycleCompletionPolicy(store),
+      new VerdictCompletionPolicy(store),
     ).complete('run-cycle', 'design-review-1')).toThrow('must end with VERDICT');
     expect(store.findState('run-cycle')?.steps.find((step) => step.id === 'design-review-1')).toMatchObject({ status: 'failed' });
 

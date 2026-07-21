@@ -34,9 +34,16 @@ export interface CompletionRecord {
   };
 }
 
+export type CompletionTransition =
+  | { readonly kind: 'continue' }
+  | { readonly kind: 'halt' }
+  | { readonly kind: 'retry-from'; readonly targetStepId: string };
+
 export interface CompletionPolicyResult {
   readonly skipStepIds: readonly string[];
   readonly reviewOutcome?: CompletionRecord['reviewOutcome'];
+  readonly source?: 'cycle' | 'policy';
+  readonly transition?: CompletionTransition;
 }
 
 export interface CompletionPolicy {
