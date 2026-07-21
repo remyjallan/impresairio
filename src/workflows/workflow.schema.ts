@@ -59,12 +59,35 @@ const outputSchema = z
   })
   .strict();
 
+const verdictPolicySchema = z
+  .object({
+    approved: z.literal('continue').optional(),
+    changesRequested: z
+      .object({
+        retryFrom: identifier,
+        maxIterations: z.number().int().min(1).max(10),
+      })
+      .strict()
+      .optional(),
+    blocked: z.literal('stop').optional(),
+  })
+  .strict()
+  .refine(
+    (policy) => policy.approved !== undefined
+      || policy.changesRequested !== undefined
+      || policy.blocked !== undefined,
+    'must declare at least one verdict behavior',
+  );
+
+export type WorkflowVerdictPolicy = z.infer<typeof verdictPolicySchema>;
+
 const agentBaseSchema = z
   .object({
     id: identifier,
     type: z.literal('agent'),
     actor: z.enum(['launcher', 'adversary', 'implementer']),
     output: outputSchema,
+    verdictPolicy: verdictPolicySchema.optional(),
   })
   .strict();
 
@@ -142,6 +165,19 @@ export const workflowSchema = z
       if (step.type === 'review-cycle') {
         if (stepIds.has(step.gateId)) context.addIssue({ code: 'custom', path: ['steps', index, 'gateId'], message: `duplicate step ID "${step.gateId}"` });
         stepIds.add(step.gateId);
+      }
+      if (step.type === 'agent' && step.verdictPolicy?.changesRequested) {
+        const retryFrom = step.verdictPolicy.changesRequested.retryFrom;
+        const target = workflow.steps
+          .slice(0, index)
+          .find((candidate) => candidate.id === retryFrom);
+        if (!target || target.type !== 'agent') {
+          context.addIssue({
+            code: 'custom',
+            path: ['steps', index, 'verdictPolicy', 'changesRequested', 'retryFrom'],
+            message: 'must reference an earlier agent step',
+          });
+        }
       }
     });
 
