@@ -13,6 +13,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - Controlled patch application accepts standard unified diffs as well as diffs with optional `diff --git` headers.
 - OpenCode execution now receives a path-free response contract, so sandboxed agents return Markdown to Impresairio instead of trying to access runner-owned artifact paths.
 - OpenCode execution may inspect repository files while remaining unable to write or modify them.
+- Codex execution now returns Markdown on stdout instead of attempting to write a runner-owned staging file from its read-only sandbox.
 
 ### Added
 

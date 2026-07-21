@@ -18,8 +18,11 @@ export class CodexProvider implements AgentProvider {
   prepareInvocation(request: ProviderPreparationRequest): PreparedAgentInvocation {
     return {
       command: 'codex',
-      args: ['exec', '--sandbox', 'read-only', '--output-last-message', request.expectedOutput],
-      input: `${renderInstruction(request.instruction)}\n\nExpected Markdown output: ${request.expectedOutput}`,
+      args: ['exec', '--sandbox', 'read-only'],
+      // The runner owns artifact publication. Asking Codex to write a staging
+      // file conflicts with the intentionally read-only sandbox and wraps an
+      // otherwise valid response in a denied-write diagnostic.
+      input: `${renderInstruction(request.instruction)}\n\nReturn the complete Markdown artifact in your response only. Do not write or modify files.`,
     };
   }
 
