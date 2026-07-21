@@ -81,7 +81,9 @@ process executes from that directory even when `advance` is invoked elsewhere.
 Runs created by an older Impresairio version have no frozen repository field and
 retain the legacy behavior of using the `advance` caller's current directory.
 The runner owns artifact persistence: agents return Markdown, which is then saved to
-the expected documentation location. `complete` remains available when a handoff was
+the expected documentation location. Provider prompts must not ask an agent to read
+or write an artifact path: the path can be outside the agent's repository sandbox,
+and only Impresairio may publish it. `complete` remains available when a handoff was
 executed manually.
 
 ## Capabilities and prompt files

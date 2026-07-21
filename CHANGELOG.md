@@ -6,6 +6,10 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### Fixed
+
+- OpenCode execution now receives a path-free response contract, so sandboxed agents return Markdown to Impresairio instead of trying to access runner-owned artifact paths.
+
 ### Added
 
 - Typed workflow parameters, explicit composed-workflow `with` mappings, structured Markdown results, and safe conditional agent steps.
