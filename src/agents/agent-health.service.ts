@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService, type LoadedConfiguration, type ResolvedAgentProfile } from '../config/config.service';
 import { ProviderRegistryService } from './provider-registry.service';
+import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from './opencode.provider';
 
 export interface AgentCommandResult {
   readonly status: number | null;
@@ -68,6 +69,15 @@ export class AgentHealthService {
       }
       if (result.status !== 0) {
         return { ...identity(name, agent), ok: false, detail: compact(result.stderr || result.stdout || `exited with ${result.status}`) };
+      }
+      if (live && agent.provider === 'opencode') {
+        const output = readOpenCodeRunOutput(result.stdout);
+        if (output.kind !== 'text') {
+          return { ...identity(name, agent), ok: false, detail: describeOpenCodeRunOutput(output) };
+        }
+        if (!/^OK[.!]?$/i.test(output.content.trim())) {
+          return { ...identity(name, agent), ok: false, detail: 'OpenCode live probe did not return the expected OK response' };
+        }
       }
       return { ...identity(name, agent), ok: true, detail: live ? 'live probe succeeded' : compact(result.stdout || 'executable available') };
     } catch (error) {

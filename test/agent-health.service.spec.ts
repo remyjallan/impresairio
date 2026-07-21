@@ -26,7 +26,7 @@ function service(executor: AgentCommandExecutor) {
       get: (name: string) => ({
         prepareHealthCheck: ({ live, agent }: { live: boolean; agent: { model?: string } }) => ({
           command: name === 'opencode' ? 'opencode' : 'claude',
-          args: live && name === 'opencode' ? ['run', '--model', agent.model!] : ['--version'],
+          args: live && name === 'opencode' ? ['run', '--model', agent.model!, '--format', 'json'] : ['--version'],
           ...(live ? { input: 'Reply with exactly OK.' } : {}),
         }),
       }),
@@ -57,14 +57,33 @@ describe('AgentHealthService', () => {
     const results = service({
       execute: (command, args, input) => {
         calls.push({ command, args, input });
-        return { status: 0, stdout: 'OK\n', stderr: '' };
+        return {
+          status: 0,
+          stdout: JSON.stringify({ type: 'text', part: { type: 'text', text: 'OK.' } }),
+          stderr: '',
+        };
       },
     }).check('/tmp/repo', ['opencode-glm'], true);
 
     expect(calls).toEqual([{
-      command: 'opencode', args: ['run', '--model', 'openrouter/z-ai/glm-5.2'], input: 'Reply with exactly OK.',
+      command: 'opencode', args: ['run', '--model', 'openrouter/z-ai/glm-5.2', '--format', 'json'], input: 'Reply with exactly OK.',
     }]);
     expect(results[0]).toMatchObject({ ok: true, detail: 'live probe succeeded' });
+  });
+
+  it('turns empty or permission-only OpenCode live output into an actionable failed check', () => {
+    const empty = service({ execute: () => ({ status: 0, stdout: '', stderr: '' }) })
+      .check('/tmp/repo', ['opencode-glm'], true);
+    const permission = service({
+      execute: () => ({
+        status: 0,
+        stdout: JSON.stringify({ type: 'permission.requested', part: { type: 'permission' } }),
+        stderr: '',
+      }),
+    }).check('/tmp/repo', ['opencode-glm'], true);
+
+    expect(empty[0]).toMatchObject({ ok: false, detail: expect.stringContaining('returned no text event') });
+    expect(permission[0]).toMatchObject({ ok: false, detail: expect.stringContaining('requested permission') });
   });
 
   it('reports a missing configured profile without aborting the other checks', () => {

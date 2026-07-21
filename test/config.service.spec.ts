@@ -189,6 +189,26 @@ describe('ConfigService', () => {
     );
   });
 
+  it('resolves independently pinned OpenCode profiles without selecting one from workflow YAML', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    const configPath = join(home, 'config.yaml');
+    writeFileSync(
+      configPath,
+      `${readFileSync(configPath, 'utf8').replace(
+        'models:\n  glm-5.2: openrouter/z-ai/glm-5.2',
+        '  opencode-kimi:\n    provider: opencode\n    modelAlias: kimi-3\n\nmodels:\n  glm-5.2: openrouter/z-ai/glm-5.2\n  kimi-3: openrouter/moonshotai/kimi-k2',
+      )}`,
+      'utf8',
+    );
+
+    const profiles = new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }))
+      .load(repository).agentProfiles;
+    expect(profiles['opencode-glm']).toMatchObject({ model: 'openrouter/z-ai/glm-5.2' });
+    expect(profiles['opencode-kimi']).toMatchObject({ model: 'openrouter/moonshotai/kimi-k2' });
+  });
+
   it('rejects an unregistered provider name in global configuration', () => {
     const home = createDirectory();
     const repository = createDirectory();

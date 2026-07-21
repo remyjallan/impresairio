@@ -139,7 +139,7 @@ describe('AgentDispatchService', () => {
     expect(handoff).toMatchObject({
       mode: 'prepared-non-interactive',
       provider: 'opencode',
-      invocation: { command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2'] },
+      invocation: { command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2', '--format', 'json'] },
     });
     expect(processRunner.calls).toHaveLength(1);
     expect(events.read('run-agent')).toContainEqual(expect.objectContaining({

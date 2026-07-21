@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { OpenCodeProvider, OpenCodeProviderError } from '../src/agents/opencode.provider';
+import {
+  describeOpenCodeRunOutput,
+  OpenCodeProvider,
+  OpenCodeProviderError,
+  readOpenCodeRunOutput,
+} from '../src/agents/opencode.provider';
 
 describe('OpenCodeProvider', () => {
   const provider = new OpenCodeProvider();
@@ -23,7 +28,7 @@ describe('OpenCodeProvider', () => {
       },
     });
     expect(invocation).toMatchObject({
-      command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2'], model: 'z-ai/glm-5.2',
+      command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2', '--format', 'json'], model: 'z-ai/glm-5.2',
     });
     expect(invocation.input).toContain('You may inspect repository files.');
     expect(invocation.input).toContain('Return the complete Markdown artifact in your response only.');
@@ -41,8 +46,25 @@ describe('OpenCodeProvider', () => {
       live: true,
     })).toEqual({
       command: 'opencode',
-      args: ['run', '--model', 'openrouter/z-ai/glm-5.2'],
+      args: ['run', '--model', 'openrouter/z-ai/glm-5.2', '--format', 'json'],
       input: 'Reply with exactly OK. Do not use tools or modify files.',
     });
+  });
+
+  it('extracts final Markdown from OpenCode JSONL without treating progress as content', () => {
+    expect(readOpenCodeRunOutput([
+      JSON.stringify({ type: 'step_start', part: { type: 'step-start' } }),
+      JSON.stringify({ type: 'text', part: { type: 'text', text: '# Report\n\nDone.' } }),
+      JSON.stringify({ type: 'step_finish', part: { type: 'step-finish' } }),
+    ].join('\n'))).toEqual({ kind: 'text', content: '# Report\n\nDone.' });
+  });
+
+  it('classifies an OpenCode permission request without enabling auto approval', () => {
+    const output = readOpenCodeRunOutput(JSON.stringify({
+      type: 'permission.requested', part: { type: 'permission', tool: 'bash' },
+    }));
+
+    expect(output).toEqual({ kind: 'permission-request' });
+    expect(describeOpenCodeRunOutput(output)).toContain('never enables --auto');
   });
 });

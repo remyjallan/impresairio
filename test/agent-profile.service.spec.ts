@@ -65,4 +65,28 @@ describe('AgentProfileService', () => {
       },
     });
   });
+
+  it('freezes independently selected OpenCode profiles for different workflow actors', () => {
+    expect(service.resolveForActors(
+      { implementer: 'opencode-glm', reviewer: 'opencode-kimi' },
+      ['implementer', 'reviewer'],
+      {
+        'opencode-glm': {
+          provider: 'opencode', modelAlias: 'glm-5.2', model: 'openrouter/z-ai/glm-5.2',
+        },
+        'opencode-kimi': {
+          provider: 'opencode', modelAlias: 'kimi-3', model: 'openrouter/moonshotai/kimi-k2',
+        },
+      },
+    )).toEqual({
+      implementer: {
+        profile: 'opencode-glm', provider: 'opencode',
+        modelAlias: 'glm-5.2', model: 'openrouter/z-ai/glm-5.2',
+      },
+      reviewer: {
+        profile: 'opencode-kimi', provider: 'opencode',
+        modelAlias: 'kimi-3', model: 'openrouter/moonshotai/kimi-k2',
+      },
+    });
+  });
 });
