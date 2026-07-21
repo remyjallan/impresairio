@@ -146,7 +146,7 @@ impresairio doctor --live --profile opencode-glm
 
 V0 includes `feature` and `quick-fix`. A repository may override either one with `.impresairio/workflows/<workflow-id>.yaml`; a global override lives in `<impresairio-home>/workflows/`. Workflows are a deliberately closed YAML grammar: no inline shell, provider selection, loops or dynamic expressions.
 
-Read [workflows](docs/workflows.md) before adding an override. Read [agents](docs/agents.md) for the provider and OpenCode model contract, and [gates and recovery](docs/gates-and-recovery.md) before running a feature with human approval gates.
+Read [workflows](docs/workflows.md) before adding an override. Read [agents](docs/agents.md) for the provider and OpenCode model contract, [the roadmap](docs/roadmap.md) for planned Claude Code and Codex model/effort profiles, and [gates and recovery](docs/gates-and-recovery.md) before running a feature with human approval gates.
 
 ## Dogfooding V0
 

@@ -98,13 +98,30 @@ Claude, Codex and OpenCode have identical native abilities.
 The handoff carries that exact content, so an edit to the workflow directory later
 does not silently change an in-progress run.
 
-## OpenCode models
+## Current model selection
 
 OpenCode profiles must name a model alias, and the alias must resolve through the
 global `models` map. The prepared invocation always contains the resolved model ID,
 for example `openrouter/z-ai/glm-5.2`; it never relies on a mutable default model. The
 `agent.invocation.prepared` event records the alias and resolved ID before any
 execution occurs.
+
+Claude Code and Codex profiles currently use the respective CLI defaults. They do
+not yet accept a configured model or reasoning-effort setting. The planned extension
+is specified in [the roadmap](roadmap.md#provider-specific-model-and-reasoning-profiles).
+
+## Planned profile selection by task complexity
+
+The roadmap deliberately extends profiles rather than adding automatic provider
+routing. A user will be able to define several profiles for the same provider — for
+example `codex-luna`, `codex-terra`, and `codex-sol` — with an explicit model and
+reasoning effort for each. The person starting a run then binds the appropriate
+profile to each workflow role with `--actor` (or an existing role shortcut).
+
+This keeps the complexity decision visible, reviewable, and frozen at run start;
+workflow YAML continues to bind abstract roles and must not select a provider,
+model, or profile itself. See the roadmap for the proposed configuration contract,
+validation, and execution requirements.
 
 ## Connectivity checks
 

@@ -33,6 +33,8 @@ Investigate before extending V0 when either run requires more than one manual re
 
 Only then select the smallest response to the observed problem. Examples:
 
+- Repeated inability to audit or choose the right provider model/effort may justify
+  the narrowly scoped profile controls described in `docs/roadmap.md`.
 - Repeated provider invocation mistakes may justify a narrowly scoped provider adapter or fallback policy.
 - Repeated workflow duplication may justify one reusable YAML component.
 - Repeated path configuration mistakes may justify another documentation target kind.
