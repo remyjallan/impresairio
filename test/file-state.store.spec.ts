@@ -62,6 +62,38 @@ describe('FileStateStore', () => {
     expect(store.findState(state.id)).toEqual(state);
   });
 
+  it('round-trips frozen capability methods and free actor ids', () => {
+    const { store } = createStore();
+    const state = createRunState({
+      id: 'run-capability-methods',
+      workflowId: 'feature',
+      workflowSha256: 'a'.repeat(64),
+      roles: { 'product-author': 'claude', skeptic: 'codex' },
+      documentation,
+      steps: [
+        {
+          id: 'model',
+          kind: 'agent',
+          actor: 'product-author',
+          method: { capability: 'threat-model', skill: 'local:threat-model' },
+          output: { id: 'threat-model', filename: 'threat-model.md' },
+        },
+        {
+          id: 'review',
+          kind: 'agent',
+          actor: 'skeptic',
+          method: { capability: 'threat-review', promptSource: 'global', content: 'Challenge it.' },
+          output: { id: 'threat-review', filename: 'threat-review.md' },
+        },
+      ],
+      now: '2026-07-21T10:00:00.000Z',
+    });
+
+    store.create(state);
+
+    expect(store.findState(state.id)).toEqual(state);
+  });
+
   it('rejects malformed persisted state', () => {
     const { home, store } = createStore();
     const statePath = join(home, 'runs', 'broken', 'state.json');

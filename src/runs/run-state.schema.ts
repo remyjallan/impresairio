@@ -37,6 +37,12 @@ const declaredWorkflowOutputSchema = z
 const agentMethodSchema = z.union([
   z.object({ action: nonEmptyString }).strict(),
   z.object({ promptFile: nonEmptyString, content: z.string().min(1) }).strict(),
+  z.object({ capability: nonEmptyString, skill: nonEmptyString }).strict(),
+  z.object({
+    capability: nonEmptyString,
+    promptSource: z.enum(['global', 'package']),
+    content: z.string().min(1),
+  }).strict(),
 ]);
 
 const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
@@ -85,7 +91,7 @@ const runAgentStepSchema = z
     id: nonEmptyString,
     kind: z.literal('agent'),
     status: stepStatusSchema,
-    actor: z.enum(['launcher', 'adversary', 'implementer']),
+    actor: nonEmptyString,
     method: agentMethodSchema,
     declaredOutput: declaredWorkflowOutputSchema,
     expectedOutput: preparedDocumentationOutputSchema.optional(),
@@ -207,7 +213,8 @@ export function createRunState(input: {
   readonly steps: readonly {
     readonly id: string;
     readonly kind: 'agent' | 'gate';
-    readonly actor?: 'launcher' | 'adversary' | 'implementer';
+    readonly actor?: string;
+    readonly method?: z.input<typeof agentMethodSchema>;
     readonly action?: string;
     readonly promptFile?: string;
     readonly prompt?: string;
@@ -270,9 +277,11 @@ export function createRunState(input: {
       if (!step.actor || !step.output) {
         throw new Error(`Agent ${step.id} requires an actor and declared output`);
       }
-      const method = step.action ? { action: step.action } : step.promptFile && step.prompt
-        ? { promptFile: step.promptFile, content: step.prompt }
-        : undefined;
+      const method = step.method ?? (step.action
+        ? { action: step.action }
+        : step.promptFile && step.prompt
+          ? { promptFile: step.promptFile, content: step.prompt }
+          : undefined);
       if (!method || (step.action && step.promptFile)) {
         throw new Error(`Agent ${step.id} requires exactly one action or promptFile`);
       }
