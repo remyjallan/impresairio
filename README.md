@@ -1,5 +1,9 @@
 # Impresairio
 
+<p align="center">
+  <img src="assets/branding/impresairio-banner.png" alt="Impresairio AI workflow runner" width="100%">
+</p>
+
 Impresairio is a local, durable CLI for executing AI-assisted engineering workflows. It keeps workflow state, human approvals and documentation contracts outside an application repository while allowing each repository to share small YAML workflow definitions.
 
 ## Project objective
