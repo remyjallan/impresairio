@@ -103,6 +103,79 @@ describe('CompleteCommand', () => {
     expect(() => service.complete('missing', 'design')).toThrow(CompletionError);
   });
 
+  it('applies a policy retry-from transition and records the verdict event', () => {
+    const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
+    const retries: unknown[] = [];
+    const artifactService = {
+      completeExpectedOutput: () => ({
+        id: 'verification', path: '/docs/v.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+      }),
+    };
+    const service = new CompletionService(
+      { ...store, applyVerdictRetry: (...call: unknown[]) => { retries.push(call); } },
+      artifactService,
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'policy',
+        reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
+        transition: { kind: 'retry-from', targetStepId: 'implement' },
+      }) },
+    );
+
+    service.complete('run-42', 'verify');
+
+    expect(retries).toEqual([['run-42', 'verify', 'implement']]);
+    expect(store.events).toContainEqual(expect.objectContaining({
+      type: 'verdict.changes_requested', stepId: 'verify', retryFrom: 'implement',
+    }));
+  });
+
+  it.each([
+    ['BLOCKED', false, 'verdict.blocked'],
+    ['CHANGES_REQUESTED', true, 'verdict.exhausted'],
+  ] as const)('records %s halts as %s events', (verdict, exhausted, eventType) => {
+    const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
+    const service = new CompletionService(
+      store,
+      { completeExpectedOutput: () => ({
+        id: 'verification', path: '/docs/v.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+      }) },
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'policy',
+        reviewOutcome: { verdict, exhausted },
+        transition: { kind: 'halt' },
+      }) },
+    );
+
+    service.complete('run-42', 'verify');
+
+    expect(store.events).toContainEqual(expect.objectContaining({ type: eventType, stepId: 'verify' }));
+  });
+
+  it('does not emit verdict events for cycle-sourced outcomes', () => {
+    const store = createStore({ id: 'design-review-1', kind: 'agent', status: 'in_progress' });
+    const service = new CompletionService(
+      store,
+      { completeExpectedOutput: () => ({
+        id: 'design-review-1', path: '/docs/r.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+      }) },
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'cycle',
+        reviewOutcome: { verdict: 'APPROVED', exhausted: false },
+        transition: { kind: 'continue' },
+      }) },
+    );
+
+    service.complete('run-42', 'design-review-1');
+
+    expect(store.events.filter((event) => String((event as { type: string }).type).startsWith('verdict.'))).toEqual([]);
+  });
+
   it('refuses a concurrent completion before reading, verifying or mutating the run', async () => {
     const store = createStore({ id: 'design', kind: 'agent', status: 'in_progress' });
     const verifier = { completeExpectedOutput: () => { throw new Error('must not verify output'); } };

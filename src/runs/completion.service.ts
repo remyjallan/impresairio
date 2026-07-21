@@ -53,7 +53,10 @@ export interface CompletionPolicy {
 export type CompletionEvent =
   | { readonly type: 'step.completed'; readonly stepId: string; readonly at: string; readonly outputSha256: string }
   | { readonly type: 'cycle.exhausted'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'CHANGES_REQUESTED'; readonly at: string }
-  | { readonly type: 'cycle.blocked'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'BLOCKED'; readonly at: string };
+  | { readonly type: 'cycle.blocked'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'BLOCKED'; readonly at: string }
+  | { readonly type: 'verdict.changes_requested'; readonly stepId: string; readonly retryFrom: string; readonly at: string }
+  | { readonly type: 'verdict.exhausted'; readonly stepId: string; readonly at: string }
+  | { readonly type: 'verdict.blocked'; readonly stepId: string; readonly at: string };
 
 export interface CompletionRunStore {
   find(runId: string): CompletionRun | undefined;
@@ -149,7 +152,23 @@ export class CompletionService {
         at: this.now().toISOString(),
         outputSha256: output.sha256,
       });
-      if (policyResult.reviewOutcome?.exhausted || policyResult.reviewOutcome?.verdict === 'BLOCKED') {
+      if (policyResult.source === 'policy' && policyResult.reviewOutcome) {
+        if (policyResult.transition?.kind === 'retry-from') {
+          this.store.applyVerdictRetry?.(runId, stepId, policyResult.transition.targetStepId);
+          this.store.appendEvent(runId, {
+            type: 'verdict.changes_requested',
+            stepId,
+            retryFrom: policyResult.transition.targetStepId,
+            at: this.now().toISOString(),
+          });
+        } else if (policyResult.transition?.kind === 'halt') {
+          this.store.appendEvent(runId, policyResult.reviewOutcome.verdict === 'BLOCKED'
+            ? { type: 'verdict.blocked', stepId, at: this.now().toISOString() }
+            : { type: 'verdict.exhausted', stepId, at: this.now().toISOString() });
+        }
+      }
+      if (policyResult.source !== 'policy'
+        && (policyResult.reviewOutcome?.exhausted || policyResult.reviewOutcome?.verdict === 'BLOCKED')) {
         const persisted = this.store.find(runId)?.steps.find((candidate) => candidate.id === stepId);
         const cycle = persisted && 'cycle' in persisted ? persisted.cycle : undefined;
         if (cycle) {
