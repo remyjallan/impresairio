@@ -60,6 +60,7 @@ function createRunner(steps: Parameters<typeof createRunState>[0]['steps']) {
   }));
   return {
     store,
+    events,
     runner: new WorkflowRunnerService(
       store,
       events,
@@ -98,7 +99,7 @@ describe('WorkflowRunnerService', () => {
   });
 
   it('skips completed work but stops at the first waiting human gate', () => {
-    const { runner, store } = createRunner([
+    const { runner, store, events } = createRunner([
       agent('design'),
       gate('approve-design', 'design-output'),
       agent('specification'),
@@ -114,6 +115,12 @@ describe('WorkflowRunnerService', () => {
 
     expect(runner.next('run-workflow')).toEqual({ kind: 'gate', stepId: 'approve-design' });
     expect(store.findState('run-workflow')?.steps[2]).toMatchObject({ status: 'pending' });
+    expect(events.read('run-workflow')).toContainEqual(expect.objectContaining({
+      type: 'gate.reached', gateId: 'approve-design',
+    }));
+
+    runner.next('run-workflow');
+    expect(events.read('run-workflow').filter((event) => event.type === 'gate.reached')).toHaveLength(1);
   });
 
   it('reports completion when every declared step is complete', () => {

@@ -52,6 +52,8 @@ import { ConditionEvaluatorService } from './workflows/condition-evaluator.servi
 import { RepositoryPatchService } from './runs/repository-patch.service';
 import { AgentFallbackService } from './agents/agent-fallback.service';
 import { FallbackCommand } from './commands/fallback.command';
+import { ReportCommand, REPORT_WRITER } from './commands/report.command';
+import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
 
 @Module({
   providers: [
@@ -68,10 +70,12 @@ import { FallbackCommand } from './commands/fallback.command';
     RequestChangesCommand,
     RetryCommand,
     FallbackCommand,
+    ReportCommand,
     NextCommand,
     AgentProfileService,
     AgentDispatchService,
     AgentFallbackService,
+    RunReportService,
     CapabilityResolverService,
     AgentHealthService,
     ProviderRegistryService,
@@ -170,6 +174,14 @@ import { FallbackCommand } from './commands/fallback.command';
     {
       provide: DOCTOR_WRITER,
       useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: REPORT_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: REPORT_CLOCK,
+      useValue: () => new Date(),
     },
     {
       // Keep machine-oriented advance output on stdout while progress stays

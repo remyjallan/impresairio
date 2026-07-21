@@ -61,6 +61,7 @@ export class WorkflowRunnerService {
         if (step.kind === 'gate') {
           const reopened = this.staleInvalidation.reopenGateIfReady(runId, state, step.id);
           if (reopened) {
+            this.recordGateReached(runId, reopened, step.id);
             return { kind: 'gate', stepId: step.id };
           }
         }
@@ -71,6 +72,7 @@ export class WorkflowRunnerService {
       }
       if (step.kind === 'gate') {
         const warnings = verdictWarnings(state, step.id);
+        this.recordGateReached(runId, state, step.id);
         return { kind: 'gate', stepId: step.id, ...(warnings.length > 0 ? { warnings } : {}) };
       }
       if (step.status === 'in_progress') {
@@ -136,5 +138,19 @@ export class WorkflowRunnerService {
         );
     }
     return Object.fromEntries(hashes);
+  }
+
+  private recordGateReached(runId: string, state: RunState, gateId: string): void {
+    const gate = state.steps.find((step) => step.id === gateId);
+    if (!gate || gate.kind !== 'gate' || gate.reachedAt) return;
+    const timestamp = this.now().toISOString();
+    this.stateStore.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === gateId && step.kind === 'gate'
+        ? { ...step, reachedAt: timestamp }
+        : step),
+      updatedAt: timestamp,
+    });
+    this.eventLog.append(runId, { type: 'gate.reached', at: timestamp, gateId });
   }
 }
