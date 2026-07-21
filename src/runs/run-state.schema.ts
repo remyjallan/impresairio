@@ -240,6 +240,7 @@ const runGateStepSchema = z
         comment: z.string().min(1),
       }).strict(),
     ),
+    reachedAt: timestampSchema.optional(),
   })
   .strict();
 

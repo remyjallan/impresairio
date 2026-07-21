@@ -98,6 +98,7 @@ export class StaleInvalidationService {
           ...step,
           status: 'pending' as const,
           approval: undefined,
+          reachedAt: undefined,
           feedback: [...step.feedback, { requestedAt: timestamp, comment }],
         };
       }
@@ -190,7 +191,7 @@ export class StaleInvalidationService {
     }
     const timestamp = this.now().toISOString();
     const steps = state.steps.map((step) => step.id === gateId
-      ? { ...step, status: 'pending' as const, approval: undefined }
+      ? { ...step, status: 'pending' as const, approval: undefined, reachedAt: undefined }
       : step);
     const next = this.withTimestamp({ ...state, steps });
     this.stateStore.save(next);
