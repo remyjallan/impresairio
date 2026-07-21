@@ -18,12 +18,14 @@ import {
   type ExpandedWorkflowStep,
   WorkflowExpanderService,
 } from '../workflows/workflow-expander.service';
+import { resolveRootParameters } from '../workflows/workflow-parameters';
 
 export interface StartRunRequest {
   readonly id?: string;
   readonly workflowId: string;
   readonly request: string;
   readonly roles: Readonly<Record<string, string>>;
+  readonly parameters?: Readonly<Record<string, string>>;
   readonly feature: {
     readonly id: string;
     readonly slug: string;
@@ -69,7 +71,8 @@ export class RunService {
       request.workflowId,
       repositoryDirectory,
     );
-    const expanded = this.workflowExpander.expand(resolvedWorkflow, repositoryDirectory);
+    const parameters = resolveRootParameters(resolvedWorkflow.workflow.parameters, request.parameters ?? {});
+    const expanded = this.workflowExpander.expand(resolvedWorkflow, repositoryDirectory, parameters);
     const steps = expanded.steps;
     const documentation: RunState['documentation'] = {
       target: configuration.documentation.target,
@@ -100,6 +103,7 @@ export class RunService {
       workflowSha256: resolvedWorkflow.sha256,
       workflowDefinitions: expanded.definitions,
       resolvedActors,
+      parameters,
       steps: steps.map((step) => ({
         id: step.id,
         kind: step.type,
@@ -123,6 +127,9 @@ export class RunService {
                     ),
               }),
               output: step.output,
+              effectiveParameters: step.effectiveParameters,
+              ...(step.result ? { result: step.result } : {}),
+              ...(step.when ? { when: step.when } : {}),
               ...(step.cycle ? { cycle: step.cycle } : {}),
               ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
             }
@@ -142,6 +149,7 @@ export class RunService {
         documentationTarget: state.documentation.target.name,
         repositoryDirectory: state.repositoryDirectory,
         roles: state.roles,
+        parameters: state.parameters,
         resolvedActors: state.resolvedActors,
       });
     } finally {

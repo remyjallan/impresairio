@@ -92,7 +92,88 @@ A `gate` is a human approval boundary. It refers to an output from an earlier ag
   artifact: design
 ```
 
-The initial package workflows are `feature` and `quick-fix`. `feature` contains
+## Parameters
+
+A workflow may declare primitive parameters. Names use the normal workflow identifier
+syntax. `start` accepts each root value through repeatable `--param name=value`
+options; resolved values, including defaults, are frozen in the run state.
+
+```yaml
+parameters:
+  quality-mode:
+    type: enum
+    values: [light, standard, strict]
+    default: standard
+  require-review:
+    type: boolean
+    default: true
+  max-files:
+    type: integer
+    minimum: 1
+    maximum: 500
+    default: 80
+```
+
+Supported types are `string`, `boolean`, `integer`, and `enum`. A string is a
+single-line literal; booleans are exactly `true` or `false`; and integers are base-10
+integers. Unknown names, duplicate values, invalid types, out-of-range values, and a
+missing parameter without a default stop `start` before a run is created. Parameters
+are persisted and included in handoffs, so they must not contain secrets.
+
+## Structured results and conditions
+
+An agent may declare a small, strict result object in addition to its Markdown output.
+It appends exactly one fenced `impresairio-result` JSON block; `complete` and
+`advance` validate it before marking the step complete.
+
+```yaml
+- id: classify
+  type: agent
+  actor: implementer
+  capability: change-classification
+  output:
+    id: classification
+    filename: "00 - Classification.md"
+    storage: internal
+  result:
+    fields:
+      complexity:
+        type: enum
+        values: [trivial, standard, complex]
+```
+
+````text
+```impresairio-result
+{"complexity":"standard"}
+```
+````
+
+Result fields use the same four primitive types but cannot define defaults. A missing,
+duplicate, malformed, or invalid block leaves the step `in_progress` so its artifact
+can be corrected and `complete` repeated. It does not silently coerce data or consume
+a retry.
+
+`when` is available only on direct `agent` steps. It accepts `equals`, `notEquals`,
+`all`, `any`, and `not`, and may read only an effective parameter or a declared result
+field from an earlier agent step:
+
+```yaml
+when:
+  notEquals:
+    left:
+      result:
+        step: classify
+        field: complexity
+    right: trivial
+```
+
+A false condition becomes an explicit `skipped` step and emits an event. It is reset
+when the source step is retried or becomes stale. Conditions cannot execute code, read
+files or environment variables, inspect raw Markdown, or apply to gates, review
+cycles, or composed steps.
+
+The package workflows are `feature`, `quick-fix`, and the small dogfooding workflow
+`classification-smoke`. `feature` contains
 bounded author/reviewer cycles for design, specification and integration plan,
 each followed by a human approval gate, then implementation, final review and
 report steps. Its public documents retain the historical sequence numbers 01,
@@ -134,7 +215,7 @@ agent invocations and calls the same completion path automatically. `approve`,
 
 ## Security boundary
 
-Validation is closed by default. Unknown YAML fields are errors. Therefore a workflow cannot add a `shell`, `provider`, `loop`, condition, arbitrary command or a dynamic expression. Inline prompts are not part of the grammar.
+Validation is closed by default. Unknown YAML fields are errors. Therefore a workflow cannot add a `shell`, `provider`, loop, arbitrary command, dynamic expression, or inline prompt. `when` is a deliberately closed condition grammar over declared parameters and structured results only.
 
 `promptFile` must be a relative `.md` path and cannot be absolute or contain traversal segments. Output filenames must be Markdown filenames, not paths. Template values are identifiers only. Bindings for documentation paths remain owned by the repository configuration rather than arbitrary workflow expressions. The V0 fixed keys are resolved during `start`, then stored in the run: `project.name`, `project.slug`, `feature.id`, `feature.slug` and `run.id`.
 
@@ -164,7 +245,28 @@ steps:
 repository, global, then package precedence as a directly started workflow.
 References may be nested; direct and indirect composition cycles fail `start`
 with the complete cycle chain. Composition is sequential in this release and
-does not accept `with`, parameters, conditions, exports or parallel branches.
+does not accept artifact exports or parallel branches.
+
+A composed step may pass primitive parameters to its direct child with `with`.
+Values are either literals or an explicit reference to an immediate parent parameter:
+
+```yaml
+parameters:
+  quality-mode:
+    type: enum
+    values: [light, strict]
+    default: light
+steps:
+  - id: implementation
+    uses: workflow:proportional-implementation
+    with:
+      quality-mode:
+        fromParameter: quality-mode
+```
+
+Every `with` key must be declared by the child; omitted child parameters use their
+own default or make `start` fail if required. Child mappings are type checked and
+resolved recursively at `start`, not dynamically during execution.
 
 The optional `actors` map is written from child role to parent role. An omitted
 child role keeps its name, so mappings may be partial. In the example,
@@ -200,7 +302,7 @@ The comparison is Unicode-normalized and case-insensitive so a workflow remains
 safe when moved between Linux, macOS and Windows filesystems.
 Canonical review-cycle consolidations may reuse their own output ID and path.
 Mounting the same publishing workflow twice therefore requires distinct
-filenames; parameterized filenames are deferred to a later workflow contract.
+filenames; parameterized filenames remain outside this workflow contract.
 
 Example standalone child:
 

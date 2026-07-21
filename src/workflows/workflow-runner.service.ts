@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import { RunLockService } from '../runs/run-lock.service';
@@ -6,6 +6,7 @@ import type { RunState } from '../runs/run-state.schema';
 import { ArtifactService } from '../documentation/artifact.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
 import { isVerdictHalted, verdictWarnings } from './verdict-completion.policy';
+import { ConditionEvaluatorService } from './condition-evaluator.service';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
@@ -24,12 +25,14 @@ export class WorkflowRunnerService {
     @Inject(ArtifactService) private readonly artifacts: ArtifactService,
     @Inject(StaleInvalidationService) private readonly staleInvalidation: StaleInvalidationService,
     @Inject(WORKFLOW_CLOCK) private readonly now: () => Date = () => new Date(),
+    @Optional() @Inject(ConditionEvaluatorService)
+    private readonly conditions: ConditionEvaluatorService = new ConditionEvaluatorService(),
   ) {}
 
   next(runId: string): NextStepResult {
     const release = this.locks.acquire(runId, 'next');
     try {
-      const state = this.staleInvalidation.preflightApprovedArtifacts(
+      let state = this.staleInvalidation.preflightApprovedArtifacts(
         runId,
         this.requiredState(runId),
       );
@@ -37,10 +40,23 @@ export class WorkflowRunnerService {
       if (halted) {
         return { kind: 'blocked', stepId: halted.id, warnings: verdictWarnings(state) };
       }
-      const step = state.steps.find((candidate) => candidate.status !== 'complete' && candidate.status !== 'skipped');
-      if (!step) {
-        return { kind: 'complete' };
+      let step = state.steps.find((candidate) => candidate.status !== 'complete' && candidate.status !== 'skipped');
+      while (step?.kind === 'agent' && step.status === 'pending' && step.when
+        && !this.conditions.evaluate(step.when, state, step.effectiveParameters)) {
+        const timestamp = this.now().toISOString();
+        const steps = state.steps.map((candidate) => candidate.id === step?.id && candidate.kind === 'agent'
+          ? {
+              ...candidate,
+              status: 'skipped' as const,
+              conditionDecision: { condition: candidate.when!, evaluatedAt: timestamp, result: false as const },
+            }
+          : candidate);
+        state = { ...state, steps, updatedAt: timestamp };
+        this.stateStore.save(state);
+        this.eventLog.append(runId, { type: 'step.skipped', at: timestamp, stepId: step.id, reason: 'condition-false' });
+        step = state.steps.find((candidate) => candidate.status !== 'complete' && candidate.status !== 'skipped');
       }
+      if (!step) return { kind: 'complete' };
       if (step.status === 'stale') {
         if (step.kind === 'gate') {
           const reopened = this.staleInvalidation.reopenGateIfReady(runId, state, step.id);

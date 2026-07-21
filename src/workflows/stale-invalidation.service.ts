@@ -89,6 +89,8 @@ export class StaleInvalidationService {
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
           reviewOutcome: undefined,
+          result: undefined,
+          conditionDecision: undefined,
         };
       }
       if (step.id === gate.id && step.kind === 'gate') {
@@ -141,6 +143,8 @@ export class StaleInvalidationService {
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
           reviewOutcome: undefined,
+          result: undefined,
+          conditionDecision: undefined,
           retryContext: undefined,
           acknowledgment: undefined,
         }

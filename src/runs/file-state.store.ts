@@ -145,6 +145,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         kind: step.kind,
         status: step.status,
         ...(step.kind === 'agent' && step.cycle ? { cycle: step.cycle } : {}),
+        ...(step.kind === 'agent' && step.declaredResult ? { declaredResult: step.declaredResult } : {}),
         ...(step.kind === 'agent' && step.expectedOutput
           ? { output: step.expectedOutput }
           : {}),
@@ -176,6 +177,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         output: { ...completion.output, completedAt },
         retryContext: undefined,
         ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
+        ...(completion.result ? { result: completion.result } : {}),
         attempts: [
           ...step.attempts.slice(0, -1),
           {
@@ -240,6 +242,8 @@ export class FileStateStore implements StateStore, CompletionRunStore {
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
           reviewOutcome: undefined,
+          result: undefined,
+          conditionDecision: undefined,
           ...(step.id === policyStepId ? { verdictRetries: (step.verdictRetries ?? 0) + 1 } : {}),
         };
       }
@@ -250,6 +254,8 @@ export class FileStateStore implements StateStore, CompletionRunStore {
           output: undefined,
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
+          result: undefined,
+          conditionDecision: undefined,
           retryContext: {
             sourceStepId: policyStepId,
             artifactPath: verdictArtifact.path,

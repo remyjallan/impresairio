@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { RunService } from '../runs/run.service';
+import { parseParameterAssignments } from '../workflows/workflow-parameters';
 
 export const START_WRITER = Symbol('START_WRITER');
 
@@ -14,6 +15,7 @@ interface StartOptions {
   readonly featureId?: string;
   readonly featureSlug?: string;
   readonly request?: string;
+  readonly param?: string[];
 }
 
 @Injectable()
@@ -38,6 +40,7 @@ export class StartCommand extends CommandRunner {
       roles: this.roles(options),
       feature: this.feature(options),
       request: this.request(options),
+      parameters: this.parameters(options),
       repositoryDirectory: options.repository,
     });
     this.write(`${state.id}\n`);
@@ -88,6 +91,11 @@ export class StartCommand extends CommandRunner {
     return value;
   }
 
+  @Option({ flags: '--param <name=value...>', description: 'Set a typed workflow parameter. Repeatable.' })
+  parseParameter(value: string, previous: string[] = []): string[] {
+    return [...previous, value];
+  }
+
   private roles(options: StartOptions): Record<string, string> {
     const roles: Record<string, string> = {};
     const assign = (role: string, profile: string, source: string): void => {
@@ -123,5 +131,9 @@ export class StartCommand extends CommandRunner {
       throw new Error('start requires --request');
     }
     return options.request;
+  }
+
+  private parameters(options: StartOptions): Record<string, string> {
+    return parseParameterAssignments(options.param ?? []);
   }
 }

@@ -8,6 +8,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Added
 
+- Typed workflow parameters, explicit composed-workflow `with` mappings, structured Markdown results, and safe conditional agent steps.
 - Sequential YAML workflow composition through `uses: workflow:<id>`, including nested role mappings, frozen definition provenance, cycle detection and collision-safe artifacts.
 - Free workflow capabilities and actor roles with start-time method resolution (`action` renamed to `capability`).
 - Declarative terminal verdict policies with bounded retries, halted-run surfacing and an audited `acknowledge` command.

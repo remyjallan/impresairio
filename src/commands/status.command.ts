@@ -38,9 +38,12 @@ export class StatusCommand extends CommandRunner {
     this.write([
       `run: ${run.id}`,
       `workflow: ${run.workflow.id}`,
+      ...(run.parameters && Object.keys(run.parameters).length > 0
+        ? [`parameters: ${JSON.stringify(run.parameters)}`]
+        : []),
       `current-step: ${run.currentStepId ?? 'not-started'}`,
       `steps: ${run.steps.length}`,
-      ...run.steps.map((step) => `${step.id}: ${step.status}`),
+      ...run.steps.map((step) => `${step.id}: ${step.status}${step.kind === 'agent' && step.conditionDecision ? ' (condition false)' : ''}`),
       ...verdictWarnings(run).map((warning) => `warning: ${warning}`),
       '',
     ].join('\n'));

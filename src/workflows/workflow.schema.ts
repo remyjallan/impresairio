@@ -8,10 +8,137 @@ const identifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
 
 const nonEmptyString = z.string().trim().min(1);
 
+const primitiveString = z.string().refine(
+  (value) => !value.includes('{{') && !value.includes('}}') && !value.includes('\n') && !value.includes('\r'),
+  'must not contain a dynamic expression or newline',
+);
+
+export const workflowPrimitiveValueSchema = z.union([
+  primitiveString,
+  z.boolean(),
+  z.number().int(),
+]);
+
+export type WorkflowPrimitiveValue = z.infer<typeof workflowPrimitiveValueSchema>;
+
 const staticText = nonEmptyString.refine(
   (value) => !value.includes('{{') && !value.includes('}}'),
   'must not contain a dynamic expression',
 );
+
+const stringParameterSchema = z.object({
+  type: z.literal('string'),
+  minLength: z.number().int().min(0).optional(),
+  maxLength: z.number().int().min(0).optional(),
+  default: primitiveString.optional(),
+}).strict().superRefine((value, context) => {
+  if (value.minLength !== undefined && value.maxLength !== undefined && value.minLength > value.maxLength) {
+    context.addIssue({ code: 'custom', path: ['minLength'], message: 'must not exceed maxLength' });
+  }
+  if (value.default !== undefined) {
+    if (value.minLength !== undefined && value.default.length < value.minLength) {
+      context.addIssue({ code: 'custom', path: ['default'], message: 'must satisfy minLength' });
+    }
+    if (value.maxLength !== undefined && value.default.length > value.maxLength) {
+      context.addIssue({ code: 'custom', path: ['default'], message: 'must satisfy maxLength' });
+    }
+  }
+});
+
+const booleanParameterSchema = z.object({
+  type: z.literal('boolean'),
+  default: z.boolean().optional(),
+}).strict();
+
+const integerParameterSchema = z.object({
+  type: z.literal('integer'),
+  minimum: z.number().int().optional(),
+  maximum: z.number().int().optional(),
+  default: z.number().int().optional(),
+}).strict().superRefine((value, context) => {
+  if (value.minimum !== undefined && value.maximum !== undefined && value.minimum > value.maximum) {
+    context.addIssue({ code: 'custom', path: ['minimum'], message: 'must not exceed maximum' });
+  }
+  if (value.default !== undefined) {
+    if (value.minimum !== undefined && value.default < value.minimum) {
+      context.addIssue({ code: 'custom', path: ['default'], message: 'must satisfy minimum' });
+    }
+    if (value.maximum !== undefined && value.default > value.maximum) {
+      context.addIssue({ code: 'custom', path: ['default'], message: 'must satisfy maximum' });
+    }
+  }
+});
+
+const enumParameterSchema = z.object({
+  type: z.literal('enum'),
+  values: z.array(staticText).min(1),
+  default: staticText.optional(),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.values).size !== value.values.length) {
+    context.addIssue({ code: 'custom', path: ['values'], message: 'must not contain duplicate values' });
+  }
+  if (value.default !== undefined && !value.values.includes(value.default)) {
+    context.addIssue({ code: 'custom', path: ['default'], message: 'must be one of values' });
+  }
+});
+
+export const workflowParameterDefinitionSchema = z.discriminatedUnion('type', [
+  stringParameterSchema,
+  booleanParameterSchema,
+  integerParameterSchema,
+  enumParameterSchema,
+]);
+
+export const workflowParametersSchema = z.record(identifier, workflowParameterDefinitionSchema);
+
+export type WorkflowParameterDefinition = z.infer<typeof workflowParameterDefinitionSchema>;
+export type WorkflowParameters = z.infer<typeof workflowParametersSchema>;
+
+export const workflowResultSchema = z.object({
+  fields: z.record(identifier, workflowParameterDefinitionSchema).refine(
+    (fields) => Object.keys(fields).length > 0,
+    'must declare at least one field',
+  ).superRefine((fields, context) => {
+    for (const [name, definition] of Object.entries(fields)) {
+      if (definition.default !== undefined) {
+        context.addIssue({ code: 'custom', path: [name, 'default'], message: 'is not allowed on a result field' });
+      }
+    }
+  }),
+}).strict();
+
+export type WorkflowResult = z.infer<typeof workflowResultSchema>;
+
+const parameterReferenceSchema = z.object({ parameter: identifier }).strict();
+const resultReferenceSchema = z.object({
+  result: z.object({ step: identifier, field: identifier }).strict(),
+}).strict();
+export const workflowConditionOperandSchema = z.union([
+  workflowPrimitiveValueSchema,
+  parameterReferenceSchema,
+  resultReferenceSchema,
+]);
+
+export type WorkflowConditionOperand = z.infer<typeof workflowConditionOperandSchema>;
+
+export type WorkflowCondition =
+  | { readonly equals: { readonly left: WorkflowConditionOperand; readonly right: WorkflowConditionOperand } }
+  | { readonly notEquals: { readonly left: WorkflowConditionOperand; readonly right: WorkflowConditionOperand } }
+  | { readonly all: readonly WorkflowCondition[] }
+  | { readonly any: readonly WorkflowCondition[] }
+  | { readonly not: WorkflowCondition };
+
+export const workflowConditionSchema: z.ZodType<WorkflowCondition> = z.lazy(() => z.union([
+  z.object({
+    equals: z.object({ left: workflowConditionOperandSchema, right: workflowConditionOperandSchema }).strict(),
+  }).strict(),
+  z.object({
+    notEquals: z.object({ left: workflowConditionOperandSchema, right: workflowConditionOperandSchema }).strict(),
+  }).strict(),
+  z.object({ all: z.array(workflowConditionSchema).min(1) }).strict(),
+  z.object({ any: z.array(workflowConditionSchema).min(1) }).strict(),
+  z.object({ not: workflowConditionSchema }).strict(),
+]));
 
 const safeRelativeMarkdownPath = staticText.refine(
   (value) => {
@@ -73,6 +200,8 @@ const agentBaseSchema = z
     actor: identifier,
     output: outputSchema,
     verdictPolicy: verdictPolicySchema.optional(),
+    result: workflowResultSchema.optional(),
+    when: workflowConditionSchema.optional(),
   })
   .strict();
 
@@ -99,6 +228,10 @@ const composedWorkflowStepSchema = z
       error: 'must reference a workflow as workflow:<id>',
     }),
     actors: z.record(identifier, identifier).optional(),
+    with: z.record(
+      identifier,
+      z.union([workflowPrimitiveValueSchema, z.object({ fromParameter: identifier }).strict()]),
+    ).optional(),
   })
   .strict();
 
@@ -120,6 +253,7 @@ export const workflowSchema = z
   .object({
     id: identifier,
     name: staticText,
+    parameters: workflowParametersSchema.optional(),
     steps: z.array(z.union([
       capabilityAgentStepSchema,
       promptAgentStepSchema,
