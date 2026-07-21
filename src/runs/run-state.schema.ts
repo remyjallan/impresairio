@@ -111,6 +111,25 @@ const runAgentStepSchema = z
       verdict: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'BLOCKED']),
       exhausted: z.boolean(),
     }).strict().optional(),
+    verdictPolicy: z.object({
+      approved: z.literal('continue').optional(),
+      changesRequested: z.object({
+        retryFrom: nonEmptyString,
+        maxIterations: z.number().int().min(1).max(10),
+      }).strict().optional(),
+      blocked: z.literal('stop').optional(),
+    }).strict().optional(),
+    verdictRetries: z.number().int().nonnegative().optional(),
+    retryContext: z.object({
+      sourceStepId: nonEmptyString,
+      artifactPath: nonEmptyString,
+      artifactSha256: sha256Schema,
+      at: timestampSchema,
+    }).strict().optional(),
+    acknowledgment: z.object({
+      at: timestampSchema,
+      comment: z.string().min(1),
+    }).strict().optional(),
     approval: z
       .object({
         approvedArtifactHash: sha256Schema,
@@ -203,6 +222,11 @@ export function createRunState(input: {
       readonly role: 'review' | 'consolidate';
       readonly iteration: number;
     };
+    readonly verdictPolicy?: {
+      readonly approved?: 'continue';
+      readonly changesRequested?: { readonly retryFrom: string; readonly maxIterations: number };
+      readonly blocked?: 'stop';
+    };
     readonly artifact?: string;
   }[];
   readonly now: string;
@@ -260,6 +284,7 @@ export function createRunState(input: {
         method,
         declaredOutput: step.output,
         ...(step.cycle ? { cycle: step.cycle } : {}),
+        ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
         attempts: [],
       };
     }),

@@ -98,6 +98,7 @@ export class RunService {
               }),
               output: step.output,
               ...(step.cycle ? { cycle: step.cycle } : {}),
+              ...(step.type === 'agent' && step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
             }
           : { artifact: step.artifact }),
       })),

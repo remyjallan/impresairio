@@ -156,6 +156,48 @@ describe('start and status commands', () => {
     }));
   });
 
+  it('freezes a declared verdictPolicy into the run state', () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    mkdirSync(join(repository, '.impresairio', 'workflows'), { recursive: true });
+    writeFileSync(join(repository, '.impresairio', 'workflows', 'verdicted.yaml'), `id: verdicted
+name: Verdicted
+steps:
+  - id: implement
+    type: agent
+    actor: implementer
+    action: implement
+    output:
+      id: implementation-report
+      filename: "01 - Implementation Report.md"
+  - id: verify
+    type: agent
+    actor: adversary
+    action: verification
+    output:
+      id: verification
+      filename: "02 - Verification.md"
+    verdictPolicy:
+      changesRequested:
+        retryFrom: implement
+        maxIterations: 2
+      blocked: stop
+`);
+    const state = service.start({
+      workflowId: 'verdicted', repositoryDirectory: repository,
+      roles: { implementer: 'opencode-glm', adversary: 'codex' },
+      feature: { id: 'VP-1', slug: 'verdict' }, id: 'run-verdict-freeze',
+      request: 'Freeze the verdict policy.',
+    });
+    const verify = store.findState(state.id)?.steps.find((step) => step.id === 'verify');
+    expect(verify?.kind === 'agent' ? verify.verdictPolicy : undefined).toEqual({
+      changesRequested: { retryFrom: 'implement', maxIterations: 2 },
+      blocked: 'stop',
+    });
+  });
+
   it('requires a non-empty work request for new runs', async () => {
     const { service } = createRunService();
     const start = new StartCommand(service, () => undefined);
