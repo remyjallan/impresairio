@@ -1,6 +1,24 @@
 # Impresairio
 
-Impresairio is a local, durable CLI for coordinating AI-assisted engineering workflows. It keeps workflow state, human approvals and documentation contracts outside an application repository while allowing each repository to share small YAML workflow definitions.
+Impresairio is a local, durable CLI for executing AI-assisted engineering workflows. It keeps workflow state, human approvals and documentation contracts outside an application repository while allowing each repository to share small YAML workflow definitions.
+
+## Project objective
+
+Impresairio aims to be a local AI workflow executor, conceptually similar to a
+GitHub Actions runner: a declarative YAML workflow defines a sequence of bounded
+steps, and the runner prepares, executes, verifies, and records each step with
+durable state and explicit human gates.
+
+The workflow can orchestrate different agent profiles and models across the same
+run — for example, Claude Code for design, Codex for adversarial review, and
+OpenCode for implementation. Each role remains abstract, so a repository shares
+the workflow contract without hard-coding a user's personal provider setup.
+
+The project owns orchestration, persistence, approvals, recovery, and artifact
+publication. Providers return content; Impresairio validates and publishes it. The
+goal is a practical cross-model execution layer, not a hosted project-management
+service, a generic workflow engine, an agent marketplace, or an autonomous
+multi-agent runtime.
 
 V0 is intentionally pragmatic:
 
@@ -82,9 +100,9 @@ documentation:
   format: markdown
 ```
 
-This repository ships [.impresairio.example.yaml](.impresairio.example.yaml) for its own dogfooding; copy it to `.impresairio.yaml` after defining the named target in your global configuration.
+This repository ships [.impresairio.example.yaml](.impresairio.example.yaml) as a configuration example; copy it to `.impresairio.yaml` after defining the named target in your global configuration.
 
-The documentation location is simply a filesystem directory. Obsidian is never required; it is only one possible Markdown viewer. See [configuration](docs/configuration.md) and [documentation targets](docs/documentation-targets.md) for the fixed bindings, path validation and local-filesystem safety boundary.
+The documentation location is simply a filesystem directory. Obsidian is never required; it is only one possible Markdown viewer. See the [wiki](https://github.com/remyjallan/impresairio/wiki) for configuration, fixed bindings, path validation, and local-filesystem safety.
 
 ## Run a workflow
 
@@ -148,20 +166,16 @@ impresairio doctor --live --profile opencode-glm
 
 ## Built-in workflows and customization
 
-V0 includes `feature`, `quick-fix`, and the small `classification-smoke` dogfooding workflow. A repository may override any workflow ID with `.impresairio/workflows/<workflow-id>.yaml`; a global override lives in `<impresairio-home>/workflows/`. Workflows are a deliberately closed YAML grammar: no inline shell, provider selection, loops or dynamic expressions.
+V0 includes the `feature` and `quick-fix` workflows. A repository may override any workflow ID with `.impresairio/workflows/<workflow-id>.yaml`; a global override lives in `<impresairio-home>/workflows/`. Workflows are a deliberately closed YAML grammar: no inline shell, provider selection, loops or dynamic expressions.
 
 Workflows can also declare typed primitive parameters (`string`, `boolean`, `integer`,
 and `enum`) and compose a child workflow with explicit `with` mappings. Supply root
 values through repeatable `--param name=value`; resolved values are frozen into the
 run. Agent steps may produce a validated JSON result block inside their Markdown and
 later direct agent steps may use a safe `when` condition over declared results and
-parameters. See [workflows](docs/workflows.md) for the complete YAML contract.
+parameters. See the [Workflow YAML wiki page](https://github.com/remyjallan/impresairio/wiki/Workflow-YAML) for the complete YAML contract.
 
-Read [workflows](docs/workflows.md) before adding an override. Read [agents](docs/agents.md) for the provider and OpenCode model contract, [the roadmap](docs/roadmap.md) for planned Claude Code and Codex model/effort profiles, and [gates and recovery](docs/gates-and-recovery.md) before running a feature with human approval gates.
-
-## Dogfooding V0
-
-The first two real runs are the decision point for further abstraction. Follow [the dogfooding protocol](docs/dogfooding.md), record the defined metrics, and only add runtime, provider or workflow complexity in response to observed friction.
+Read the [GitHub wiki](https://github.com/remyjallan/impresairio/wiki) before adding an override; it contains the provider, configuration, workflow, gate, and recovery contracts.
 
 ## Development and release checks
 
