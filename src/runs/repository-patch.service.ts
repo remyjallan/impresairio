@@ -51,8 +51,11 @@ export class RepositoryPatchService implements PatchApplier {
       }
     }
 
-    this.requireSuccess(repository, ['apply', '--check', '--whitespace=error'], patch.content, 'Patch cannot be applied');
-    this.requireSuccess(repository, ['apply', '--whitespace=error'], patch.content, 'Patch could not be applied');
+    // Models frequently preserve the exact changed lines but miscount hunk
+    // lengths. `--recount` still requires every context line to match; it
+    // only recalculates those redundant header counts before applying.
+    this.requireSuccess(repository, ['apply', '--check', '--recount', '--whitespace=error'], patch.content, 'Patch cannot be applied');
+    this.requireSuccess(repository, ['apply', '--recount', '--whitespace=error'], patch.content, 'Patch could not be applied');
     const nextDiff = this.git(repository, ['diff', '--binary']).stdout;
 
     return {
