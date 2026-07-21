@@ -1,0 +1,66 @@
+id: feature
+name: Feature
+steps:
+  - id: design
+    type: review-cycle
+    actor: launcher
+    reviewer: adversary
+    capability: feature-design
+    reviewCapability: adversarial-review
+    maxIterations: 3
+    output:
+      id: design
+      filename: "01 - Feature Design.md"
+      template: feature-design
+    gateId: approve-design
+  - id: specification
+    type: review-cycle
+    actor: launcher
+    reviewer: adversary
+    capability: specification
+    reviewCapability: spec-review
+    maxIterations: 2
+    output:
+      id: specification
+      filename: "03 - Specification.md"
+      template: specification
+    gateId: approve-specification
+  - id: integration-plan
+    type: review-cycle
+    actor: launcher
+    reviewer: adversary
+    capability: integration-plan
+    reviewCapability: plan-review
+    maxIterations: 2
+    output:
+      id: integration-plan
+      filename: "05 - Integration Plan.md"
+      template: integration-plan
+    gateId: approve-plan
+  - id: implementation
+    type: agent
+    actor: implementer
+    capability: implementation
+    output:
+      id: implementation-report
+      filename: "07 - Implementation Report.md"
+  - id: final-review
+    type: agent
+    actor: adversary
+    capability: final-review
+    output:
+      id: final-review
+      filename: "08 - Final Review.md"
+    verdictPolicy:
+      changesRequested:
+        retryFrom: implementation
+        maxIterations: 2
+      blocked: stop
+  - id: final-report
+    type: agent
+    actor: launcher
+    capability: final-report
+    output:
+      id: final-report
+      filename: "09 - Final Report.md"
+      template: final-report

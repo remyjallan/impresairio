@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
-import { RunLookupService } from '../runs/run-lookup.service';
+import { FileStateStore } from '../runs/file-state.store';
+import { verdictWarnings } from '../workflows/verdict-completion.policy';
+
+export const STATUS_WRITER = Symbol('STATUS_WRITER');
 
 export class RunNotFoundError extends Error {
   constructor(runId: string) {
@@ -17,19 +20,29 @@ export class RunNotFoundError extends Error {
 })
 export class StatusCommand extends CommandRunner {
   constructor(
-    @Inject(RunLookupService)
-    private readonly runLookupService: RunLookupService,
+    @Inject(FileStateStore)
+    private readonly stateStore: FileStateStore,
+    @Inject(STATUS_WRITER)
+    private readonly write: (line: string) => void = (line) => process.stdout.write(line),
   ) {
     super();
   }
 
   async run([runId]: string[]): Promise<void> {
-    const run = this.runLookupService.findById(runId);
+    const run = this.stateStore.findState(runId);
 
     if (!run) {
       throw new RunNotFoundError(runId);
     }
 
-    process.stdout.write(`${run.id}\n`);
+    this.write([
+      `run: ${run.id}`,
+      `workflow: ${run.workflow.id}`,
+      `current-step: ${run.currentStepId ?? 'not-started'}`,
+      `steps: ${run.steps.length}`,
+      ...run.steps.map((step) => `${step.id}: ${step.status}`),
+      ...verdictWarnings(run).map((warning) => `warning: ${warning}`),
+      '',
+    ].join('\n'));
   }
 }

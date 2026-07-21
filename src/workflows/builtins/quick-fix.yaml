@@ -1,0 +1,30 @@
+id: quick-fix
+name: Quick fix
+steps:
+  - id: investigate
+    type: agent
+    actor: launcher
+    capability: investigate
+    output:
+      id: investigation
+      filename: "01 - Investigation.md"
+  - id: implement
+    type: agent
+    actor: implementer
+    capability: implement
+    output:
+      id: implementation-report
+      filename: "02 - Implementation Report.md"
+  - id: verify
+    type: agent
+    actor: adversary
+    capability: verification
+    output:
+      id: verification
+      filename: "03 - Verification.md"
+    verdictPolicy:
+      changesRequested:
+        retryFrom: implement
+        maxIterations: 2
+      blocked: stop
+

@@ -1,0 +1,7 @@
+project:
+  name: Impresairio
+  slug: impresairio
+documentation:
+  target: personal-docs # Define this target in ~/.impresairio/config.yaml.
+  featurePath: "Impresairio/Specs/{{ feature.id }} - {{ feature.slug }}"
+  format: markdown

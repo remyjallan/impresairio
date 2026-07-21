@@ -3,3 +3,8 @@ dist/
 coverage/
 *.log
 .DS_Store
+.serena/
+.idea/
+.impresairio.yaml
+.pnpm-pack/
+.superremy.json

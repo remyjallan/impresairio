@@ -1,21 +1,42 @@
 {
   "name": "@impresairio/cli",
   "version": "0.1.0",
-  "description": "A CLI for orchestrating AI-assisted engineering workflows.",
+  "description": "A local CLI for durable, human-gated AI-assisted engineering workflows.",
   "license": "MIT",
+  "repository": "https://github.com/remyjallan/impresairio.git",
+  "homepage": "https://github.com/remyjallan/impresairio#readme",
+  "bugs": "https://github.com/remyjallan/impresairio/issues",
   "private": false,
+  "keywords": [
+    "ai",
+    "agents",
+    "cli",
+    "engineering",
+    "workflow"
+  ],
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "bin": {
     "impresairio": "dist/main.js"
   },
   "engines": {
     "node": ">=22"
   },
+  "packageManager": "pnpm@11.15.1",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
-    "test": "vitest",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-workflow-assets.mjs",
+    "prepack": "pnpm run build",
+    "test": "pnpm run build && vitest",
+    "test:run": "pnpm run build && vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
+    "verify": "pnpm run test:run && pnpm run typecheck && pnpm run lint && pnpm run build",
+    "pack:check": "pnpm pack --pack-destination .pnpm-pack"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

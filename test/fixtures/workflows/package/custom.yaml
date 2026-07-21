@@ -1,0 +1,11 @@
+id: custom
+name: Package custom
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    promptFile: prompts/write.md
+    output:
+      id: report
+      filename: "01 - Report.md"
+

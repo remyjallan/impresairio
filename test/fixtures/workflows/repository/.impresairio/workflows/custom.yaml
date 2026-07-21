@@ -1,0 +1,11 @@
+id: custom
+name: Repository custom
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    capability: final-report
+    output:
+      id: report
+      filename: "01 - Repository Report.md"
+
