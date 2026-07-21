@@ -198,7 +198,6 @@ steps:
   it.each([
     ['an unsupported workflow provider', 'uses: crew:implementation'],
     ['a malformed workflow reference', 'uses: workflow:Implementation'],
-    ['tranche 3 parameters', 'uses: workflow:implementation\n    with:\n      quality: strict'],
     ['agent fields on a composition step', 'uses: workflow:implementation\n    capability: implementation'],
   ])('rejects composition with %s', (_label, body) => {
     const home = temporaryDirectory('impresairio-workflow-home-');
@@ -212,5 +211,28 @@ steps:
 
     expect(() => createRegistry(home, packageDirectory).resolve('custom', home))
       .toThrow(WorkflowError);
+  });
+
+  it('accepts typed literal and parent-parameter composition mappings', () => {
+    const home = temporaryDirectory('impresairio-workflow-home-');
+    const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
+    writeFileSync(join(packageDirectory, 'custom.yaml'), `id: custom
+name: Custom
+steps:
+  - id: implementation
+    uses: workflow:implementation
+    with:
+      quality-mode: strict
+      isolate-worktree:
+        fromParameter: isolate-worktree
+`);
+
+    expect(createRegistry(home, packageDirectory).resolve('custom', home).workflow.steps[0])
+      .toMatchObject({
+        with: {
+          'quality-mode': 'strict',
+          'isolate-worktree': { fromParameter: 'isolate-worktree' },
+        },
+      });
   });
 });

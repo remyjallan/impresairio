@@ -58,7 +58,9 @@ An invalid or missing agent output, including a review without a final verdict,
 makes `complete` or `advance` return an error and marks the step `failed`. The
 failed attempt remains in history; correct the cause, run `retry`, then `next`
 or `advance` to create a new attempt. This is intentionally different from a
-validation error that leaves an in-progress step untouched.
+structured-result validation error: a missing, duplicate, malformed, or schema-invalid
+`impresairio-result` block leaves an in-progress step untouched so the same Markdown
+artifact can be corrected and `complete` rerun.
 
 If an earlier approval was invalidated, its gate is initially `stale`. Once the
 ordered prerequisite sequence has been retried and completed, `next` reopens

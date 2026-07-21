@@ -1,11 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import type { WorkflowStep, WorkflowVerdictPolicy } from './workflow.schema';
+import type {
+  WorkflowCondition,
+  WorkflowConditionOperand,
+  WorkflowParameters,
+  WorkflowPrimitiveValue,
+  WorkflowResult,
+  WorkflowStep,
+  WorkflowVerdictPolicy,
+} from './workflow.schema';
 import {
   type ResolvedWorkflow,
   type WorkflowSource,
   WorkflowError,
   WorkflowRegistryService,
 } from './workflow-registry.service';
+import { parameterValueType, resolveChildParameters, resolveRootParameters } from './workflow-parameters';
 
 type WorkflowOutput = Extract<WorkflowStep, { readonly type: 'agent' }>['output'];
 
@@ -26,6 +35,10 @@ interface ExpandedAgentStepBase extends ExpandedStepMetadata {
   readonly type: 'agent';
   readonly actor: string;
   readonly output: WorkflowOutput;
+  readonly effectiveParameters: Readonly<Record<string, WorkflowPrimitiveValue>>;
+  readonly parameterDefinitions: WorkflowParameters | undefined;
+  readonly result?: WorkflowResult;
+  readonly when?: WorkflowCondition;
   readonly verdictPolicy?: WorkflowVerdictPolicy;
   readonly cycle?: {
     readonly id: string;
@@ -58,6 +71,7 @@ interface DefinitionNode {
   readonly namespace?: string;
   readonly children: ReadonlyMap<string, DefinitionNode>;
   readonly exposedRoles: ReadonlySet<string>;
+  readonly effectiveParameters: Readonly<Record<string, WorkflowPrimitiveValue>>;
 }
 
 type MappedWorkflowStep =
@@ -72,6 +86,8 @@ type MappedWorkflowStep =
       readonly maxIterations: number;
       readonly output: WorkflowOutput;
       readonly gateId: string;
+      readonly effectiveParameters: Readonly<Record<string, WorkflowPrimitiveValue>>;
+      readonly parameterDefinitions: WorkflowParameters | undefined;
     });
 
 @Injectable()
@@ -81,6 +97,7 @@ export class WorkflowExpanderService {
   expand(
     root: ResolvedWorkflow,
     repositoryDirectory: string,
+    rootParameters = resolveRootParameters(root.workflow.parameters, {}),
   ): ExpandedWorkflowPlan {
     const definitions: WorkflowDefinitionSnapshot[] = [];
     const tree = this.buildTree(
@@ -89,6 +106,7 @@ export class WorkflowExpanderService {
       repositoryDirectory,
       [],
       definitions,
+      rootParameters,
     );
     const mapped = this.flatten(tree, (role) => role);
     const steps = mapped.flatMap((step) => this.expandReviewCycle(step));
@@ -102,6 +120,7 @@ export class WorkflowExpanderService {
     repositoryDirectory: string,
     stack: readonly ResolvedWorkflow[],
     definitions: WorkflowDefinitionSnapshot[],
+    effectiveParameters: Readonly<Record<string, WorkflowPrimitiveValue>>,
   ): DefinitionNode {
     const cycleAt = stack.findIndex((candidate) => candidate.path === resolved.path);
     if (cycleAt >= 0) {
@@ -137,12 +156,18 @@ export class WorkflowExpanderService {
       }
 
       const childWorkflowId = step.uses.slice('workflow:'.length);
+      const childResolved = this.registry.resolve(childWorkflowId, repositoryDirectory);
       const child = this.buildTree(
-        this.registry.resolve(childWorkflowId, repositoryDirectory),
+        childResolved,
         namespace === undefined ? step.id : `${namespace}--${step.id}`,
         repositoryDirectory,
         nextStack,
         definitions,
+        resolveChildParameters(
+          childResolved.workflow.parameters,
+          effectiveParameters,
+          step.with,
+        ),
       );
       children.set(step.id, child);
 
@@ -158,7 +183,14 @@ export class WorkflowExpanderService {
       }
     }
 
-    return { resolved, instanceId, ...(namespace === undefined ? {} : { namespace }), children, exposedRoles };
+    return {
+      resolved,
+      instanceId,
+      ...(namespace === undefined ? {} : { namespace }),
+      children,
+      exposedRoles,
+      effectiveParameters,
+    };
   }
 
   private flatten(
@@ -213,6 +245,8 @@ export class WorkflowExpanderService {
           maxIterations: step.maxIterations,
           output: { ...step.output, id: namespace(step.output.id) },
           gateId: namespace(step.gateId),
+          effectiveParameters: node.effectiveParameters,
+          parameterDefinitions: node.resolved.workflow.parameters,
         }];
       }
 
@@ -222,6 +256,10 @@ export class WorkflowExpanderService {
         type: 'agent' as const,
         actor: mapRole(step.actor),
         output: { ...step.output, id: namespace(step.output.id) },
+        effectiveParameters: node.effectiveParameters,
+        parameterDefinitions: node.resolved.workflow.parameters,
+        ...(step.result ? { result: step.result } : {}),
+        ...(step.when ? { when: namespaceCondition(step.when, namespace) } : {}),
         ...(step.verdictPolicy
           ? {
               verdictPolicy: {
@@ -253,6 +291,8 @@ export class WorkflowExpanderService {
       actor: step.actor,
       capability: step.capability,
       output: step.output,
+      effectiveParameters: step.effectiveParameters,
+      parameterDefinitions: step.parameterDefinitions,
       definition: step.definition,
       originStepId: step.originStepId,
     }];
@@ -268,6 +308,8 @@ export class WorkflowExpanderService {
           filename: `.review-${step.id}-${iteration}.md`,
           storage: 'internal',
         },
+        effectiveParameters: step.effectiveParameters,
+        parameterDefinitions: step.parameterDefinitions,
         cycle: { id: step.id, role: 'review', iteration },
         definition: step.definition,
         // A review is a distinct output producer. Author and consolidation
@@ -282,6 +324,8 @@ export class WorkflowExpanderService {
           actor: step.actor,
           capability: step.capability,
           output: step.output,
+          effectiveParameters: step.effectiveParameters,
+          parameterDefinitions: step.parameterDefinitions,
           cycle: { id: step.id, role: 'consolidate', iteration },
           definition: step.definition,
           originStepId: step.originStepId,
@@ -319,7 +363,81 @@ export class WorkflowExpanderService {
       }
       outputOwners.set(step.output.id, step.originStepId);
     }
+    steps.forEach((step, index) => {
+      if (step.type !== 'agent' || !step.when) return;
+      validateCondition(step.when, step, index, steps);
+    });
   }
+}
+
+function namespaceCondition(condition: WorkflowCondition, namespace: (id: string) => string): WorkflowCondition {
+  if ('equals' in condition) return { equals: {
+    left: namespaceOperand(condition.equals.left, namespace), right: namespaceOperand(condition.equals.right, namespace),
+  } };
+  if ('notEquals' in condition) return { notEquals: {
+    left: namespaceOperand(condition.notEquals.left, namespace), right: namespaceOperand(condition.notEquals.right, namespace),
+  } };
+  if ('all' in condition) return { all: condition.all.map((child) => namespaceCondition(child, namespace)) };
+  if ('any' in condition) return { any: condition.any.map((child) => namespaceCondition(child, namespace)) };
+  return { not: namespaceCondition(condition.not, namespace) };
+}
+
+function namespaceOperand(
+  operand: WorkflowConditionOperand,
+  namespace: (id: string) => string,
+): WorkflowConditionOperand {
+  if (typeof operand !== 'object' || operand === null || Array.isArray(operand)) return operand;
+  if ('result' in operand) {
+    return { result: { ...operand.result, step: namespace(operand.result.step) } };
+  }
+  return operand;
+}
+
+function validateCondition(
+  condition: WorkflowCondition,
+  target: ExpandedAgentStep,
+  targetIndex: number,
+  steps: readonly ExpandedWorkflowStep[],
+): void {
+  if ('equals' in condition || 'notEquals' in condition) {
+    const comparison = 'equals' in condition ? condition.equals : condition.notEquals;
+    const leftType = operandType(comparison.left, target, targetIndex, steps);
+    const rightType = operandType(comparison.right, target, targetIndex, steps);
+    if (leftType !== rightType) {
+      throw new WorkflowError(`Condition on step "${target.id}" compares incompatible ${leftType} and ${rightType} values`);
+    }
+    return;
+  }
+  if ('all' in condition) return void condition.all.forEach((child) => validateCondition(child, target, targetIndex, steps));
+  if ('any' in condition) return void condition.any.forEach((child) => validateCondition(child, target, targetIndex, steps));
+  validateCondition(condition.not, target, targetIndex, steps);
+}
+
+function operandType(
+  operand: WorkflowConditionOperand,
+  target: ExpandedAgentStep,
+  targetIndex: number,
+  steps: readonly ExpandedWorkflowStep[],
+): 'string' | 'boolean' | 'integer' {
+  if (typeof operand === 'string') return 'string';
+  if (typeof operand === 'boolean') return 'boolean';
+  if (typeof operand === 'number') return 'integer';
+  if ('parameter' in operand) {
+    const definition = target.parameterDefinitions?.[operand.parameter];
+    if (!definition) throw new WorkflowError(`Condition on step "${target.id}" references unknown parameter "${operand.parameter}"`);
+    return parameterValueType(definition);
+  }
+  const sourceIndex = steps.findIndex((step) => step.type === 'agent' && step.id === operand.result.step);
+  if (sourceIndex < 0 || sourceIndex >= targetIndex) {
+    throw new WorkflowError(`Condition on step "${target.id}" must reference an earlier agent result, received "${operand.result.step}"`);
+  }
+  const source = steps[sourceIndex];
+  if (source.type !== 'agent') throw new WorkflowError(`Condition source "${operand.result.step}" is not an agent step`);
+  const definition = source.result?.fields[operand.result.field];
+  if (!definition) {
+    throw new WorkflowError(`Condition on step "${target.id}" references undeclared result field "${operand.result.step}.${operand.result.field}"`);
+  }
+  return parameterValueType(definition);
 }
 
 function rolesForStep(step: Exclude<WorkflowStep, { readonly uses: string }>): readonly string[] {

@@ -21,7 +21,8 @@ and creates durable state. It freezes the root workflow hash and an ordered
 `workflow.definitions` manifest containing every mounted workflow instance,
 resolution source and hash. It also freezes the canonical
 repository directory, selected agent profiles and resolved OpenCode model identifiers
-for the run. `advance` therefore executes providers in the original repository even
+for the run. It also freezes resolved workflow parameters and each leaf step's
+effective parameter mapping. `advance` therefore executes providers in the original repository even
 when the command is invoked from another directory.
 
 ```bash
@@ -55,6 +56,11 @@ new runs are independent of the caller's current directory.
 Runs created before workflow composition was introduced do not contain
 `workflow.definitions`; they remain valid and resume from their already frozen
 steps. New runs never reread parent or child YAML files during recovery.
+
+When a step declares a structured result, its validated primitive result is frozen
+with the artifact hash. A malformed `impresairio-result` block is recoverable: the
+step stays `in_progress`, so correct the existing Markdown and run `complete` again.
+It is not a failed provider attempt.
 
 If a bounded review cycle reaches its final iteration with
 `VERDICT: CHANGES_REQUESTED`, `status` shows a persistent warning until the

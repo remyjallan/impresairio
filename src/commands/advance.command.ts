@@ -9,6 +9,7 @@ import { WorkflowRunnerService } from '../workflows/workflow-runner.service';
 import { FileStateStore } from '../runs/file-state.store';
 import { ArtifactService } from '../documentation/artifact.service';
 import { RunLockService } from '../runs/run-lock.service';
+import { StructuredResultError } from '../workflows/structured-result';
 
 @Injectable()
 @Command({ name: 'advance', arguments: '<run-id>', description: 'Execute agent steps until the next human gate, failure, or workflow completion.' })
@@ -91,7 +92,7 @@ export class AdvanceCommand extends CommandRunner {
         activeStepId = undefined;
       }
     } catch (error) {
-      if (activeStepId) {
+      if (activeStepId && !(error instanceof StructuredResultError)) {
         this.stateStore.markFailed(runId, activeStepId, error instanceof Error ? error.message : String(error));
       }
       throw error;

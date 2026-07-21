@@ -1,6 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { CompletedDocumentationOutput } from '../documentation/documentation-target';
 import type { PreparedDocumentationOutput } from '../documentation/documentation-target';
+import { readFileSync } from 'node:fs';
+import type { WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
+import { parseStructuredResult, StructuredResultError } from '../workflows/structured-result';
 
 export type CompletionStepStatus =
   | 'pending'
@@ -15,6 +18,7 @@ export interface CompletionStep {
   readonly kind: 'agent' | 'gate';
   readonly status: CompletionStepStatus;
   readonly output?: PreparedDocumentationOutput;
+  readonly declaredResult?: WorkflowResult;
   readonly cycle?: { readonly id: string; readonly role: 'review' | 'consolidate'; readonly iteration: number };
 }
 
@@ -31,6 +35,11 @@ export interface CompletionRecord {
   readonly reviewOutcome?: {
     readonly verdict: 'APPROVED' | 'CHANGES_REQUESTED' | 'BLOCKED';
     readonly exhausted: boolean;
+  };
+  readonly result?: {
+    readonly value: Readonly<Record<string, WorkflowPrimitiveValue>>;
+    readonly outputSha256: string;
+    readonly recordedAt: string;
   };
 }
 
@@ -52,6 +61,7 @@ export interface CompletionPolicy {
 
 export type CompletionEvent =
   | { readonly type: 'step.completed'; readonly stepId: string; readonly at: string; readonly outputSha256: string }
+  | { readonly type: 'step.result.recorded'; readonly stepId: string; readonly fields: readonly string[]; readonly outputSha256: string; readonly at: string }
   | { readonly type: 'cycle.exhausted'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'CHANGES_REQUESTED'; readonly at: string }
   | { readonly type: 'cycle.blocked'; readonly stepId: string; readonly cycleId: string; readonly iteration: number; readonly verdict: 'BLOCKED'; readonly at: string }
   | { readonly type: 'verdict.changes_requested'; readonly stepId: string; readonly retryFrom: string; readonly at: string }
@@ -71,6 +81,7 @@ export interface OutputVerifier {
     run: CompletionRun,
     step: CompletionStep,
   ): CompletedDocumentationOutput;
+  readExpectedOutput?(run: CompletionRun, step: CompletionStep): string;
 }
 
 export const COMPLETION_RUN_STORE = Symbol('COMPLETION_RUN_STORE');
@@ -133,17 +144,31 @@ export class CompletionService {
 
       let output: CompletedDocumentationOutput;
       let policyResult: CompletionPolicyResult;
+      let result: CompletionRecord['result'];
       try {
         output = this.outputVerifier.completeExpectedOutput(run, step);
+        if (step.declaredResult) {
+          result = {
+            value: parseStructuredResult(
+              this.outputVerifier.readExpectedOutput?.(run, step) ?? readFileSync(output.path, 'utf8'),
+              step.declaredResult,
+            ),
+            outputSha256: output.sha256,
+            recordedAt: this.now().toISOString(),
+          };
+        }
         policyResult = this.policy.evaluate(runId, stepId, output);
         this.store.recordCompletion(runId, {
           stepId,
           output,
           ...(policyResult.skipStepIds.length > 0 ? { skipStepIds: policyResult.skipStepIds } : {}),
           ...(policyResult.reviewOutcome ? { reviewOutcome: policyResult.reviewOutcome } : {}),
+          ...(result ? { result } : {}),
         });
       } catch (error) {
-        this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
+        if (!(error instanceof StructuredResultError)) {
+          this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
+        }
         throw error;
       }
       this.store.appendEvent(runId, {
@@ -152,6 +177,15 @@ export class CompletionService {
         at: this.now().toISOString(),
         outputSha256: output.sha256,
       });
+      if (result) {
+        this.store.appendEvent(runId, {
+          type: 'step.result.recorded',
+          stepId,
+          fields: Object.keys(result.value),
+          outputSha256: result.outputSha256,
+          at: this.now().toISOString(),
+        });
+      }
       if (policyResult.source === 'policy' && policyResult.reviewOutcome) {
         if (policyResult.transition?.kind === 'retry-from') {
           this.store.applyVerdictRetry?.(runId, stepId, policyResult.transition.targetStepId);

@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  workflowConditionSchema,
+  workflowPrimitiveValueSchema,
+  workflowResultSchema,
+} from '../workflows/workflow.schema';
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const timestampSchema = z.string().datetime();
@@ -33,6 +38,12 @@ const declaredWorkflowOutputSchema = z
     storage: z.enum(['documentation', 'internal']).default('documentation'),
   })
   .strict();
+
+const structuredResultSchema = z.object({
+  value: z.record(nonEmptyString, workflowPrimitiveValueSchema),
+  outputSha256: sha256Schema,
+  recordedAt: timestampSchema,
+}).strict();
 
 const workflowDefinitionSchema = z
   .object({
@@ -103,6 +114,15 @@ const runAgentStepSchema = z
     actor: nonEmptyString,
     method: agentMethodSchema,
     declaredOutput: declaredWorkflowOutputSchema,
+    effectiveParameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
+    declaredResult: workflowResultSchema.optional(),
+    when: workflowConditionSchema.optional(),
+    result: structuredResultSchema.optional(),
+    conditionDecision: z.object({
+      condition: workflowConditionSchema,
+      evaluatedAt: timestampSchema,
+      result: z.literal(false),
+    }).strict().optional(),
     expectedOutput: preparedDocumentationOutputSchema.optional(),
     dispatchPreparedAt: timestampSchema.optional(),
     output: z
@@ -186,6 +206,7 @@ export const runStateSchema = z
     version: z.literal(1),
     id: nonEmptyString,
     request: z.string().trim().min(1).max(20_000).optional(),
+    parameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
     repositoryDirectory: nonEmptyString.optional(),
     workflow: z
       .object({
@@ -219,6 +240,7 @@ export function createRunState(input: {
   readonly workflowDefinitions?: readonly z.input<typeof workflowDefinitionSchema>[];
   readonly roles: Readonly<Record<string, string>>;
   readonly resolvedActors?: z.input<typeof runStateSchema>['resolvedActors'];
+  readonly parameters?: Readonly<Record<string, z.input<typeof workflowPrimitiveValueSchema>>>;
   readonly documentation: z.input<typeof documentationContextSchema>;
   readonly execution?: { readonly agentTimeoutSeconds: number };
   readonly steps: readonly {
@@ -235,6 +257,9 @@ export function createRunState(input: {
       readonly template?: string;
       readonly storage?: 'documentation' | 'internal';
     };
+    readonly effectiveParameters?: Readonly<Record<string, z.input<typeof workflowPrimitiveValueSchema>>>;
+    readonly result?: z.input<typeof workflowResultSchema>;
+    readonly when?: z.input<typeof workflowConditionSchema>;
     readonly cycle?: {
       readonly id: string;
       readonly role: 'review' | 'consolidate';
@@ -258,6 +283,7 @@ export function createRunState(input: {
     id: input.id,
     ...(input.request ? { request: input.request } : {}),
     ...(input.repositoryDirectory ? { repositoryDirectory: input.repositoryDirectory } : {}),
+    ...(input.parameters ? { parameters: input.parameters } : {}),
     workflow: {
       id: input.workflowId,
       sha256: input.workflowSha256,
@@ -304,6 +330,9 @@ export function createRunState(input: {
         actor: step.actor,
         method,
         declaredOutput: step.output,
+        ...(step.effectiveParameters ? { effectiveParameters: step.effectiveParameters } : {}),
+        ...(step.result ? { declaredResult: step.result } : {}),
+        ...(step.when ? { when: step.when } : {}),
         ...(step.cycle ? { cycle: step.cycle } : {}),
         ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
         attempts: [],

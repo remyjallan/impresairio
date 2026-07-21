@@ -331,4 +331,106 @@ steps:
       stepId: 'delivery--implement',
     });
   });
+
+  it('freezes typed parameters through a child mapping and skips a false conditional agent', () => {
+    const harness = createHarness();
+    writeFileSync(join(harness.packageWorkflows, 'classify.yaml'), `id: classify
+name: Classify
+parameters:
+  quality-mode:
+    type: enum
+    values: [light, strict]
+steps:
+  - id: classify
+    type: agent
+    actor: implementer
+    capability: investigate
+    output: { id: classification, filename: "00 - Classification.md", storage: internal }
+    result:
+      fields:
+        complexity:
+          type: enum
+          values: [trivial, standard]
+  - id: review
+    type: agent
+    actor: reviewer
+    capability: verification
+    output: { id: review, filename: "01 - Review.md", storage: internal }
+    when:
+      notEquals:
+        left:
+          result: { step: classify, field: complexity }
+        right: trivial
+`, 'utf8');
+    writeFileSync(join(harness.repository, '.impresairio', 'workflows', 'conditional.yaml'), `id: conditional
+name: Conditional
+parameters:
+  quality-mode:
+    type: enum
+    values: [light, strict]
+    default: light
+steps:
+  - id: classify
+    uses: workflow:classify
+    actors:
+      implementer: implementer
+      reviewer: adversary
+    with:
+      quality-mode:
+        fromParameter: quality-mode
+`, 'utf8');
+
+    const state = harness.runService.start({
+      id: 'run-conditional',
+      workflowId: 'conditional',
+      repositoryDirectory: harness.repository,
+      roles: { implementer: 'codex', adversary: 'codex' },
+      feature: { id: 'COMP-5', slug: 'conditional' },
+      request: 'Skip a trivial review.',
+      parameters: { 'quality-mode': 'strict' },
+    });
+    expect(state.parameters).toEqual({ 'quality-mode': 'strict' });
+    expect(state.steps[0]).toMatchObject({ effectiveParameters: { 'quality-mode': 'strict' } });
+
+    harness.completeWith('run-conditional', 'classify--classify', [
+      '# Classification', '', '```impresairio-result', '{"complexity":"trivial"}', '```', '',
+    ].join('\n'));
+    expect(harness.runner.next('run-conditional')).toEqual({ kind: 'complete' });
+    expect(harness.store.findState('run-conditional')?.steps.map((step) => [step.id, step.status])).toEqual([
+      ['classify--classify', 'complete'],
+      ['classify--review', 'skipped'],
+    ]);
+    expect(harness.events.read('run-conditional')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'step.result.recorded', stepId: 'classify--classify' }),
+      expect.objectContaining({ type: 'step.skipped', stepId: 'classify--review', reason: 'condition-false' }),
+    ]));
+
+    harness.runService.start({
+      id: 'run-conditional-true',
+      workflowId: 'conditional',
+      repositoryDirectory: harness.repository,
+      roles: { implementer: 'codex', adversary: 'codex' },
+      feature: { id: 'COMP-6', slug: 'conditional-true' },
+      request: 'Run a non-trivial review.',
+    });
+    harness.completeWith('run-conditional-true', 'classify--classify', [
+      '# Classification', '', '```impresairio-result', '{"complexity":"standard"}', '```', '',
+    ].join('\n'));
+    expect(harness.runner.next('run-conditional-true')).toEqual({
+      kind: 'agent', stepId: 'classify--review',
+    });
+
+    harness.runService.start({
+      id: 'run-conditional-invalid-result',
+      workflowId: 'conditional',
+      repositoryDirectory: harness.repository,
+      roles: { implementer: 'codex', adversary: 'codex' },
+      feature: { id: 'COMP-7', slug: 'conditional-invalid-result' },
+      request: 'Reject an invalid result without failing the attempt.',
+    });
+    expect(() => harness.completeWith('run-conditional-invalid-result', 'classify--classify', '# Missing result\n'))
+      .toThrow('Expected exactly one impresairio-result block');
+    expect(harness.store.findState('run-conditional-invalid-result')?.steps[0])
+      .toMatchObject({ status: 'in_progress' });
+  });
 });
