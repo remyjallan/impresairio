@@ -11,8 +11,9 @@ shell commands from workflow YAML, or provide a generic provider marketplace.
 
 ## Global profiles
 
-Profiles live in the global `config.yaml`. A repository workflow binds its logical
-actors (`launcher`, `adversary`, `implementer`) to profile names when a run starts.
+Profiles live in the global `config.yaml`. A repository workflow binds its
+actors — free identifiers derived from the workflow's own steps, not a fixed
+set — to profile names when a run starts.
 
 ```yaml
 agentProfiles:
@@ -32,20 +33,40 @@ The run freezes the selected profile name, provider and, for OpenCode, both the
 model alias and resolved model ID. Later edits to global configuration cannot change
 an active run. The same snapshot is recorded in the `run.started` event.
 
-Start a built-in feature workflow with explicit bindings:
+Bind roles with the repeatable `--actor <role>=<profile>` flag:
 
 ```bash
 impresairio start feature \
-  --launcher claude \
-  --adversary codex \
-  --implementer opencode-glm \
+  --actor launcher=claude \
+  --actor adversary=codex \
+  --actor implementer=opencode-glm \
   --feature-id IMP-42 \
   --feature-slug account-merge \
   --request "Allow an operator to merge two customer accounts safely."
 ```
 
-Every actor required by the chosen workflow must have a profile. Unknown profile,
-provider or OpenCode model alias values fail before a run is created.
+The three original V0 flags — `--launcher`, `--adversary` and `--implementer` —
+remain as shortcuts for the `launcher`, `adversary` and `implementer` roles and
+may be freely mixed with `--actor`; binding the same role twice with
+conflicting profiles (whether through repeated `--actor` bindings or a shortcut
+flag) is an error. This is what makes custom workflows with invented role names
+possible, for example a workflow that declares `actor: product-author` and
+`reviewer: skeptic`:
+
+```bash
+impresairio start threat-model \
+  --actor product-author=codex \
+  --actor skeptic=claude \
+  --feature-id IMP-51 \
+  --feature-slug threat-model \
+  --request "Threat-model the new export endpoint."
+```
+
+Every actor the chosen workflow declares must have a profile binding, and every
+binding must name an actor the workflow actually declares — an unknown role
+fails before a run is created, naming the offending role and the workflow's
+declared roles. Unknown profile, provider or OpenCode model alias values also
+fail before a run is created.
 
 ## Execution and handoffs
 
@@ -63,13 +84,15 @@ The runner owns artifact persistence: agents return Markdown, which is then save
 the expected documentation location. `complete` remains available when a handoff was
 executed manually.
 
-## Actions and prompt files
+## Capabilities and prompt files
 
-An action uses the provider's native skill only when that provider declares one.
-For example, Claude Code can hand off `feature-design` to
-a user-configured skill name. If no skill is configured, Impresairio supplies
-a packaged fallback prompt for the declared action. This keeps workflows portable
-without claiming that Claude, Codex and OpenCode have identical capabilities.
+A workflow step's `capability` is a free identifier resolved through the actor's
+bound profile at `start`: a profile `skills` mapping, then a personal
+`<IMPRESAIRIO_HOME>/prompts/<capability>.md` override, then the packaged
+fallback prompt for that capability, in that order — see "Capability
+resolution" in `docs/configuration.md`. The resolved method is frozen into the
+run before any agent runs. This keeps workflows portable without claiming that
+Claude, Codex and OpenCode have identical native abilities.
 
 `promptFile` is different: its Markdown content is read and frozen at `start`.
 The handoff carries that exact content, so an edit to the workflow directory later
@@ -98,7 +121,7 @@ impresairio doctor --live --profile opencode-glm
 ## Optional local skills
 
 Impresairio has no bundled skill dependency. A profile may opt into skills that
-already exist on the local machine; otherwise its action uses the portable
+already exist on the local machine; otherwise its capability uses the portable
 fallback prompt.
 
 ```yaml

@@ -52,12 +52,46 @@ The built-in providers are `claude-code`, `codex`, and `opencode`. An
 `opencode` profile must refer to a key in `models`; the alias and resolved model
 identifier are retained by later run-state functionality.
 
-Every profile may define an optional `skills` mapping from a built-in action name
-to a locally installed skill name. The default is an empty mapping. When no mapping
-exists, Impresairio uses its portable fallback prompt. Skill names are local user
-configuration: repository workflows and open-source defaults must not assume that a
-personal skill is installed. Profile and skill mappings are resolved and frozen at
-run start; changing `config.yaml` does not alter an in-progress run.
+Every profile may define an optional `skills` mapping from a capability
+identifier (the free-form `capability`/`reviewCapability` value declared on a
+workflow step) to a locally installed skill name. The default is an empty
+mapping. Profile and skill mappings are resolved and frozen at run start;
+changing `config.yaml` does not alter an in-progress run.
+
+## Capability resolution
+
+A workflow step's `capability` is a free identifier: it names work the step's
+bound actor must perform, not a value from a fixed enum. At `start`, Impresairio
+resolves each `capability` to a concrete method for the profile actually bound
+to that step's actor, trying each of the following in order and stopping at the
+first match:
+
+1. the bound profile's `skills` map (`agentProfiles.<profile>.skills.<capability>`)
+   — the frozen method is a native skill reference;
+2. `<IMPRESAIRIO_HOME>/prompts/<capability>.md` — a personal, machine-local
+   override, read once and frozen as prompt content;
+3. the packaged prompt shipped with Impresairio for that capability
+   (`prompts/builtins/<capability>.md` in the installed package) — frozen the
+   same way.
+
+If none of the three resolves, `start` fails before any run state is written,
+naming the actor, its bound profile and the unresolved capability:
+
+```text
+actor "<actor>" (profile "<profileName>") has no method for capability "<capability>"; declare a skill in the profile or provide prompts/<capability>.md
+```
+
+No `prompts/` directory is required by default: the twelve built-in workflow
+capabilities (`feature-design`, `adversarial-review`, `specification`,
+`spec-review`, `integration-plan`, `plan-review`, `implementation`,
+`final-review`, `final-report`, `investigate`, `implement`, `verification`)
+all resolve through the packaged fallback prompts, so a bare `agentProfiles`
+entry with no `skills` mapping is enough to run the built-in `feature` and
+`quick-fix` workflows. A global `<IMPRESAIRIO_HOME>/prompts/<id>.md` file must
+not be empty; an empty file is a start-time error. The resolved method (skill
+reference, or the exact frozen prompt text and its source) is written into
+`state.json` at start and never re-resolved: editing a skill mapping or a
+prompt file afterward only affects runs started later.
 
 `execution.agentTimeoutSeconds` limits each provider process launched by
 `advance`. It is an integer from 1 through 86400 seconds and defaults to 1800

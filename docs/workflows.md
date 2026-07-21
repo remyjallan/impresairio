@@ -24,13 +24,13 @@ At start, Impresairio validates the selected file, creates an immutable run-step
 snapshot from it, and writes the SHA-256 of the exact YAML content to
 `state.json`. It freezes the work request, resolved documentation target root,
 repository `featurePath`, project bindings, feature bindings and run ID at the
-same time. The snapshot includes each agent role, its action or prompt reference,
-declared output, and each gate artifact reference. Every handoff receives the
-frozen request before its accumulated artifact context and human feedback. When
-an agent step starts, its declared output is resolved from that frozen context
-into the exact filesystem output contract used by `complete`. Existing runs
-never reread workflow or configuration files; editing either only affects a
-subsequently started run.
+same time. The snapshot includes each agent role, its resolved capability method
+or prompt reference, declared output, and each gate artifact reference. Every
+handoff receives the frozen request before its accumulated artifact context and
+human feedback. When an agent step starts, its declared output is resolved from
+that frozen context into the exact filesystem output contract used by
+`complete`. Existing runs never reread workflow or configuration files; editing
+either only affects a subsequently started run.
 
 ## Grammar
 
@@ -42,7 +42,7 @@ name: Quick fix
 steps: []
 ```
 
-`id`, step IDs and output IDs use lowercase letters, digits and hyphens, and begin with a letter. IDs must be unique. The V0 role names are exactly `launcher`, `adversary` and `implementer`.
+`id`, step IDs and output IDs use lowercase letters, digits and hyphens, and begin with a letter. `actor` is a free identifier: a workflow may name any actor it needs (`launcher`, `product-author`, `skeptic`, ...), and the set of actors a run must bind is derived from the workflow's own steps — there is no fixed enum of role names.
 
 An `agent` step declares its role, **exactly one** method, and exactly one Markdown output:
 
@@ -50,7 +50,7 @@ An `agent` step declares its role, **exactly one** method, and exactly one Markd
 - id: investigate
   type: agent
   actor: launcher
-  action: investigate
+  capability: investigate
   output:
     id: investigation
     filename: "01 - Investigation.md"
@@ -68,9 +68,11 @@ The method may instead refer to a versioned Markdown prompt file located below t
     filename: "01 - Domain Analysis.md"
 ```
 
-`action` is limited to the built-in V0 action names. Agent-provider behavior is
-resolved separately from the workflow: a provider may offer a native skill, or
-Impresairio supplies a packaged fallback prompt. An optional output `template`
+`capability` is also a free identifier, not a fixed enum: it names work the bound
+actor must be able to perform, and it is resolved to a concrete method — a
+native provider skill or a fallback prompt — through the actor's bound profile
+when the run starts. See "Capability resolution" in `docs/configuration.md` for
+the exact lookup order. An optional output `template`
 is an approved template identifier, not a path:
 
 ```yaml
@@ -94,6 +96,25 @@ each followed by a human approval gate, then implementation, final review and
 report steps. Its public documents retain the historical sequence numbers 01,
 03, 05, 07, 08 and 09; generated reviews are internal rather than occupying
 02, 04 and 06. `quick-fix` contains investigate, implement and verify.
+
+## Migration: `action` renamed to `capability`
+
+Older workflow YAML used `action` on an `agent` step and `action`/`reviewAction`
+on a `review-cycle` step. Both were renamed: `action` is now `capability`, and
+`reviewAction` is now `reviewCapability`. A workflow file that still declares
+the old key fails to parse with a dedicated error naming the offending file:
+
+```text
+<path>: "action" was renamed to "capability"; update the workflow step
+<path>: "reviewAction" was renamed to "reviewCapability"; update the workflow step
+```
+
+Update the workflow file to the new key with the same value; no other change
+is required. This migration is a parse-time rename only. Runs already frozen
+by an earlier Impresairio version are unaffected: their `state.json` keeps
+whatever method shape (including the legacy `{ action }` form) was resolved
+when that run started, and `next`/`complete`/`advance` continue to dispatch it
+exactly as before.
 
 ## Scheduling
 
@@ -141,8 +162,8 @@ explicit workflow outputs.
   type: review-cycle
   actor: launcher
   reviewer: adversary
-  action: feature-design
-  reviewAction: adversarial-review
+  capability: feature-design
+  reviewCapability: adversarial-review
   maxIterations: 3
   output:
     id: design
@@ -161,14 +182,14 @@ not migrate or alter an existing run.
 ## Terminal verdict policies
 
 Any `agent` step may declare how its final `VERDICT:` line drives the workflow.
-The policy is never inferred from a step name, action or capability; it must be
+The policy is never inferred from a step name or capability; it must be
 declared:
 
 ```yaml
 - id: verify
   type: agent
   actor: adversary
-  action: verification
+  capability: verification
   output:
     id: verification
     filename: "03 - Verification.md"
