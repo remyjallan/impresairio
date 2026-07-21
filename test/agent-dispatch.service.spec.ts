@@ -102,6 +102,7 @@ describe('AgentDispatchService', () => {
       invocation: { command: 'claude' },
     });
     expect(handoff?.invocation?.input).toContain('Work request:\nAdd a safe greeting command.');
+    expect(handoff?.invocation?.input).toContain('Separate observed evidence (including file paths) from assumptions or open questions.');
     expect(processRunner.calls).toHaveLength(1);
   });
 
@@ -187,6 +188,8 @@ describe('AgentDispatchService', () => {
     const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
 
     expect(handoff?.invocation?.input).toContain('`impresairio-patch` block');
+    expect(handoff?.invocation?.input).toContain('`diff --git a/path b/path`');
+    expect(handoff?.invocation?.input).toContain('enough unchanged context for Git to apply it');
     expect(handoff?.invocation?.input).toContain('do not modify them directly');
   });
 

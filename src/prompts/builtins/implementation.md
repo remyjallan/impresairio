@@ -1,1 +1,1 @@
-Implement the approved plan, run the applicable checks and report changed behavior.
+Inspect the relevant source files and tests before implementing the approved plan. Report observed behavior, changed files, executed checks, and remaining limitations. Separate observed evidence (with file paths) from assumptions or open questions. Do not claim a check passed unless you ran it.

@@ -67,6 +67,7 @@ export class AgentDispatchService {
       context ? `Input artifacts:\n${context}` : undefined,
       feedback ? `Human feedback to address:\n${feedback}` : undefined,
       reviewerFeedback ? `Reviewer feedback to address:\n${reviewerFeedback}` : undefined,
+      'Before making repository-specific claims, inspect the relevant source files and tests. Separate observed evidence (including file paths) from assumptions or open questions. Do not report a check as passed unless you executed it.',
       expectsVerdict
         ? 'End the Markdown response with exactly one of: VERDICT: APPROVED, VERDICT: CHANGES_REQUESTED, or VERDICT: BLOCKED.'
         : undefined,
@@ -74,7 +75,7 @@ export class AgentDispatchService {
         ? `After the human-readable Markdown, append exactly one fenced \`impresairio-result\` block containing a JSON object with exactly these fields: ${Object.entries(step.declaredResult.fields).map(([name, definition]) => `${name} (${definition.type})`).join(', ')}.`
         : undefined,
       step.patch === 'apply-unified-diff'
-        ? 'After the human-readable Markdown, append exactly one fenced `impresairio-patch` block containing a unified Git diff. Inspect repository files as needed, but do not modify them directly. The patch may modify only existing tracked files.'
+        ? 'After the human-readable Markdown, append exactly one fenced `impresairio-patch` block containing a unified Git diff. For each changed file, include `diff --git a/path b/path`, matching `--- a/path` and `+++ b/path` lines, and enough unchanged context for Git to apply it. The block must contain only the patch. Inspect repository files as needed, but do not modify them directly. The patch may modify only existing tracked files.'
         : undefined,
     ].filter((value): value is string => Boolean(value)).join('\n\n');
     const instruction = additions ? this.withAdditions(baseInstruction, additions) : baseInstruction;

@@ -1,1 +1,1 @@
-Implement the approved correction and explain the verification performed.
+Inspect the relevant source files and tests before implementing the approved correction. Explain the observed behavior, changed files, and verification performed. Separate observed evidence (with file paths) from assumptions or open questions. Report executed checks and their actual results; do not claim a check passed unless you ran it.

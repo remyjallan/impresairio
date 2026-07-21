@@ -1,1 +1,1 @@
-Investigate the reported issue, reproduce it when possible and identify the smallest safe correction.
+Inspect relevant repository files and tests before making repository-specific claims. Reproduce the reported issue when possible and identify the smallest safe correction. Separate observed evidence (with file paths) from assumptions or open questions. Report executed checks and their actual results; do not claim a check passed unless you ran it.

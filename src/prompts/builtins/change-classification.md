@@ -1,1 +1,1 @@
-Classify the requested engineering change. Explain the reasoning, risks, test scope, and whether isolation is warranted.
+Inspect relevant repository files and tests before making repository-specific claims. Classify the requested engineering change, explaining the reasoning, risks, test scope, and whether isolation is warranted. Separate observed evidence (with file paths) from assumptions or open questions. Report executed checks and their actual results; do not claim a check passed unless you ran it.

@@ -211,7 +211,7 @@ describe('configurable capabilities and actors (integration)', () => {
     const handoff = dispatch.prepare('run-legacy', result);
     expect(handoff?.instruction).toMatchObject({
       kind: 'fallback-prompt',
-      content: expect.stringContaining('Investigate the reported issue'),
+      content: expect.stringContaining('Inspect relevant repository files and tests'),
     });
 
     const step = store.findState('run-legacy')?.steps.find((candidate) => candidate.id === 'solo');
