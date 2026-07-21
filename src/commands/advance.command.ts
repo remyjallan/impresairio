@@ -12,6 +12,7 @@ import { FileStateStore } from '../runs/file-state.store';
 import { ArtifactService } from '../documentation/artifact.service';
 import { RunLockService } from '../runs/run-lock.service';
 import { StructuredResultError } from '../workflows/structured-result';
+import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../agents/opencode.provider';
 
 const MAX_AGENT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_DIAGNOSTIC_CHARS = 1_000;
@@ -65,6 +66,7 @@ export class AdvanceCommand extends CommandRunner {
   async run([runId]: string[]): Promise<void> {
     const release = this.locks.acquireReentrant(runId, 'advance');
     let activeStepId: string | undefined;
+    let activeHandoff: ReturnType<AgentDispatchService['prepare']> | undefined;
     try {
       for (;;) {
         const result = this.workflow.next(runId);
@@ -81,6 +83,7 @@ export class AdvanceCommand extends CommandRunner {
         }
         activeStepId = result.stepId;
         const handoff = this.dispatch.prepare(runId, result);
+        activeHandoff = handoff;
         if (!handoff?.invocation) throw new Error(`No executable invocation for ${result.stepId}`);
         const runDirectory = this.stateStore.runDirectory(runId);
         if (isInternalArtifact(runDirectory, handoff.expectedOutput.path)
@@ -122,13 +125,30 @@ export class AdvanceCommand extends CommandRunner {
         const recoveredContent = child.exitCode !== 0
           ? extractDeniedWriteContent(child.stderr || child.stdout, stagingPath)
           : undefined;
+        const openCodeOutput = handoff.provider === 'opencode'
+          ? readOpenCodeRunOutput(child.stdout)
+          : undefined;
         if ((child.exitCode !== 0 || child.timedOut || child.outputLimitExceeded) && !recoveredContent) {
-          throw createProviderExecutionError(invocation.command, result.stepId, child);
+          throw createProviderExecutionError(
+            invocation.command,
+            result.stepId,
+            child,
+            openCodeOutput && openCodeOutput.kind !== 'text'
+              ? describeOpenCodeRunOutput(openCodeOutput)
+              : undefined,
+          );
         }
         const content = existsSync(stagingPath) && readFileSync(stagingPath, 'utf8').trim().length > 0
           ? readFileSync(stagingPath, 'utf8')
-          : recoveredContent ?? extractContent(child.stdout);
-        if (!content.trim()) throw createProviderExecutionError(invocation.command, result.stepId, child, 'returned no artifact content');
+          : recoveredContent ?? (openCodeOutput
+            ? (openCodeOutput.kind === 'text' ? openCodeOutput.content : '')
+            : extractContent(child.stdout));
+        if (!content.trim()) throw createProviderExecutionError(
+          invocation.command,
+          result.stepId,
+          child,
+          openCodeOutput ? describeOpenCodeRunOutput(openCodeOutput) : 'returned no artifact content',
+        );
         const current = this.stateStore.findState(runId);
         const step = current?.steps.find((candidate) => candidate.id === result.stepId);
         if (!step || step.kind !== 'agent' || !step.expectedOutput) {
@@ -138,6 +158,7 @@ export class AdvanceCommand extends CommandRunner {
         this.completion.complete(runId, result.stepId);
         this.writeProgress(`${formatAgentProgress('completed', result.stepId, handoff, child.durationMs)}\n`);
         activeStepId = undefined;
+        activeHandoff = undefined;
       }
     } catch (error) {
       if (activeStepId && !(error instanceof StructuredResultError)) {
@@ -146,6 +167,12 @@ export class AdvanceCommand extends CommandRunner {
       if (activeStepId && error instanceof ProviderExecutionError) {
         this.events.append(runId, {
           type: 'agent.execution.failed', at: new Date().toISOString(), stepId: activeStepId,
+          ...(activeHandoff ? {
+            actor: activeHandoff.actor,
+            profile: activeHandoff.profile,
+            provider: activeHandoff.provider,
+            ...(activeHandoff.invocation?.model ? { model: activeHandoff.invocation.model } : {}),
+          } : {}),
           ...error.diagnostic,
         });
         this.writeProgress(`step: ${activeStepId} failed (${error.message})\n`);

@@ -108,6 +108,11 @@ for example `openrouter/z-ai/glm-5.2`; it never relies on a mutable default mode
 `agent.invocation.prepared` event records the alias and resolved ID before any
 execution occurs.
 
+Several OpenCode profiles can resolve independently from the same global model map,
+for example `opencode-glm` and `opencode-kimi`. A workflow still names only an
+abstract actor; `start --actor <role>=<profile>` makes the profile choice explicit
+and freezes its full provider-qualified model ID for that run.
+
 Claude Code and Codex profiles currently use the respective CLI defaults. They do
 not yet accept a configured model or reasoning-effort setting. The planned extension
 is specified in [the roadmap](roadmap.md#provider-specific-model-and-reasoning-profiles).
@@ -136,6 +141,12 @@ provider credits.
 impresairio doctor
 impresairio doctor --live --profile opencode-glm
 ```
+
+OpenCode invocations use its JSON event format so Impresairio publishes only final
+assistant text, never progress events. If OpenCode returns no text event or requests
+permission instead, the step fails with a bounded diagnostic. Impresairio never adds
+OpenCode's `--auto` flag or changes its permission configuration; review focused local
+permission rules or run the handoff manually before retrying.
 
 ## Optional local skills
 

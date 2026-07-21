@@ -8,6 +8,9 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Fixed
 
+- OpenCode now uses its JSON event output so progress is never published as a
+  Markdown artifact; empty and permission-only responses fail with actionable,
+  bounded diagnostics that preserve the frozen profile and model in the event log.
 - Packaged fallback prompts and agent handoffs now require repository evidence, explicit assumptions, and truthful check reporting for repository-specific conclusions.
 - Controlled patch application recalculates model-generated hunk lengths while retaining Git context and whitespace validation.
 - Controlled patch application accepts standard unified diffs as well as diffs with optional `diff --git` headers.

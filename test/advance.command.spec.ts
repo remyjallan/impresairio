@@ -7,6 +7,7 @@ import {
   extractDeniedWriteContent,
   formatAgentProgress,
 } from '../src/commands/advance.command';
+import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
 import { describe, expect, it } from 'vitest';
 
 describe('advance command output recovery', () => {
@@ -19,6 +20,15 @@ describe('advance command output recovery', () => {
     expect(extractContent(JSON.stringify({
       result: JSON.stringify({ markdown: '# Review', verdict: 'APPROVED' }),
     }))).toBe('# Review\n\nVERDICT: APPROVED');
+  });
+
+  it('keeps OpenCode JSON progress out of the published Markdown and surfaces a permission request', () => {
+    const output = readOpenCodeRunOutput(JSON.stringify({
+      type: 'permission.requested', part: { type: 'permission', tool: 'bash' },
+    }));
+
+    expect(output).toEqual({ kind: 'permission-request' });
+    expect(describeOpenCodeRunOutput(output)).toContain('review its focused permission rules');
   });
 
   it('recovers only content from a completed Claude Write denial', () => {
