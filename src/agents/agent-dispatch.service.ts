@@ -127,6 +127,12 @@ export class AgentDispatchService {
     if ('promptFile' in method) {
       return { kind: 'prompt-file', source: method.promptFile, content: method.content };
     }
+    if ('capability' in method) {
+      return 'skill' in method
+        ? { kind: 'native-skill', skill: method.skill }
+        : { kind: 'fallback-prompt', content: method.content };
+    }
+    // Frozen V0 runs only: resolve the legacy action at dispatch time.
     const nativeSkill = skills?.[method.action] ?? provider.nativeSkillFor(method.action);
     return nativeSkill
       ? { kind: 'native-skill', skill: nativeSkill }

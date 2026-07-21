@@ -234,6 +234,43 @@ describe('AgentDispatchService', () => {
     expect(handoff?.invocation?.input).not.toContain('End the Markdown response with exactly one of');
   });
 
+  it('dispatches a frozen skill capability without consulting profile skills', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      resolvedActors: {
+        ...state.resolvedActors,
+        launcher: { ...state.resolvedActors.launcher, skills: { 'feature-design': 'local:should-not-be-used' } },
+      },
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? { ...step, method: { capability: 'feature-design', skill: 'local:frozen-skill' } }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.instruction).toMatchObject({ kind: 'native-skill', skill: 'local:frozen-skill' });
+  });
+
+  it('dispatches a frozen prompt capability using its exact content', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? { ...step, method: { capability: 'feature-design', promptSource: 'global' as const, content: 'Custom global capability prompt.' } }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.instruction?.kind).toBe('fallback-prompt');
+    expect((handoff?.instruction as { content: string }).content).toContain('Custom global capability prompt.');
+  });
+
   it('injects the reviewer feedback artifact into a reopened step', () => {
     const { runner, dispatch, store } = setup('launcher');
     const feedbackDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-feedback-')));
