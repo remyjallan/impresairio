@@ -12,6 +12,7 @@ import type { Workflow, WorkflowStep } from '../workflows/workflow.schema';
 export interface StartRunRequest {
   readonly id?: string;
   readonly workflowId: string;
+  readonly request: string;
   readonly roles: Readonly<Record<string, string>>;
   readonly feature: {
     readonly id: string;
@@ -43,6 +44,7 @@ export class RunService {
 
   start(request: StartRunRequest): RunState {
     this.validateFeature(request.feature);
+    const workRequest = this.validateRequest(request.request);
     const id = request.id ?? `run-${randomUUID()}`;
     const timestamp = this.now().toISOString();
     const configuration = this.configService.load(request.repositoryDirectory ?? process.cwd());
@@ -61,6 +63,7 @@ export class RunService {
     );
     const state = createRunState({
       ...request,
+      request: workRequest,
       id,
       now: timestamp,
       documentation: {
@@ -130,6 +133,17 @@ export class RunService {
     if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(feature.slug)) {
       throw new RunStateError('Feature slug must use lowercase letters, numbers, hyphens or underscores');
     }
+  }
+
+  private validateRequest(request: string): string {
+    const normalized = request.trim();
+    if (!normalized) {
+      throw new RunStateError('Work request must not be empty');
+    }
+    if (normalized.length > 20_000) {
+      throw new RunStateError('Work request must not exceed 20000 characters');
+    }
+    return normalized;
   }
 }
 

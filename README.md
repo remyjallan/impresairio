@@ -92,7 +92,8 @@ impresairio start feature \
   --adversary codex \
   --implementer opencode-glm \
   --feature-id IMP-42 \
-  --feature-slug account-merge
+  --feature-slug account-merge \
+  --request "Allow an operator to merge two customer accounts safely."
 ```
 
 The command prints a run ID. Execute configured agents until the next human gate:
@@ -124,7 +125,7 @@ impresairio request-changes <run-id> approve-design \
 impresairio retry <run-id> design
 ```
 
-Run state and events live beneath `<impresairio-home>/runs/<run-id>/`. The workflow, documentation context and resolved agent/model profiles are frozen at start, so later configuration edits do not change an in-progress run.
+Run state and events live beneath `<impresairio-home>/runs/<run-id>/`. The work request, workflow, documentation context and resolved agent/model profiles are frozen at start, so later configuration edits do not change an in-progress run.
 
 ## Check agent connectivity
 

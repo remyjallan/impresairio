@@ -40,7 +40,8 @@ impresairio start feature \
   --adversary codex \
   --implementer opencode-glm \
   --feature-id IMP-42 \
-  --feature-slug account-merge
+  --feature-slug account-merge \
+  --request "Allow an operator to merge two customer accounts safely."
 ```
 
 Every actor required by the chosen workflow must have a profile. Unknown profile,

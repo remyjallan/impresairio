@@ -17,6 +17,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 - `doctor` provider diagnostics and `list` run discovery commands.
 - Request-change feedback propagation, failed-step recovery and safe artifact publication.
 - Visible exhausted or blocked review-cycle warnings and configurable agent execution timeouts.
+- Frozen `--request` input supplied to every agent handoff for new runs.
 
 ## [0.1.0] - 2026-07-20
 

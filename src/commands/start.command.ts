@@ -12,6 +12,7 @@ interface StartOptions {
   readonly repository?: string;
   readonly featureId?: string;
   readonly featureSlug?: string;
+  readonly request?: string;
 }
 
 @Injectable()
@@ -35,6 +36,7 @@ export class StartCommand extends CommandRunner {
       workflowId,
       roles: this.roles(options),
       feature: this.feature(options),
+      request: this.request(options),
       repositoryDirectory: options.repository,
     });
     this.write(`${state.id}\n`);
@@ -75,6 +77,11 @@ export class StartCommand extends CommandRunner {
     return value;
   }
 
+  @Option({ flags: '--request <text>', description: 'Work request frozen into the run and supplied to every agent step.' })
+  parseRequest(value: string): string {
+    return value;
+  }
+
   private roles(options: StartOptions): Record<string, string> {
     const roles: Record<string, string> = {};
     for (const [role, profile] of Object.entries({
@@ -94,5 +101,12 @@ export class StartCommand extends CommandRunner {
       throw new Error('start requires --feature-id and --feature-slug');
     }
     return { id: options.featureId, slug: options.featureSlug };
+  }
+
+  private request(options: StartOptions): string {
+    if (!options.request?.trim()) {
+      throw new Error('start requires --request');
+    }
+    return options.request;
   }
 }

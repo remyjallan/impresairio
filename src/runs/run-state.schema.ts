@@ -151,6 +151,7 @@ export const runStateSchema = z
   .object({
     version: z.literal(1),
     id: nonEmptyString,
+    request: z.string().trim().min(1).max(20_000).optional(),
     workflow: z
       .object({
         id: nonEmptyString,
@@ -176,6 +177,7 @@ export type RunState = z.infer<typeof runStateSchema>;
 export function createRunState(input: {
   readonly id: string;
   readonly workflowId: string;
+  readonly request?: string;
   readonly workflowSha256: string;
   readonly roles: Readonly<Record<string, string>>;
   readonly resolvedActors?: z.input<typeof runStateSchema>['resolvedActors'];
@@ -210,6 +212,7 @@ export function createRunState(input: {
   return runStateSchema.parse({
     version: 1,
     id: input.id,
+    ...(input.request ? { request: input.request } : {}),
     workflow: {
       id: input.workflowId,
       sha256: input.workflowSha256,

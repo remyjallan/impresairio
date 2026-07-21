@@ -58,6 +58,7 @@ export class AgentDispatchService {
     const context = this.contextFor(state, step.id);
     const feedback = this.feedbackFor(state, step.declaredOutput.id);
     const additions = [
+      state.request ? `Work request:\n${state.request}` : undefined,
       context ? `Input artifacts:\n${context}` : undefined,
       feedback ? `Human feedback to address:\n${feedback}` : undefined,
     ].filter((value): value is string => Boolean(value)).join('\n\n');

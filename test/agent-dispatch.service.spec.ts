@@ -50,6 +50,7 @@ function setup(actor: 'launcher' | 'implementer') {
       };
   store.create(createRunState({
     id: 'run-agent', workflowId: 'feature', workflowSha256: 'a'.repeat(64),
+    request: 'Add a safe greeting command.',
     roles: { [actor]: profile.profile }, resolvedActors: { [actor]: profile },
     documentation: {
       target: { name: 'test', kind: 'filesystem', root: home, defaultFormat: 'markdown' },
@@ -100,6 +101,7 @@ describe('AgentDispatchService', () => {
       expectedOutput: { id: 'report' },
       invocation: { command: 'claude' },
     });
+    expect(handoff?.invocation?.input).toContain('Work request:\nAdd a safe greeting command.');
     expect(processRunner.calls).toHaveLength(1);
   });
 

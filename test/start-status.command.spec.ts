@@ -124,11 +124,13 @@ describe('start and status commands', () => {
       repository,
       featureId: 'IMP-42',
       featureSlug: 'workflow-test',
+      request: '  Investigate and correct the sample workflow behavior.  ',
     });
     await status.run(['run-quick-fix']);
 
     expect(store.findState('run-quick-fix')).toEqual(expect.objectContaining({
       workflow: expect.objectContaining({ id: 'quick-fix' }),
+      request: 'Investigate and correct the sample workflow behavior.',
       execution: { agentTimeoutSeconds: 1_800 },
       roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
       documentation: expect.objectContaining({
@@ -149,6 +151,27 @@ describe('start and status commands', () => {
     expect(output.join('')).toContain('verify: pending');
   });
 
+  it('requires a non-empty work request for new runs', async () => {
+    const { service } = createRunService();
+    const start = new StartCommand(service, () => undefined);
+
+    await expect(start.run(['quick-fix'], {
+      launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm',
+      featureId: 'IMP-42', featureSlug: 'missing-request',
+    })).rejects.toThrow('start requires --request');
+  });
+
+  it('rejects a work request beyond the persisted prompt limit', () => {
+    const { service } = createRunService();
+
+    expect(() => service.start({
+      workflowId: 'quick-fix',
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'IMP-42', slug: 'oversized-request' },
+      request: 'x'.repeat(20_001),
+    })).toThrow('Work request must not exceed 20000 characters');
+  });
+
   it('lists resumable runs newest first', async () => {
     const { home, store, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
@@ -156,10 +179,12 @@ describe('start and status commands', () => {
     const repository = configureRepository(home, documentationRoot);
     service.start({
       id: 'run-first', workflowId: 'quick-fix', roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      request: 'Fix the first issue.',
       feature: { id: 'IMP-45', slug: 'first' }, repositoryDirectory: repository,
     });
     service.start({
       id: 'run-second', workflowId: 'quick-fix', roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      request: 'Fix the second issue.',
       feature: { id: 'IMP-46', slug: 'second' }, repositoryDirectory: repository,
     });
     const output: string[] = [];
@@ -178,6 +203,7 @@ describe('start and status commands', () => {
     service.start({
       id: 'run-completion',
       workflowId: 'quick-fix',
+      request: 'Investigate a completion failure.',
       roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
       feature: { id: 'IMP-43', slug: 'completion-test' },
       repositoryDirectory: repository,
@@ -236,6 +262,7 @@ steps:
 `);
     service.start({
       id: 'run-snapshot', workflowId: 'custom', roles: { launcher: 'claude' },
+      request: 'Write a stable snapshot report.',
       feature: { id: 'IMP-44', slug: 'snapshot-test' }, repositoryDirectory: repository,
     });
     writeFileSync(join(repository, '.impresairio.yaml'), `project:
@@ -304,6 +331,7 @@ steps:
 
     service.start({
       id: 'run-prompt-snapshot', workflowId: 'prompted', roles: { launcher: 'claude' },
+      request: 'Write a report using the frozen prompt.',
       feature: { id: 'IMP-45', slug: 'prompt-snapshot' }, repositoryDirectory: repository,
     });
     writeFileSync(promptPath, 'This change must not affect the run.\n');

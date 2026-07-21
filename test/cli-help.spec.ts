@@ -39,6 +39,7 @@ describe('CLI help', () => {
     expect(result.stdout).toContain('Usage: impresairio start [options] <workflow-id>');
     expect(result.stdout).toContain('--feature-id <id>');
     expect(result.stdout).toContain('--feature-slug <slug>');
+    expect(result.stdout).toContain('--request <text>');
     expect(result.stdout).toContain('--launcher <profile>');
     expect(result.stdout).toContain('--adversary <profile>');
     expect(result.stdout).toContain('--implementer <profile>');

@@ -13,9 +13,24 @@ general-purpose automation language.
 2. `<IMPRESAIRIO_HOME>/workflows/`;
 3. the workflows shipped with the installed package.
 
-The repository is the current directory by default and may be supplied with `--repository`. A higher-precedence file completely replaces a lower-precedence file with the same ID. `start` also reads the repository configuration and its selected global documentation target. It requires explicit `--feature-id` and `--feature-slug` values for the fixed V0 bindings.
+The repository is the current directory by default and may be supplied with
+`--repository`. A higher-precedence file completely replaces a lower-precedence
+file with the same ID. `start` also reads the repository configuration and its
+selected global documentation target. It requires explicit `--feature-id` and
+`--feature-slug` values for the fixed V0 bindings, plus a non-empty `--request`
+of at most 20,000 characters describing the work to perform.
 
-At start, Impresairio validates the selected file, creates an immutable run-step snapshot from it, and writes the SHA-256 of the exact YAML content to `state.json`. It freezes the resolved documentation target root, repository `featurePath`, project bindings, feature bindings and run ID at the same time. The snapshot includes each agent role, its action or prompt reference, declared output, and each gate artifact reference. When an agent step starts, its declared output is resolved from that frozen context into the exact filesystem output contract used by `complete`. Existing runs never reread workflow or configuration files; editing either only affects a subsequently started run.
+At start, Impresairio validates the selected file, creates an immutable run-step
+snapshot from it, and writes the SHA-256 of the exact YAML content to
+`state.json`. It freezes the work request, resolved documentation target root,
+repository `featurePath`, project bindings, feature bindings and run ID at the
+same time. The snapshot includes each agent role, its action or prompt reference,
+declared output, and each gate artifact reference. Every handoff receives the
+frozen request before its accumulated artifact context and human feedback. When
+an agent step starts, its declared output is resolved from that frozen context
+into the exact filesystem output contract used by `complete`. Existing runs
+never reread workflow or configuration files; editing either only affects a
+subsequently started run.
 
 ## Grammar
 

@@ -24,7 +24,10 @@ impresairio start quick-fix \
   --launcher claude \
   --adversary codex \
   --implementer opencode-glm \
-  --run-id run-example
+  --run-id run-example \
+  --feature-id BUG-42 \
+  --feature-slug escaped-output \
+  --request "Unknown commands containing a newline are printed without escaping."
 
 impresairio status run-example
 ```
@@ -33,6 +36,12 @@ impresairio status run-example
 current step, number of resolved steps and the status of every step. Use it to
 identify stale or failed work before `retry`, then use `next` to prepare the
 next agent handoff or reveal the next human approval gate.
+
+Every new run requires `--request`. Impresairio trims, validates and freezes
+that text in `state.json`, then supplies it to every agent handoff. Existing
+runs created before this field was introduced remain readable and continue
+without it. Requests are persisted in plaintext and may also remain in shell
+history, so they must not contain credentials or other secrets.
 
 If a bounded review cycle reaches its final iteration with
 `VERDICT: CHANGES_REQUESTED`, `status` shows a persistent warning until the
