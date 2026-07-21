@@ -9,6 +9,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 ### Fixed
 
 - OpenCode execution now receives a path-free response contract, so sandboxed agents return Markdown to Impresairio instead of trying to access runner-owned artifact paths.
+- OpenCode execution may inspect repository files while remaining unable to write or modify them.
 
 ### Added
 
