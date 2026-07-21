@@ -14,6 +14,16 @@ The application owns persisted run state and artifact publication. Agent CLIs
 return content; they must not be asked to write into Impresairio state or an
 external documentation target directly.
 
+## Repository language
+
+All repository-maintained content must be written in English. This includes
+source identifiers and comments, CLI help and errors, tests and fixtures, YAML
+configuration and workflows, templates, documentation, contribution files,
+commit messages and pull-request content. Do not add French text or bilingual
+duplicates to the repository. Generated workflow artifacts may follow the
+language requested by the run because they are user output, not repository
+source material.
+
 ## Development workflow
 
 - Use pnpm through Corepack: `corepack enable && pnpm install --frozen-lockfile`.
