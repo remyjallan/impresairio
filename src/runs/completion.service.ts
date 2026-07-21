@@ -18,6 +18,7 @@ export interface CompletionStep {
   readonly kind: 'agent' | 'gate';
   readonly status: CompletionStepStatus;
   readonly output?: PreparedDocumentationOutput;
+  readonly storage?: 'documentation' | 'internal';
   readonly declaredResult?: WorkflowResult;
   readonly patch?: WorkflowPatch;
   readonly cycle?: { readonly id: string; readonly role: 'review' | 'consolidate'; readonly iteration: number };
@@ -108,6 +109,7 @@ export interface OutputVerifier {
     step: CompletionStep,
   ): CompletedDocumentationOutput;
   readExpectedOutput?(run: CompletionRun, step: CompletionStep): string;
+  discardExpectedOutput?(step: CompletionStep): void;
 }
 
 export const COMPLETION_RUN_STORE = Symbol('COMPLETION_RUN_STORE');
@@ -236,12 +238,17 @@ export class CompletionService {
         });
       }
       if (policyResult.source === 'policy' && policyResult.reviewOutcome) {
-        if (policyResult.transition?.kind === 'retry-from') {
-          this.store.applyVerdictRetry?.(runId, stepId, policyResult.transition.targetStepId);
+        const transition = policyResult.transition;
+        if (transition?.kind === 'retry-from') {
+          const retryTarget = run.steps.find((candidate) => candidate.id === transition.targetStepId);
+          if (retryTarget?.storage === 'internal') {
+            this.outputVerifier.discardExpectedOutput?.(retryTarget);
+          }
+          this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId);
           this.store.appendEvent(runId, {
             type: 'verdict.changes_requested',
             stepId,
-            retryFrom: policyResult.transition.targetStepId,
+            retryFrom: transition.targetStepId,
             at: this.now().toISOString(),
           });
         } else if (policyResult.transition?.kind === 'halt') {

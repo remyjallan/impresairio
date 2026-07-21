@@ -158,4 +158,11 @@ export class ArtifactService implements OutputVerifier {
     }
     return this.filesystemTarget.readVerifiedMarkdown(step.output);
   }
+
+  discardExpectedOutput(step: CompletionOutputStep): void {
+    if (!step.output) {
+      throw new ArtifactError(`Step ${step.id} does not declare a resolved documentation output`);
+    }
+    this.discardOutput(step.output);
+  }
 }

@@ -39,7 +39,7 @@ export class StaleInvalidationService {
       const producer = this.producerForArtifact(state, gate.artifact);
       let currentHash: string | undefined;
       try {
-        currentHash = this.artifacts.currentHash(producer.output, state.documentation.target.root);
+        currentHash = this.artifacts.currentHash(producer.output, this.artifactRoot(state, producer));
       } catch {
         // A missing, empty or unsafe file is just as invalid as a hash mismatch.
       }
@@ -77,6 +77,9 @@ export class StaleInvalidationService {
       throw new RunStateError(`Gate ${gateId} is stale and cannot receive request-changes`);
     }
     const producer = this.producerForArtifact(state, gate.artifact);
+    if (producer.declaredOutput.storage === 'internal' && producer.expectedOutput) {
+      this.artifacts.discardOutput(producer.expectedOutput);
+    }
     const invalidated = this.invalidateFrom(state, producer.id, 'request-changes', producer.id);
     const timestamp = this.now().toISOString();
     const steps = invalidated.steps.map((step) => {
@@ -212,7 +215,7 @@ export class StaleInvalidationService {
       throw new RunStateError(`Gate ${gateId} has incomplete prerequisite steps`);
     }
     const producer = this.producerForArtifact(state, gate.artifact);
-    const currentHash = this.artifacts.currentHash(producer.output, state.documentation.target.root);
+    const currentHash = this.artifacts.currentHash(producer.output, this.artifactRoot(state, producer));
     const outdatedConsumers = this.consumersWithOutdatedInput(state, producer.declaredOutput.id, currentHash);
     if (outdatedConsumers.length > 0) {
       const invalidated = outdatedConsumers.reduce(
@@ -299,6 +302,10 @@ export class StaleInvalidationService {
       throw new RunStateError(`Artifact ${artifactId} has no completed producer output`);
     }
     return producer as AgentRunStep & { output: NonNullable<AgentRunStep['output']> };
+  }
+
+  private artifactRoot(state: RunState, producer: AgentRunStep): string {
+    return producer.expectedOutput?.targetRoot ?? state.documentation.target.root;
   }
 
   private withTimestamp(state: RunState): RunState {

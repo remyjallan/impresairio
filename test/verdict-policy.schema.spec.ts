@@ -65,4 +65,16 @@ describe('workflow verdictPolicy schema', () => {
     }]));
     expect(result.success).toBe(false);
   });
+
+  it('rejects a gate whose producer can be skipped by a condition', () => {
+    const result = workflowSchema.safeParse(workflowWith([{
+      ...implement,
+      when: { equals: { left: true, right: false } },
+    }, {
+      id: 'approve', type: 'gate', artifact: 'implementation-report',
+    }]));
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.success ? [] : result.error.issues))
+      .toContain('unconditional agent step');
+  });
 });

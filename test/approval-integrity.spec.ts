@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -164,5 +164,36 @@ describe('approval integrity', () => {
     expect(() => gates.approve('run-gates', 'approve-design')).toThrow(ApprovalIntegrityError);
     expect(store.findState('run-gates')?.steps[1]).toMatchObject({ id: 'challenge', status: 'stale' });
     expect(store.findState('run-gates')?.steps[2]).toMatchObject({ id: 'approve-design', status: 'pending' });
+  });
+
+  it('hashes and discards internal gate artifacts in the run directory', () => {
+    const { gates, store, seed, docs } = createHarness();
+    const seeded = seed();
+    const internalRoot = join(docs, 'run-artifacts');
+    const internalOutput = {
+      id: 'design', targetRoot: internalRoot, directory: internalRoot,
+      path: join(internalRoot, 'design.md'), format: 'markdown' as const,
+    };
+    mkdirSync(internalRoot, { recursive: true });
+    writeFileSync(internalOutput.path, seeded.content.design, 'utf8');
+    store.save({
+      ...seeded.state,
+      steps: seeded.state.steps.map((step) => step.id === 'design' && step.kind === 'agent'
+        ? {
+            ...step,
+            declaredOutput: { ...step.declaredOutput, storage: 'internal' as const },
+            expectedOutput: internalOutput,
+            output: { ...step.output!, path: internalOutput.path },
+          }
+        : step),
+    });
+
+    expect(() => gates.approve('run-gates', 'approve-design')).not.toThrow();
+    expect(store.findState('run-gates')?.steps[2]).toMatchObject({
+      status: 'complete', approval: { approvedArtifactHash: sha256(seeded.content.design) },
+    });
+
+    gates.requestChanges('run-gates', 'approve-design', 'Rework the internal artifact.');
+    expect(() => realpathSync(internalOutput.path)).toThrow();
   });
 });

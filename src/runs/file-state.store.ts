@@ -148,6 +148,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         status: step.status,
         ...(step.kind === 'agent' && step.cycle ? { cycle: step.cycle } : {}),
         ...(step.kind === 'agent' && step.declaredResult ? { declaredResult: step.declaredResult } : {}),
+        ...(step.kind === 'agent' ? { storage: step.declaredOutput.storage } : {}),
         ...(step.kind === 'agent' && step.patch ? { patch: step.patch } : {}),
         ...(step.kind === 'agent' && step.expectedOutput
           ? { output: step.expectedOutput }
