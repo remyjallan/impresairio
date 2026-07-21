@@ -1,15 +1,52 @@
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
 import { AgentDispatchService } from '../agents/agent-dispatch.service';
+import type { PreparedAgentInvocation } from '../agents/agent-provider';
 import { CompletionService } from '../runs/completion.service';
+import { EventLogService } from '../runs/event-log.service';
 import { WorkflowRunnerService } from '../workflows/workflow-runner.service';
 import { FileStateStore } from '../runs/file-state.store';
 import { ArtifactService } from '../documentation/artifact.service';
 import { RunLockService } from '../runs/run-lock.service';
 import { StructuredResultError } from '../workflows/structured-result';
+
+const MAX_AGENT_OUTPUT_BYTES = 16 * 1024 * 1024;
+const MAX_DIAGNOSTIC_CHARS = 1_000;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
+export const ADVANCE_PROGRESS_WRITER = Symbol('ADVANCE_PROGRESS_WRITER');
+
+export interface AgentExecution {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly timedOut: boolean;
+  readonly outputLimitExceeded: boolean;
+  readonly durationMs: number;
+  readonly spawnError?: Error;
+}
+
+export class ProviderExecutionError extends Error {
+  constructor(
+    message: string,
+    readonly diagnostic: {
+      readonly command: string;
+      readonly exitCode: number | null;
+      readonly signal: NodeJS.Signals | null;
+      readonly timedOut: boolean;
+      readonly outputLimitExceeded: boolean;
+      readonly stderr: string;
+      readonly stdout: string;
+    },
+  ) {
+    super(message);
+    this.name = 'ProviderExecutionError';
+  }
+}
 
 @Injectable()
 @Command({ name: 'advance', arguments: '<run-id>', description: 'Execute agent steps until the next human gate, failure, or workflow completion.' })
@@ -21,6 +58,8 @@ export class AdvanceCommand extends CommandRunner {
     private readonly stateStore: FileStateStore,
     private readonly artifacts: ArtifactService,
     private readonly locks: RunLockService,
+    private readonly events: EventLogService,
+    @Inject(ADVANCE_PROGRESS_WRITER) private readonly writeProgress: (line: string) => void,
   ) { super(); }
 
   async run([runId]: string[]): Promise<void> {
@@ -47,6 +86,7 @@ export class AdvanceCommand extends CommandRunner {
         if (isInternalArtifact(runDirectory, handoff.expectedOutput.path)
           && existsSync(handoff.expectedOutput.path)
           && readFileSync(handoff.expectedOutput.path, 'utf8').trim().length > 0) {
+          this.writeProgress(`step: ${result.stepId} reusing existing internal artifact\n`);
           this.completion.complete(runId, result.stepId);
           activeStepId = undefined;
           continue;
@@ -64,24 +104,31 @@ export class AdvanceCommand extends CommandRunner {
         };
         const currentRun = this.stateStore.findState(runId);
         if (!currentRun) throw new Error(`Run not found while executing ${result.stepId}: ${runId}`);
-        const child = spawnSync(invocation.command, invocation.args, {
-          encoding: 'utf8', cwd: executionDirectory(currentRun.repositoryDirectory), input: invocation.input,
-          timeout: currentRun.execution.agentTimeoutSeconds * 1_000, maxBuffer: 16 * 1024 * 1024,
+        this.writeProgress(`${formatAgentProgress('started', result.stepId, handoff)}\n`);
+        this.events.append(runId, {
+          type: 'agent.execution.started', at: new Date().toISOString(), stepId: result.stepId,
+          actor: handoff.actor, profile: handoff.profile, provider: handoff.provider,
+          ...(handoff.invocation.model ? { model: handoff.invocation.model } : {}),
         });
-        if (child.error) throw child.error;
+        const child = await executeAgentProcess(invocation, {
+          cwd: executionDirectory(currentRun.repositoryDirectory),
+          timeoutMs: currentRun.execution.agentTimeoutSeconds * 1_000,
+          onHeartbeat: (elapsedMs) => this.writeProgress(`${formatAgentProgress('running', result.stepId, handoff, elapsedMs)}\n`),
+        });
+        if (child.spawnError) throw createProviderExecutionError(invocation.command, result.stepId, child);
         // Claude can finish generating a structured answer then fail only
         // because it attempted an unnecessary Write tool call. Preserve that
         // complete answer when it is present; other non-zero exits remain failures.
-        const recoveredContent = child.status !== 0
+        const recoveredContent = child.exitCode !== 0
           ? extractDeniedWriteContent(child.stderr || child.stdout, stagingPath)
           : undefined;
-        if (child.status !== 0 && !recoveredContent) {
-          throw new Error(`${handoff.invocation.command} failed for ${result.stepId}: ${child.stderr || child.stdout}`);
+        if ((child.exitCode !== 0 || child.timedOut || child.outputLimitExceeded) && !recoveredContent) {
+          throw createProviderExecutionError(invocation.command, result.stepId, child);
         }
         const content = existsSync(stagingPath) && readFileSync(stagingPath, 'utf8').trim().length > 0
           ? readFileSync(stagingPath, 'utf8')
           : recoveredContent ?? extractContent(child.stdout);
-        if (!content.trim()) throw new Error(`${handoff.invocation.command} returned no artifact content for ${result.stepId}`);
+        if (!content.trim()) throw createProviderExecutionError(invocation.command, result.stepId, child, 'returned no artifact content');
         const current = this.stateStore.findState(runId);
         const step = current?.steps.find((candidate) => candidate.id === result.stepId);
         if (!step || step.kind !== 'agent' || !step.expectedOutput) {
@@ -89,17 +136,126 @@ export class AdvanceCommand extends CommandRunner {
         }
         this.artifacts.publishMarkdown(step.expectedOutput, content.endsWith('\n') ? content : `${content}\n`);
         this.completion.complete(runId, result.stepId);
+        this.writeProgress(`${formatAgentProgress('completed', result.stepId, handoff, child.durationMs)}\n`);
         activeStepId = undefined;
       }
     } catch (error) {
       if (activeStepId && !(error instanceof StructuredResultError)) {
         this.stateStore.markFailed(runId, activeStepId, error instanceof Error ? error.message : String(error));
       }
+      if (activeStepId && error instanceof ProviderExecutionError) {
+        this.events.append(runId, {
+          type: 'agent.execution.failed', at: new Date().toISOString(), stepId: activeStepId,
+          ...error.diagnostic,
+        });
+        this.writeProgress(`step: ${activeStepId} failed (${error.message})\n`);
+      }
       throw error;
     } finally {
       release();
     }
   }
+
+}
+
+export function createProviderExecutionError(
+  command: string,
+  stepId: string,
+  execution: AgentExecution,
+  suffix?: string,
+): ProviderExecutionError {
+  const failure = execution.timedOut
+    ? `timed out after ${Math.ceil(execution.durationMs / 1_000)}s`
+    : execution.outputLimitExceeded
+      ? 'exceeded the output limit'
+      : execution.spawnError
+        ? `could not start: ${execution.spawnError.message}`
+        : execution.signal
+          ? `terminated by ${execution.signal}`
+          : `exited with status ${execution.exitCode ?? 'unknown'}`;
+  return new ProviderExecutionError(
+    `${command} failed for ${stepId}: ${suffix ?? failure}; inspect the run event log for bounded diagnostics`,
+    {
+      command,
+      exitCode: execution.exitCode,
+      signal: execution.signal,
+      timedOut: execution.timedOut,
+      outputLimitExceeded: execution.outputLimitExceeded,
+      stderr: boundedDiagnostic(execution.stderr),
+      stdout: boundedDiagnostic(execution.stdout),
+    },
+  );
+}
+
+export async function executeAgentProcess(
+  invocation: PreparedAgentInvocation,
+  options: {
+    readonly cwd: string;
+    readonly timeoutMs: number;
+    readonly heartbeatIntervalMs?: number;
+    readonly onHeartbeat?: (elapsedMs: number) => void;
+  },
+): Promise<AgentExecution> {
+  return new Promise((resolveExecution) => {
+    const startedAt = Date.now();
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    let outputLimitExceeded = false;
+    let spawnError: Error | undefined;
+    const child = spawn(invocation.command, invocation.args, { cwd: options.cwd, stdio: 'pipe' });
+    const append = (current: string, chunk: Buffer): string => {
+      const next = current + chunk.toString('utf8');
+      if (Buffer.byteLength(next, 'utf8') <= MAX_AGENT_OUTPUT_BYTES) return next;
+      outputLimitExceeded = true;
+      child.kill('SIGTERM');
+      return next.slice(0, MAX_AGENT_OUTPUT_BYTES);
+    };
+    child.stdout.on('data', (chunk: Buffer) => { stdout = append(stdout, chunk); });
+    child.stderr.on('data', (chunk: Buffer) => { stderr = append(stderr, chunk); });
+    child.on('error', (error) => { spawnError = error; });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, options.timeoutMs);
+    const heartbeat = setInterval(() => options.onHeartbeat?.(Date.now() - startedAt), options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS);
+    child.on('close', (exitCode, signal) => {
+      clearTimeout(timeout);
+      clearInterval(heartbeat);
+      resolveExecution({
+        stdout,
+        stderr,
+        exitCode,
+        signal,
+        timedOut,
+        outputLimitExceeded,
+        durationMs: Date.now() - startedAt,
+        ...(spawnError ? { spawnError } : {}),
+      });
+    });
+    child.stdin.end(invocation.input);
+  });
+}
+
+export function formatAgentProgress(
+  phase: 'started' | 'running' | 'completed',
+  stepId: string,
+  handoff: { readonly provider: string; readonly profile: string; readonly invocation?: { readonly model?: string } },
+  elapsedMs?: number,
+): string {
+  const context = [`provider: ${handoff.provider}`, `profile: ${handoff.profile}`, ...(handoff.invocation?.model ? [`model: ${handoff.invocation.model}`] : [])].join(', ');
+  const elapsed = elapsedMs === undefined ? '' : `, elapsed: ${Math.max(1, Math.floor(elapsedMs / 1_000))}s`;
+  return `step: ${stepId} ${phase} (${context}${elapsed})`;
+}
+
+export function boundedDiagnostic(value: string): string {
+  const normalized = value.trim();
+  const redacted = normalized
+    .replace(/\b(api[_-]?key|access[_-]?token|token|password|secret)\b\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [REDACTED]');
+  return redacted.length <= MAX_DIAGNOSTIC_CHARS
+    ? redacted
+    : `${redacted.slice(0, MAX_DIAGNOSTIC_CHARS - 3)}...`;
 }
 
 /** Old run states predate the frozen repository field and retain V0's caller-CWD behavior. */
@@ -121,12 +277,7 @@ export function extractContent(stdout: string): string {
   } catch { return stdout; }
 }
 
-/**
- * Recover a completed Claude response from its documented JSON diagnostic
- * when the only failed operation was writing the already-generated artifact.
- * This is intentionally narrow: it never treats arbitrary provider errors as
- * successful work.
- */
+/** Recover only a completed Claude response from its documented Write denial. */
 export function extractDeniedWriteContent(output: string, expectedPath: string): string | undefined {
   try {
     const parsed = JSON.parse(output) as {

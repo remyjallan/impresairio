@@ -1,4 +1,12 @@
-import { executionDirectory, extractContent, extractDeniedWriteContent } from '../src/commands/advance.command';
+import {
+  boundedDiagnostic,
+  createProviderExecutionError,
+  executeAgentProcess,
+  executionDirectory,
+  extractContent,
+  extractDeniedWriteContent,
+  formatAgentProgress,
+} from '../src/commands/advance.command';
 import { describe, expect, it } from 'vitest';
 
 describe('advance command output recovery', () => {
@@ -32,5 +40,69 @@ describe('advance command output recovery', () => {
       subtype: 'error_during_execution',
       permission_denials: [{ tool_name: 'Write', tool_input: { file_path: '/tmp/other.md', content: '# Wrong artifact' } }],
     }), '/tmp/staging.md')).toBeUndefined();
+  });
+
+  it('formats safe progress without including the prompt and includes the selected model', () => {
+    expect(formatAgentProgress('started', 'implement', {
+      provider: 'opencode', profile: 'opencode-glm', invocation: { model: 'openrouter/z-ai/glm-5.2' },
+    })).toBe('step: implement started (provider: opencode, profile: opencode-glm, model: openrouter/z-ai/glm-5.2)');
+  });
+
+  it('bounds and redacts provider diagnostics', () => {
+    expect(boundedDiagnostic('token=abc123 password: secret-value Bearer abc.def')).toBe(
+      'token=[REDACTED] password=[REDACTED] Bearer [REDACTED]',
+    );
+    expect(boundedDiagnostic('x'.repeat(2_000))).toHaveLength(1_000);
+  });
+
+  it('emits heartbeats while an asynchronous provider process is running', async () => {
+    const heartbeats: number[] = [];
+    const execution = await executeAgentProcess({
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => process.stdout.write("# Report"), 25)'],
+      input: 'ignored',
+    }, {
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+      heartbeatIntervalMs: 1,
+      onHeartbeat: (elapsedMs) => heartbeats.push(elapsedMs),
+    });
+
+    expect(execution.exitCode).toBe(0);
+    expect(execution.stdout).toBe('# Report');
+    expect(heartbeats.length).toBeGreaterThan(0);
+  });
+
+  it('captures bounded diagnostics for a failed provider and reports a safe error', async () => {
+    const execution = await executeAgentProcess({
+      command: process.execPath,
+      args: ['-e', 'process.stderr.write("token=secret-value"); process.exit(2)'],
+      input: 'ignored',
+    }, { cwd: process.cwd(), timeoutMs: 1_000 });
+
+    const error = createProviderExecutionError('test-provider', 'implement', execution);
+
+    expect(execution.exitCode).toBe(2);
+    expect(error.message).toContain('exited with status 2');
+    expect(error.message).not.toContain('secret-value');
+    expect(error.diagnostic.stderr).toBe('token=[REDACTED]');
+  });
+
+  it('captures empty output and a timeout as distinct provider outcomes', async () => {
+    const empty = await executeAgentProcess({
+      command: process.execPath,
+      args: ['-e', 'process.exit(0)'],
+      input: 'ignored',
+    }, { cwd: process.cwd(), timeoutMs: 1_000 });
+    const timedOut = await executeAgentProcess({
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 1_000)'],
+      input: 'ignored',
+    }, { cwd: process.cwd(), timeoutMs: 10 });
+
+    expect(empty.exitCode).toBe(0);
+    expect(empty.stdout).toBe('');
+    expect(timedOut.timedOut).toBe(true);
+    expect(createProviderExecutionError('test-provider', 'implement', timedOut).message).toContain('timed out');
   });
 });

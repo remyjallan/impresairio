@@ -10,7 +10,7 @@ import { StatusCommand, STATUS_WRITER } from './commands/status.command';
 import { UnlockCommand } from './commands/unlock.command';
 import { AcknowledgeCommand } from './commands/acknowledge.command';
 import { ListCommand, LIST_WRITER } from './commands/list.command';
-import { AdvanceCommand } from './commands/advance.command';
+import { AdvanceCommand, ADVANCE_PROGRESS_WRITER } from './commands/advance.command';
 import { DoctorCommand, DOCTOR_WRITER } from './commands/doctor.command';
 import { ConfigService } from './config/config.service';
 import { HomeDirectoryResolver } from './config/home-directory.resolver';
@@ -170,6 +170,12 @@ import { FallbackCommand } from './commands/fallback.command';
     {
       provide: DOCTOR_WRITER,
       useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      // Keep machine-oriented advance output on stdout while progress stays
+      // visible to humans on stderr.
+      provide: ADVANCE_PROGRESS_WRITER,
+      useValue: (line: string) => process.stderr.write(line),
     },
     {
       provide: AGENT_COMMAND_EXECUTOR,
