@@ -32,12 +32,14 @@ export type ResolvedAgentProfile =
       readonly modelAlias?: undefined;
       readonly model?: undefined;
       readonly skills?: Readonly<Record<string, string>>;
+      readonly fallbackProfiles?: readonly string[];
     }
   | {
       readonly provider: 'opencode';
       readonly modelAlias: string;
       readonly model: string;
       readonly skills?: Readonly<Record<string, string>>;
+      readonly fallbackProfiles?: readonly string[];
     };
 
 export interface LoadedConfiguration {
@@ -120,12 +122,33 @@ export class ConfigService {
     models: Readonly<Record<string, string>>,
     source: string,
   ): Readonly<Record<string, ResolvedAgentProfile>> {
-    return Object.fromEntries(
+    const resolved = Object.fromEntries(
       Object.entries(profiles).map(([name, profile]) => [
         name,
         this.resolveAgentProfile(name, profile, models, source),
       ]),
-    );
+    ) as Readonly<Record<string, ResolvedAgentProfile>>;
+
+    for (const [name, profile] of Object.entries(resolved)) {
+      for (const fallback of profile.fallbackProfiles ?? []) {
+        if (fallback === name) {
+          throw new ConfigurationError(
+            source,
+            `agentProfiles.${name}.fallbackProfiles`,
+            'must not reference the profile itself',
+          );
+        }
+        if (!resolved[fallback]) {
+          throw new ConfigurationError(
+            source,
+            `agentProfiles.${name}.fallbackProfiles`,
+            `references unknown agent profile "${fallback}"`,
+          );
+        }
+      }
+    }
+
+    return resolved;
   }
 
   private resolveAgentProfile(
@@ -135,7 +158,11 @@ export class ConfigService {
     source: string,
   ): ResolvedAgentProfile {
     if (profile.provider !== 'opencode') {
-      return { provider: profile.provider, ...(Object.keys(profile.skills).length > 0 ? { skills: profile.skills } : {}) };
+      return {
+        provider: profile.provider,
+        ...(Object.keys(profile.skills).length > 0 ? { skills: profile.skills } : {}),
+        ...(profile.fallbackProfiles.length > 0 ? { fallbackProfiles: profile.fallbackProfiles } : {}),
+      };
     }
 
     const model = Object.hasOwn(models, profile.modelAlias)
@@ -154,6 +181,7 @@ export class ConfigService {
       modelAlias: profile.modelAlias,
       model,
       ...(Object.keys(profile.skills).length > 0 ? { skills: profile.skills } : {}),
+      ...(profile.fallbackProfiles.length > 0 ? { fallbackProfiles: profile.fallbackProfiles } : {}),
     };
   }
 

@@ -49,10 +49,11 @@ export class AgentDispatchService {
       if (!step || step.kind !== 'agent' || !step.expectedOutput) {
         throw new RunStateError(`Agent step ${result.stepId} has no prepared output`);
       }
-    const agent = state.resolvedActors[step.actor];
-    if (!agent) {
+    const roleAgent = state.resolvedActors[step.actor];
+    if (!roleAgent) {
       throw new RunStateError(`Agent profile is not frozen for actor ${step.actor}`);
     }
+    const agent = step.agentOverride ?? roleAgent;
     const provider = this.providers.get(agent.provider);
     const baseInstruction = this.instructionFor(step.method, provider, agent.skills);
     const context = this.contextFor(state, step.id);

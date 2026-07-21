@@ -77,7 +77,7 @@ const agentMethodSchema = z.union([
   }).strict(),
 ]);
 
-const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
+const frozenAgentProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
     provider: z.literal('claude-code'),
@@ -94,6 +94,29 @@ const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
     modelAlias: nonEmptyString,
     model: nonEmptyString,
     skills: z.record(nonEmptyString, nonEmptyString).optional(),
+  }).strict(),
+]);
+
+const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
+  z.object({
+    profile: nonEmptyString,
+    provider: z.literal('claude-code'),
+    skills: z.record(nonEmptyString, nonEmptyString).optional(),
+    fallbacks: z.array(frozenAgentProfileSchema).max(5).optional(),
+  }).strict(),
+  z.object({
+    profile: nonEmptyString,
+    provider: z.literal('codex'),
+    skills: z.record(nonEmptyString, nonEmptyString).optional(),
+    fallbacks: z.array(frozenAgentProfileSchema).max(5).optional(),
+  }).strict(),
+  z.object({
+    profile: nonEmptyString,
+    provider: z.literal('opencode'),
+    modelAlias: nonEmptyString,
+    model: nonEmptyString,
+    skills: z.record(nonEmptyString, nonEmptyString).optional(),
+    fallbacks: z.array(frozenAgentProfileSchema).max(5).optional(),
   }).strict(),
 ]);
 
@@ -126,6 +149,13 @@ const runAgentStepSchema = z
     actor: nonEmptyString,
     method: agentMethodSchema,
     declaredOutput: declaredWorkflowOutputSchema,
+    agentOverride: frozenAgentProfileSchema.optional(),
+    fallbackHistory: z.array(z.object({
+      from: frozenAgentProfileSchema,
+      to: frozenAgentProfileSchema,
+      reason: nonEmptyString.max(1_000),
+      selectedAt: timestampSchema,
+    }).strict()).max(5).optional(),
     effectiveParameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
     declaredResult: workflowResultSchema.optional(),
     patch: workflowPatchSchema.optional(),

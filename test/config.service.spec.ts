@@ -228,4 +228,31 @@ describe('ConfigService', () => {
       `${join(home, 'config.yaml')}: agentProfiles.opencode-glm.modelAlias`,
     );
   });
+
+  it('resolves explicit profile fallbacks and rejects unknown or self-referencing fallbacks', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    const configPath = join(home, 'config.yaml');
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, 'utf8').replace(
+        'modelAlias: glm-5.2',
+        'modelAlias: glm-5.2\n    fallbackProfiles: [codex, claude]',
+      ),
+      'utf8',
+    );
+
+    expect(new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }))
+      .load(repository).agentProfiles['opencode-glm'].fallbackProfiles)
+      .toEqual(['codex', 'claude']);
+
+    writeFileSync(configPath, readFileSync(configPath, 'utf8').replace('[codex, claude]', '[missing]'), 'utf8');
+    expect(() => new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home })).load(repository))
+      .toThrow(`${configPath}: agentProfiles.opencode-glm.fallbackProfiles: references unknown agent profile "missing"`);
+
+    writeFileSync(configPath, readFileSync(configPath, 'utf8').replace('[missing]', '[opencode-glm]'), 'utf8');
+    expect(() => new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home })).load(repository))
+      .toThrow(`${configPath}: agentProfiles.opencode-glm.fallbackProfiles: must not reference the profile itself`);
+  });
 });

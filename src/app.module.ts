@@ -50,6 +50,8 @@ import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
 import { WorkflowExpanderService } from './workflows/workflow-expander.service';
 import { ConditionEvaluatorService } from './workflows/condition-evaluator.service';
 import { RepositoryPatchService } from './runs/repository-patch.service';
+import { AgentFallbackService } from './agents/agent-fallback.service';
+import { FallbackCommand } from './commands/fallback.command';
 
 @Module({
   providers: [
@@ -65,9 +67,11 @@ import { RepositoryPatchService } from './runs/repository-patch.service';
     ApproveCommand,
     RequestChangesCommand,
     RetryCommand,
+    FallbackCommand,
     NextCommand,
     AgentProfileService,
     AgentDispatchService,
+    AgentFallbackService,
     CapabilityResolverService,
     AgentHealthService,
     ProviderRegistryService,
