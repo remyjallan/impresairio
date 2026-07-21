@@ -8,6 +8,7 @@ import { createRunState, type RunState } from './run-state.schema';
 import { WorkflowRegistryService } from '../workflows/workflow-registry.service';
 import { ConfigService } from '../config/config.service';
 import { AgentProfileService } from '../agents/agent-profile.service';
+import { CapabilityResolverService } from '../agents/capability-resolver.service';
 import type { Workflow, WorkflowStep } from '../workflows/workflow.schema';
 
 export interface StartRunRequest {
@@ -39,6 +40,8 @@ export class RunService {
     private readonly configService: ConfigService,
     @Inject(AgentProfileService)
     private readonly agentProfiles: AgentProfileService,
+    @Inject(CapabilityResolverService)
+    private readonly capabilities: CapabilityResolverService,
     @Inject(RUN_CLOCK)
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -87,8 +90,15 @@ export class RunService {
         ...(step.type === 'agent'
           ? {
               actor: step.actor,
-              ...('action' in step
-                ? { action: step.action }
+              ...('capability' in step
+                ? {
+                    method: this.capabilities.resolve(
+                      step.capability,
+                      step.actor,
+                      request.roles[step.actor] ?? '(unbound)',
+                      resolvedActors[step.actor],
+                    ),
+                  }
                 : {
                     promptFile: step.promptFile,
                     prompt: this.workflowRegistry.readPromptFile(
@@ -159,12 +169,12 @@ type ExpandedStep = Exclude<WorkflowStep, { readonly type: 'review-cycle' }> & {
 function expandWorkflow(workflow: Workflow): readonly ExpandedStep[] {
   return workflow.steps.flatMap((step): readonly ExpandedStep[] => {
     if (step.type !== 'review-cycle') return [step];
-    const expanded: ExpandedStep[] = [{ id: step.id, type: 'agent', actor: step.actor, action: step.action, output: step.output }];
+    const expanded: ExpandedStep[] = [{ id: step.id, type: 'agent', actor: step.actor, capability: step.capability, output: step.output }];
     for (let index = 1; index <= step.maxIterations; index += 1) {
-      expanded.push({ id: `${step.id}-review-${index}`, type: 'agent', actor: step.reviewer, action: step.reviewAction,
+      expanded.push({ id: `${step.id}-review-${index}`, type: 'agent', actor: step.reviewer, capability: step.reviewCapability,
         output: { id: `${step.id}-review-${index}`, filename: `.review-${step.id}-${index}.md`, storage: 'internal' },
         cycle: { id: step.id, role: 'review', iteration: index } });
-      if (index < step.maxIterations) expanded.push({ id: `${step.id}-consolidate-${index}`, type: 'agent', actor: step.actor, action: step.action, output: step.output,
+      if (index < step.maxIterations) expanded.push({ id: `${step.id}-consolidate-${index}`, type: 'agent', actor: step.actor, capability: step.capability, output: step.output,
         cycle: { id: step.id, role: 'consolidate', iteration: index } });
     }
     expanded.push({ id: step.gateId, type: 'gate', artifact: step.output.id });

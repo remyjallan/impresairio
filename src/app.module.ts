@@ -38,6 +38,7 @@ import { GATE_CLOCK, StaleInvalidationService } from './workflows/stale-invalida
 import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runner.service';
 import { AgentProfileService } from './agents/agent-profile.service';
 import { AgentDispatchService } from './agents/agent-dispatch.service';
+import { CAPABILITY_RESOLVER_RUNTIME, CapabilityResolverService } from './agents/capability-resolver.service';
 import { AGENT_PROCESS_RUNNER, PlannedAgentProcessRunner } from './agents/agent-provider';
 import { ClaudeCodeProvider } from './agents/claude-code.provider';
 import { CodexProvider } from './agents/codex.provider';
@@ -63,6 +64,7 @@ import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
     NextCommand,
     AgentProfileService,
     AgentDispatchService,
+    CapabilityResolverService,
     AgentHealthService,
     ProviderRegistryService,
     ClaudeCodeProvider,
@@ -92,6 +94,10 @@ import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
     },
     {
       provide: WORKFLOW_REGISTRY_RUNTIME,
+      useValue: {},
+    },
+    {
+      provide: CAPABILITY_RESOLVER_RUNTIME,
       useValue: {},
     },
     {
