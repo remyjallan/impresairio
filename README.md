@@ -16,6 +16,10 @@ It is **not** a hosted project-management tool, a generic workflow engine, an ag
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change, [SECURITY.md](SECURITY.md) to report vulnerabilities privately, and [SUPPORT.md](SUPPORT.md) for help channels. Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## Documentation
+
+The [GitHub wiki](https://github.com/remyjallan/impresairio/wiki) is the canonical guide for CLI usage, YAML configuration, agent profiles, workflows, recovery, and documentation targets.
+
 ## Requirements and installation
 
 - Node.js 22 or newer

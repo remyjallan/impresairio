@@ -45,9 +45,8 @@ workflow files under `.impresairio/workflows/` or `src/workflows/builtins/`.
 For every such change:
 
 1. Update the relevant Zod/schema validation and add or update tests.
-2. Document the field in the appropriate user-facing reference:
-   `README.md`, `docs/configuration.md`, `docs/documentation-targets.md`, or
-   `docs/workflows.md`.
+2. Document the field in the relevant GitHub wiki page. Update `README.md` only
+   when its concise entry-point guidance or a wiki link must change.
 3. Include a valid YAML example and describe defaults, validation failures,
    compatibility or migration behavior, and the effect on an in-progress run.
 4. Update `.impresairio.example.yaml` when the repository example should expose
@@ -69,6 +68,12 @@ as though it were part of the open-source default configuration.
 
 ## Documentation and handoff
 
-When behavior changes, update docs in the same change. Document user-visible
-commands, configuration, failure recovery and security implications. In the
-final handoff, state the verification actually run and any known limitation.
+The GitHub wiki is the canonical user-facing documentation for CLI usage, YAML
+configuration, agent profiles, workflows, run recovery, and documentation targets.
+When behavior changes, update the relevant wiki page in the same change; keep the
+repository README limited to a concise entry point and links. Repository-local docs
+may support development, but must not become a competing user-facing reference.
+
+Document user-visible commands, configuration, failure recovery and security
+implications. In the final handoff, state the verification actually run and any known
+limitation.
