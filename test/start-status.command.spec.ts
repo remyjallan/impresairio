@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -202,6 +202,31 @@ steps:
     expect(verify?.kind === 'agent' ? verify.verdictPolicy : undefined).toEqual({
       changesRequested: { retryFrom: 'implement', maxIterations: 2 },
       blocked: 'stop',
+    });
+  });
+
+  it('freezes configured fallback candidates into the actor snapshot at start', () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    const configPath = join(home, 'config.yaml');
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, 'utf8').replace('modelAlias: glm-5.2', 'modelAlias: glm-5.2\n    fallbackProfiles: [codex]'),
+      'utf8',
+    );
+
+    service.start({
+      workflowId: 'quick-fix', repositoryDirectory: repository,
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'FB-1', slug: 'frozen-fallback' }, id: 'run-frozen-fallback',
+      request: 'Freeze the configured fallback.',
+    });
+
+    expect(store.findState('run-frozen-fallback')?.resolvedActors.implementer).toMatchObject({
+      profile: 'opencode-glm',
+      fallbacks: [{ profile: 'codex', provider: 'codex' }],
     });
   });
 

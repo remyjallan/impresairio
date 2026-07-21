@@ -17,6 +17,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ### Added
 
+- Explicit, audited failed-step agent fallbacks through frozen global profile candidates and `impresairio fallback`.
 - A narrow `patch: apply-unified-diff` workflow contract that lets Impresairio validate and apply agent-returned diffs to existing tracked files, with durable patch provenance.
 - Typed workflow parameters, explicit composed-workflow `with` mappings, structured Markdown results, and safe conditional agent steps.
 - Sequential YAML workflow composition through `uses: workflow:<id>`, including nested role mappings, frozen definition provenance, cycle detection and collision-safe artifacts.

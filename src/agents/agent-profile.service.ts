@@ -36,7 +36,25 @@ export class AgentProfileService {
           `Actor ${actor} references unknown agent profile "${profileName}"`,
         );
       }
-      return [actor, { profile: profileName, ...profile }];
+      const { fallbackProfiles, ...primary } = profile;
+      const fallbacks = (fallbackProfiles ?? []).map((fallbackName) => {
+        const fallback = profiles[fallbackName];
+        if (!fallback) {
+          // ConfigService validates this before a run starts; retain a bounded
+          // domain error if this service is used independently in tests.
+          throw new AgentProfileError(
+            `Actor ${actor} fallback references unknown agent profile "${fallbackName}"`,
+          );
+        }
+        const { fallbackProfiles, ...candidate } = fallback;
+        void fallbackProfiles;
+        return { profile: fallbackName, ...candidate };
+      });
+      return [actor, {
+        profile: profileName,
+        ...primary,
+        ...(fallbacks.length > 0 ? { fallbacks } : {}),
+      }];
     }));
   }
 }

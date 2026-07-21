@@ -147,6 +147,22 @@ describe('AgentDispatchService', () => {
     }));
   });
 
+  it('prepares a step using its explicitly selected fallback profile', () => {
+    const { runner, dispatch, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'work' && step.kind === 'agent'
+        ? { ...step, agentOverride: { profile: 'codex', provider: 'codex' } }
+        : step),
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff).toMatchObject({ profile: 'codex', provider: 'codex', invocation: { command: 'codex' } });
+  });
+
   it('keeps an invocation in repeated handoffs while recording preparation once', () => {
     const { runner, dispatch, processRunner, events } = setup('implementer');
     const result = runner.next('run-agent');

@@ -3,6 +3,12 @@ import { z } from 'zod';
 
 const nonEmptyString = z.string().trim().min(1);
 
+const fallbackProfilesSchema = z.array(nonEmptyString).max(5).superRefine((profiles, context) => {
+  if (new Set(profiles).size !== profiles.length) {
+    context.addIssue({ code: 'custom', message: 'must not contain duplicate profile names' });
+  }
+});
+
 const absoluteFilesystemPath = nonEmptyString.refine(
   (value) => isAbsolute(value) || win32.isAbsolute(value),
   'must be an absolute filesystem path',
@@ -20,6 +26,7 @@ const claudeCodeProfileSchema = z
   .object({
     provider: z.literal('claude-code'),
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
+    fallbackProfiles: fallbackProfilesSchema.default([]),
   })
   .strict();
 
@@ -27,6 +34,7 @@ const codexProfileSchema = z
   .object({
     provider: z.literal('codex'),
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
+    fallbackProfiles: fallbackProfilesSchema.default([]),
   })
   .strict();
 
@@ -35,6 +43,7 @@ const openCodeProfileSchema = z
     provider: z.literal('opencode'),
     modelAlias: nonEmptyString,
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
+    fallbackProfiles: fallbackProfilesSchema.default([]),
   })
   .strict();
 

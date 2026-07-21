@@ -45,4 +45,24 @@ describe('AgentProfileService', () => {
       'Unknown workflow roles: product-author; this workflow declares: launcher',
     ));
   });
+
+  it('freezes configured fallback profiles without inheriting their own fallback chains', () => {
+    expect(service.resolveForActors(
+      { implementer: 'opencode-glm' },
+      ['implementer'],
+      {
+        'opencode-glm': {
+          provider: 'opencode', modelAlias: 'glm-5.2', model: 'openrouter/z-ai/glm-5.2',
+          fallbackProfiles: ['codex'],
+        },
+        codex: { provider: 'codex', fallbackProfiles: ['claude'] },
+        claude: { provider: 'claude-code' },
+      },
+    )).toEqual({
+      implementer: {
+        profile: 'opencode-glm', provider: 'opencode', modelAlias: 'glm-5.2', model: 'openrouter/z-ai/glm-5.2',
+        fallbacks: [{ profile: 'codex', provider: 'codex' }],
+      },
+    });
+  });
 });
