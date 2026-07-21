@@ -84,6 +84,22 @@ describe('RepositoryPatchService', () => {
     expect(result.patch.paths).toEqual(['greet.ts']);
   });
 
+  it('recounts an otherwise applicable patch with model-generated hunk lengths', () => {
+    const directory = repository();
+    const patch = [
+      'diff --git a/greet.ts b/greet.ts',
+      '--- a/greet.ts',
+      '+++ b/greet.ts',
+      '@@ -1,4 +1,7 @@',
+      '-export const greet = (name: string) => `Hello, ${name}`;',
+      '+export const greet = (name: string) => `Hello, ${name}!`;',
+    ].join('\n');
+
+    new RepositoryPatchService().apply(run(directory), step(), markdown(patch), '2026-07-21T12:00:00.000Z');
+
+    expect(readFileSync(join(directory, 'greet.ts'), 'utf8')).toContain('Hello, ${name}!');
+  });
+
   it('rejects a missing patch block without changing the repository', () => {
     const directory = repository();
 
