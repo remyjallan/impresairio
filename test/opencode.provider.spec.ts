@@ -14,16 +14,20 @@ describe('OpenCodeProvider', () => {
   });
 
   it('prepares, but does not execute, an invocation with the resolved model ID', () => {
-    expect(provider.prepareInvocation({
+    const invocation = provider.prepareInvocation({
       runId: 'run-1', stepId: 'implementation', profile: 'opencode-glm',
       instruction: { kind: 'fallback-prompt', content: 'Implement the feature.' },
       expectedOutput: '/docs/report.md',
       agent: {
         profile: 'opencode-glm', provider: 'opencode', modelAlias: 'glm-5.2', model: 'z-ai/glm-5.2',
       },
-    })).toMatchObject({
+    });
+    expect(invocation).toMatchObject({
       command: 'opencode', args: ['run', '--model', 'z-ai/glm-5.2'], model: 'z-ai/glm-5.2',
     });
+    expect(invocation.input).toContain('Return the complete Markdown artifact in your response only.');
+    expect(invocation.input).toContain('Do not read, write, or modify files.');
+    expect(invocation.input).not.toContain('/docs/report.md');
   });
 
   it('uses the same resolved model ID for a live health probe', () => {

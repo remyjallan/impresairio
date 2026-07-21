@@ -31,7 +31,11 @@ export class OpenCodeProvider implements AgentProvider {
     return {
       command: 'opencode',
       args: ['run', '--model', request.agent.model],
-      input: `${renderInstruction(request.instruction)}\n\nExpected Markdown output: ${request.expectedOutput}`,
+      // OpenCode may try to inspect or write a path mentioned in its prompt.
+      // Run artifacts can be outside its repository sandbox, while the runner
+      // is the only component allowed to publish them. Keep this transport
+      // contract path-free, as for Claude Code.
+      input: `${renderInstruction(request.instruction)}\n\nReturn the complete Markdown artifact in your response only. Do not read, write, or modify files.`,
       model: request.agent.model,
     };
   }
