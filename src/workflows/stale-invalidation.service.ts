@@ -4,6 +4,7 @@ import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import type { RunState } from '../runs/run-state.schema';
 import { invalidateFrom } from '../runs/step-invalidation';
+import { isVerdictHalted } from './verdict-completion.policy';
 
 type AgentRunStep = Extract<RunState['steps'][number], { readonly kind: 'agent' }>;
 
@@ -123,8 +124,9 @@ export class StaleInvalidationService {
     if (!step || step.kind !== 'agent') {
       throw new RunStateError(`Step ${stepId} is not an agent step`);
     }
-    if (step.status !== 'stale' && step.status !== 'failed') {
-      throw new RunStateError(`Step ${stepId} can only be retried when stale or failed`);
+    const verdictHalted = isVerdictHalted(step);
+    if (step.status !== 'stale' && step.status !== 'failed' && !verdictHalted) {
+      throw new RunStateError(`Step ${stepId} can only be retried when stale, failed or halted on a verdict`);
     }
     if (step.declaredOutput.storage === 'internal' && step.expectedOutput) {
       this.artifacts.discardOutput(step.expectedOutput);
@@ -139,6 +141,8 @@ export class StaleInvalidationService {
           inputArtifactHashes: undefined,
           dispatchPreparedAt: undefined,
           reviewOutcome: undefined,
+          retryContext: undefined,
+          acknowledgment: undefined,
         }
       : candidate);
     const next = this.withTimestamp({
@@ -148,6 +152,21 @@ export class StaleInvalidationService {
     });
     this.stateStore.save(next);
     this.eventLog.append(runId, { type: 'step.retry_requested', at: timestamp, stepId });
+    return next;
+  }
+
+  acknowledge(runId: string, state: RunState, stepId: string, comment: string): RunState {
+    const step = state.steps.find((candidate) => candidate.id === stepId);
+    if (!step || step.kind !== 'agent' || !isVerdictHalted(step)) {
+      throw new RunStateError(`Step ${stepId} has no unacknowledged halted verdict`);
+    }
+    const timestamp = this.now().toISOString();
+    const steps = state.steps.map((candidate) => candidate.id === stepId && candidate.kind === 'agent'
+      ? { ...candidate, acknowledgment: { at: timestamp, comment } }
+      : candidate);
+    const next = this.withTimestamp({ ...state, steps });
+    this.stateStore.save(next);
+    this.eventLog.append(runId, { type: 'verdict.acknowledged', at: timestamp, stepId, comment });
     return next;
   }
 

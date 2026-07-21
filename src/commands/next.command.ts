@@ -37,6 +37,9 @@ export class NextCommand extends CommandRunner {
     if (result.kind === 'gate') {
       for (const warning of result.warnings ?? []) this.write(`warning: ${warning}\n`);
     }
+    if (result.kind === 'blocked') {
+      for (const warning of result.warnings) this.write(`warning: ${warning}\n`);
+    }
     this.write(`${result.kind}: ${result.stepId}\n`);
   }
 }

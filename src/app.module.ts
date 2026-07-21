@@ -8,6 +8,7 @@ import { RetryCommand } from './commands/retry.command';
 import { StartCommand, START_WRITER } from './commands/start.command';
 import { StatusCommand, STATUS_WRITER } from './commands/status.command';
 import { UnlockCommand } from './commands/unlock.command';
+import { AcknowledgeCommand } from './commands/acknowledge.command';
 import { ListCommand, LIST_WRITER } from './commands/list.command';
 import { AdvanceCommand } from './commands/advance.command';
 import { DoctorCommand, DOCTOR_WRITER } from './commands/doctor.command';
@@ -51,6 +52,7 @@ import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
     StatusCommand,
     StartCommand,
     UnlockCommand,
+    AcknowledgeCommand,
     ListCommand,
     AdvanceCommand,
     DoctorCommand,

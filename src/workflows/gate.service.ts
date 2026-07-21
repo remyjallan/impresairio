@@ -24,6 +24,12 @@ export class GateService {
     });
   }
 
+  acknowledge(runId: string, stepId: string, comment: string): void {
+    this.mutate(runId, 'acknowledge', (state) => {
+      this.staleInvalidation.acknowledge(runId, state, stepId, comment);
+    });
+  }
+
   retry(runId: string, stepId: string): void {
     this.mutate(runId, 'retry', (state) => {
       this.staleInvalidation.retry(runId, state, stepId);

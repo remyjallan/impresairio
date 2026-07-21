@@ -90,7 +90,7 @@ describe('stale invalidation', () => {
     expect(state().steps[1]).toMatchObject({
       status: 'pending', output: undefined, attempts: [expect.objectContaining({ number: 1 })],
     });
-    expect(() => gates.retry('run-stale', 'challenge')).toThrow('only be retried when stale or failed');
+    expect(() => gates.retry('run-stale', 'challenge')).toThrow('only be retried when stale, failed or halted on a verdict');
   });
 
   it('reopens a later stale gate after request-changes work has been rebuilt', () => {
@@ -106,5 +106,61 @@ describe('stale invalidation', () => {
     const reopened = stale.reopenGateIfReady('run-stale', state(), 'approve-specification');
 
     expect(reopened?.steps[5]).toMatchObject({ id: 'approve-specification', status: 'pending' });
+  });
+});
+
+describe('verdict halt recovery', () => {
+  function withHaltedVerify(harness: ReturnType<typeof createHarness>) {
+    const current = harness.state();
+    harness.replace({
+      ...current,
+      steps: current.steps.map((step) => step.id === 'review-specification' && step.kind === 'agent'
+        ? {
+            ...step,
+            verdictPolicy: { blocked: 'stop' as const },
+            reviewOutcome: { verdict: 'BLOCKED' as const, exhausted: false },
+          }
+        : step),
+    });
+  }
+
+  it('acknowledge records the audited comment and event on a halted step', () => {
+    const harness = createHarness();
+    withHaltedVerify(harness);
+
+    harness.gates.acknowledge('run-stale', 'review-specification', 'verified locally outside the sandbox');
+
+    const step = harness.state().steps.find((candidate) => candidate.id === 'review-specification');
+    expect(step?.kind === 'agent' ? step.acknowledgment?.comment : undefined)
+      .toBe('verified locally outside the sandbox');
+    expect(harness.events).toContainEqual(expect.objectContaining({
+      type: 'verdict.acknowledged', stepId: 'review-specification',
+    }));
+  });
+
+  it('acknowledge rejects a step without an unacknowledged halted verdict', () => {
+    const harness = createHarness();
+
+    expect(() => harness.gates.acknowledge('run-stale', 'review-specification', 'nothing to acknowledge'))
+      .toThrow('has no unacknowledged halted verdict');
+  });
+
+  it('retry accepts a complete verdict-halted step and clears its verdict fields', () => {
+    const harness = createHarness();
+    withHaltedVerify(harness);
+
+    harness.gates.retry('run-stale', 'review-specification');
+
+    const step = harness.state().steps.find((candidate) => candidate.id === 'review-specification');
+    expect(step?.status).toBe('pending');
+    expect(step?.kind === 'agent' ? step.reviewOutcome : undefined).toBeUndefined();
+    expect(step?.kind === 'agent' ? step.acknowledgment : undefined).toBeUndefined();
+  });
+
+  it('retry still rejects a plain complete step', () => {
+    const harness = createHarness();
+
+    expect(() => harness.gates.retry('run-stale', 'review-specification'))
+      .toThrow('can only be retried when stale, failed or halted on a verdict');
   });
 });

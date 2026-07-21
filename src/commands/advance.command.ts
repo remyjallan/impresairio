@@ -34,6 +34,11 @@ export class AdvanceCommand extends CommandRunner {
           return;
         }
         if (result.kind === 'complete') { process.stdout.write('complete\n'); return; }
+        if (result.kind === 'blocked') {
+          for (const warning of result.warnings) process.stdout.write(`warning: ${warning}\n`);
+          process.stdout.write(`blocked: ${result.stepId}\n`);
+          return;
+        }
         activeStepId = result.stepId;
         const handoff = this.dispatch.prepare(runId, result);
         if (!handoff?.invocation) throw new Error(`No executable invocation for ${result.stepId}`);
