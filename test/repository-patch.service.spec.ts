@@ -68,6 +68,22 @@ describe('RepositoryPatchService', () => {
     expect(result.repositoryPatch.currentSha256).not.toBe(result.repositoryPatch.baselineSha256);
   });
 
+  it('accepts a standard unified diff without an optional diff --git header', () => {
+    const directory = repository();
+    const patch = [
+      '--- a/greet.ts',
+      '+++ b/greet.ts',
+      '@@ -1 +1 @@',
+      '-export const greet = (name: string) => `Hello, ${name}`;',
+      '+export const greet = (name: string) => `Hello, ${name}!`;',
+    ].join('\n');
+
+    const result = new RepositoryPatchService().apply(run(directory), step(), markdown(patch), '2026-07-21T12:00:00.000Z');
+
+    expect(readFileSync(join(directory, 'greet.ts'), 'utf8')).toContain('Hello, ${name}!');
+    expect(result.patch.paths).toEqual(['greet.ts']);
+  });
+
   it('rejects a missing patch block without changing the repository', () => {
     const directory = repository();
 

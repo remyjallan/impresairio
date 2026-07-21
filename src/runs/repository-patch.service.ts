@@ -89,19 +89,25 @@ function parseUnifiedPatch(markdown: string): { readonly content: string; readon
   if (/^(?:new file mode|deleted file mode|rename from |rename to |--- \/dev\/null|\+\+\+ \/dev\/null)$/m.test(content)) {
     throw new RepositoryPatchError('Patch may modify existing tracked files only; additions, deletions and renames are not allowed');
   }
-  const headers = [...content.matchAll(/^diff --git a\/([^\s]+) b\/([^\s]+)$/gm)];
-  if (headers.length === 0) {
-    throw new RepositoryPatchError('Patch must contain at least one unified Git diff header');
+  const pairs = gitPathPairs(content);
+  if (pairs.length === 0) {
+    throw new RepositoryPatchError('Patch must contain at least one unified diff file pair');
   }
-  const paths = headers.map((header) => {
-    const before = header[1];
-    const after = header[2];
+  const paths = pairs.map(([before, after]) => {
     if (before !== after || !isSafeTrackedPath(before)) {
       throw new RepositoryPatchError(`Patch may only modify safe existing paths, received ${before} -> ${after}`);
     }
     return before;
   });
   return { content: content.endsWith('\n') ? content : `${content}\n`, paths: [...new Set(paths)] };
+}
+
+function gitPathPairs(content: string): Array<readonly [string, string]> {
+  const gitHeaders = [...content.matchAll(/^diff --git a\/([^\s]+) b\/([^\s]+)$/gm)];
+  if (gitHeaders.length > 0) return gitHeaders.map((header) => [header[1], header[2]] as const);
+
+  return [...content.matchAll(/^--- a\/([^\t\s]+)(?:\t.*)?\r?\n\+\+\+ b\/([^\t\s]+)(?:\t.*)?$/gm)]
+    .map((header) => [header[1], header[2]] as const);
 }
 
 function isSafeTrackedPath(path: string): boolean {
