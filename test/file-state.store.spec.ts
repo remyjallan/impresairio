@@ -96,6 +96,54 @@ describe('FileStateStore', () => {
     expect(readdirSync(join(home, 'runs', state.id))).toEqual([]);
   });
 
+  it('applyVerdictRetry reopens the target with reviewer feedback and counts the retry', () => {
+    const { store } = createStore();
+    const sha = 'b'.repeat(64);
+    const at = '2026-07-21T10:00:00.000Z';
+    store.create({
+      version: 1,
+      id: 'run-vr',
+      workflow: { id: 'verdicted', sha256: sha, successors: { implement: ['verify'], verify: [] } },
+      roles: {},
+      resolvedActors: {},
+      execution: { agentTimeoutSeconds: 1_800 },
+      documentation: { ...documentation, bindings: { ...documentation.bindings, run: { id: 'run-vr' } } },
+      currentStepId: 'verify',
+      createdAt: at,
+      updatedAt: at,
+      steps: [
+        {
+          id: 'implement', kind: 'agent', status: 'complete', actor: 'implementer',
+          method: { action: 'implement' },
+          declaredOutput: { id: 'implementation-report', filename: 'i.md', storage: 'documentation' },
+          output: { id: 'implementation-report', path: '/tmp/docs/i.md', format: 'markdown', sha256: sha, completedAt: at },
+          attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {}, completedAt: at, outputSha256: sha }],
+        },
+        {
+          id: 'verify', kind: 'agent', status: 'complete', actor: 'adversary',
+          method: { action: 'verification' },
+          declaredOutput: { id: 'verification', filename: 'v.md', storage: 'documentation' },
+          output: { id: 'verification', path: '/tmp/docs/v.md', format: 'markdown', sha256: sha, completedAt: at },
+          verdictPolicy: { changesRequested: { retryFrom: 'implement', maxIterations: 2 }, blocked: 'stop' },
+          reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
+          attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {}, completedAt: at, outputSha256: sha }],
+        },
+      ],
+    });
+
+    store.applyVerdictRetry('run-vr', 'verify', 'implement');
+
+    const state = store.findState('run-vr');
+    const implement = state?.steps.find((step) => step.id === 'implement');
+    const verify = state?.steps.find((step) => step.id === 'verify');
+    expect(implement?.status).toBe('pending');
+    expect(implement?.kind === 'agent' ? implement.retryContext?.sourceStepId : undefined).toBe('verify');
+    expect(implement?.kind === 'agent' ? implement.retryContext?.artifactPath : undefined).toBe('/tmp/docs/v.md');
+    expect(verify?.status).toBe('stale');
+    expect(verify?.kind === 'agent' ? verify.verdictRetries : undefined).toBe(1);
+    expect(state?.currentStepId).toBeUndefined();
+  });
+
   it.each(['../outside', '/tmp/outside', 'run/child', 'run\\child', '..'])(
     'rejects unsafe run id %s before resolving a run path',
     (runId) => {

@@ -60,6 +60,7 @@ export interface CompletionRunStore {
   recordCompletion(runId: string, completion: CompletionRecord): void;
   appendEvent(runId: string, event: CompletionEvent): void;
   markFailed?(runId: string, stepId: string, detail: string): void;
+  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string): void;
 }
 
 export interface OutputVerifier {

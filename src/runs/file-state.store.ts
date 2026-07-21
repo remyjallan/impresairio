@@ -19,6 +19,7 @@ import type {
 } from './completion.service';
 import { runStateSchema, type RunState } from './run-state.schema';
 import { assertValidRunId } from './run-id';
+import { invalidateFrom } from './step-invalidation';
 import type { StateStore } from './state-store';
 
 export interface StateFileOperations {
@@ -173,6 +174,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         ...step,
         status: 'complete' as const,
         output: { ...completion.output, completedAt },
+        retryContext: undefined,
         ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
         attempts: [
           ...step.attempts.slice(0, -1),
@@ -208,6 +210,43 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       type: 'step.failed', at: timestamp, stepId,
       detail: detail.length > 1000 ? `${detail.slice(0, 997)}...` : detail,
     });
+  }
+
+  /** Reopens the retry target after a CHANGES_REQUESTED verdict and stales everything the target feeds, including the verdict step itself. */
+  applyVerdictRetry(runId: string, policyStepId: string, targetStepId: string): void {
+    const state = this.requiredState(runId);
+    const policyStep = state.steps.find((step) => step.id === policyStepId);
+    if (!policyStep || policyStep.kind !== 'agent' || !policyStep.output) {
+      throw new RunStateError(`Step ${policyStepId} has no completed verdict artifact`);
+    }
+    const target = state.steps.find((step) => step.id === targetStepId);
+    if (!target || target.kind !== 'agent') {
+      throw new RunStateError(`Verdict retry target is not an agent step: ${targetStepId}`);
+    }
+    const timestamp = new Date().toISOString();
+    const invalidated = invalidateFrom(state, targetStepId);
+    const steps = invalidated.steps.map((step) => {
+      if (step.id === targetStepId && step.kind === 'agent') {
+        return {
+          ...step,
+          status: 'pending' as const,
+          output: undefined,
+          inputArtifactHashes: undefined,
+          dispatchPreparedAt: undefined,
+          retryContext: {
+            sourceStepId: policyStepId,
+            artifactPath: policyStep.output.path,
+            artifactSha256: policyStep.output.sha256,
+            at: timestamp,
+          },
+        };
+      }
+      if (step.id === policyStepId && step.kind === 'agent') {
+        return { ...step, verdictRetries: (step.verdictRetries ?? 0) + 1 };
+      }
+      return step;
+    });
+    this.save({ ...invalidated, steps, currentStepId: undefined, updatedAt: timestamp });
   }
 
   runDirectory(runId: string): string {
