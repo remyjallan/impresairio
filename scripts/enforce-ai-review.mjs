@@ -35,11 +35,12 @@ function main() {
         if (typeof issue === 'string') return issue.trim().length > 0;
 
         // PR-Agent emits structured objects for actionable findings.
+        const content = typeof issue?.issue_content === 'string' ? issue.issue_content.trim() : '';
         return (
           issue !== null &&
           typeof issue === 'object' &&
-          typeof issue.issue_content === 'string' &&
-          issue.issue_content.trim().length > 0
+          content.length > 0 &&
+          !selfNegatingFinding(content)
         );
       })
     : null;
@@ -65,4 +66,8 @@ function main() {
 function fail(message) {
   console.error(`AI review gate failed: ${message}`);
   return 1;
+}
+
+function selfNegatingFinding(content) {
+  return /no (?:actual )?(?:bug|defect|issue) (?:found|exists)|no defect exists|this is the intended .* behavior/i.test(content);
 }
