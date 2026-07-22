@@ -1,4 +1,5 @@
 import {
+  AdvanceCommand,
   boundedDiagnostic,
   createProviderExecutionError,
   executeAgentProcess,
@@ -9,9 +10,47 @@ import {
   prepareExecutionInvocation,
 } from '../src/commands/advance.command';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('advance command output recovery', () => {
+  it('stages an agent invocation before publishing its output', async () => {
+    const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-'));
+    const expectedOutputPath = join(runDirectory, 'artifacts', 'implement.md');
+    let nextCall = 0;
+    const command = new AdvanceCommand(
+      { next: () => nextCall++ === 0
+        ? { kind: 'agent', stepId: 'implement' }
+        : { kind: 'complete' } } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex',
+        expectedOutput: { path: expectedOutputPath },
+        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("# Result")'], input: expectedOutputPath },
+      }) } as never,
+      { complete: () => undefined } as never,
+      {
+        runDirectory: () => runDirectory,
+        findState: () => ({
+          execution: { agentTimeoutSeconds: 1 },
+          steps: [{ id: 'implement', kind: 'agent', expectedOutput: { path: expectedOutputPath } }],
+        }),
+        markFailed: () => undefined,
+      } as never,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await command.run(['run-1']);
+    } finally {
+      rmSync(runDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('limits Codex writable access to the staging directory', () => {
     expect(prepareExecutionInvocation({
       command: 'codex',
