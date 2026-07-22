@@ -74,6 +74,18 @@ describe('FileStateStore', () => {
     store.markFailed('run-agent-failure', 'work', 'failed');
     expect(store.findState('run-agent-failure')?.steps[0]).toMatchObject({ status: 'failed' });
   });
+
+  it('marks an in-progress host handoff failure without agent dispatch state', () => {
+    const { store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const state = createRunState({ id: 'run-host-failure', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'host', kind: 'host-handoff', promptFile: 'host.md', prompt: 'Review.', inputs: [], sideEffects: 'none', output: { id: 'review', filename: 'review.md' } }], now: at });
+    store.create({ ...state, currentStepId: 'host', steps: state.steps.map((step) => step.kind === 'host-handoff'
+      ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
+      : step) });
+    store.markFailed('run-host-failure', 'host', 'failed');
+    expect(store.findState('run-host-failure')?.steps[0]).toMatchObject({ status: 'failed' });
+  });
   it('round-trips a validated run state', () => {
     const { store } = createStore();
     const state = createRunState({
