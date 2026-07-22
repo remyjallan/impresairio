@@ -2,7 +2,7 @@ name: PR Agent review
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review, synchronize, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -18,20 +18,25 @@ jobs:
     name: AI review
     if: >-
       github.event.sender.type != 'Bot' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
+      github.event.label.name == 'ai-review-override')
     runs-on: ubuntu-latest
     env:
       PR_AGENT_OPENROUTER_KEY: ${{ secrets.PR_AGENT_OPENROUTER_KEY }}
     steps:
       - name: Explain missing configuration
         if: env.PR_AGENT_OPENROUTER_KEY == ''
-        run: >-
-          echo "::warning::PR-Agent is disabled because the
-          PR_AGENT_OPENROUTER_KEY repository secret is not configured."
+        run: |
+          echo "::error::PR-Agent cannot run because the PR_AGENT_OPENROUTER_KEY repository secret is not configured."
+          exit 1
 
       - name: Review pull request
-        if: env.PR_AGENT_OPENROUTER_KEY != ''
+        if: >-
+          env.PR_AGENT_OPENROUTER_KEY != '' &&
+          github.event.action != 'labeled' && github.event.action != 'unlabeled'
         uses: The-PR-Agent/pr-agent@v0.35.0
+        id: pragent
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           openrouter__key: ${{ secrets.PR_AGENT_OPENROUTER_KEY }}
@@ -43,6 +48,7 @@ jobs:
           github_action_config.auto_describe: 'false'
           github_action_config.auto_improve: 'false'
           github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+          github_action_config.enable_output: 'true'
           openrouter.reasoning_effort: high
           openrouter.reasoning_max_tokens: '4096'
           openrouter.max_tokens: '2048'
@@ -52,3 +58,9 @@ jobs:
             request. Do not report formatting or style that automated checks
             cover. Treat AGENTS.md as repository context and request tests
             only when the changed behavior needs one.
+
+      - name: Enforce AI review policy
+        env:
+          PR_REVIEW_OUTPUT: ${{ steps.pragent.outputs.review }}
+          PR_REVIEW_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: node scripts/enforce-ai-review.mjs
