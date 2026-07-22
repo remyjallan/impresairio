@@ -41,8 +41,6 @@ describe('advance command output recovery', () => {
       command: 'codex',
       args: ['exec', '--output', '/run/artifacts/report.md', '--note', '/run/artifacts/report.md.bak'],
       input: 'write /run/artifacts/report.md and leave /run/artifacts/report.md.bak alone',
-      cwd: '/workspace',
-      env: { IMPRESAIRIO_TEST: '1' },
     }, '/run/artifacts/report.md', '/run/staging/review/artifact.md')).toEqual({
       command: 'codex',
       args: [
@@ -50,8 +48,6 @@ describe('advance command output recovery', () => {
         '--add-dir', '/run/staging/review',
       ],
       input: 'write /run/staging/review/artifact.md and leave /run/staging/review/artifact.md.bak alone',
-      cwd: '/workspace',
-      env: { IMPRESAIRIO_TEST: '1' },
     });
   });
 
