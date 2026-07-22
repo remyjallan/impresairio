@@ -85,7 +85,7 @@ export class RunReportService {
         provider: actor.provider,
         profile: actor.profile,
         ...(actor.model ? { model: actor.model } : {}),
-        ...(actor.provider !== 'opencode' && actor.reasoningEffort ? { reasoningEffort: actor.reasoningEffort } : {}),
+        ...('reasoningEffort' in actor && actor.reasoningEffort ? { reasoningEffort: actor.reasoningEffort } : {}),
         attempts,
         ...(durationMs === undefined ? {} : { durationMs }),
       }];
