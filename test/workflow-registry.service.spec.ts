@@ -125,6 +125,32 @@ steps:
     expect(registry.readPromptFile(resolved, 'prompts/report.md')).toBe('# Report\n');
   });
 
+  it('reports missing and empty prompt files without reading outside the workflow', () => {
+    const home = temporaryDirectory('impresairio-workflow-home-');
+    const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
+    const prompts = join(packageDirectory, 'prompts');
+    mkdirSync(prompts);
+    writeFileSync(join(packageDirectory, 'custom.yaml'), `id: custom
+name: Custom
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    promptFile: prompts/empty.md
+    output:
+      id: report
+      filename: "01 - Report.md"
+`);
+    writeFileSync(join(prompts, 'empty.md'), '', 'utf8');
+    const registry = createRegistry(home, packageDirectory);
+    const resolved = registry.resolve('custom', home);
+
+    expect(() => registry.readPromptFile(resolved, 'prompts/missing.md'))
+      .toThrow('no such file or directory');
+    expect(() => registry.readPromptFile(resolved, 'prompts/empty.md'))
+      .toThrow('prompt file must not be empty');
+  });
+
   it.each([
     ['both action and promptFile', '    capability: final-report\n    promptFile: prompts/report.md\n'],
     ['missing agent output', '    capability: final-report\n'],
