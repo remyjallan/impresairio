@@ -92,7 +92,7 @@ function identity(profile: string, agent: ResolvedAgentProfile): Pick<AgentHealt
     profile,
     provider: agent.provider,
     ...(agent.model ? { model: agent.model } : {}),
-    ...(agent.provider !== 'opencode' && agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+    ...('reasoningEffort' in agent && agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
   };
 }
 
