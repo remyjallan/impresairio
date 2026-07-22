@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/Paris",
+  "schedule": ["before 6am on Monday"],
+  "prConcurrentLimit": 3,
+  "packageRules": [
+    {
+      "groupName": "GitHub Actions",
+      "matchManagers": ["github-actions"]
+    },
+    {
+      "groupName": "Node.js dependencies",
+      "matchManagers": ["npm"]
+    }
+  ]
+}
