@@ -97,7 +97,7 @@ export class WorkflowRegistryService {
     try {
       realCandidate = realpathSync(candidate);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : 'could not resolve prompt file';
+      const detail = String(error);
       throw new WorkflowError(`${candidate}: ${detail}`);
     }
     if (!isContainedPath(workflowDirectory, realCandidate)) {
@@ -158,10 +158,10 @@ export class WorkflowRegistryService {
 
 function isContainedPath(root: string, candidate: string): boolean {
   const containment = relative(root, candidate);
-  return containment !== ''
-    && containment !== '..'
-    && !containment.startsWith(`..${sep}`)
-    && !isAbsolute(containment);
+  if (containment === '' || containment === '..') return false;
+  if (containment.startsWith(`..${sep}`)) return false;
+  if (isAbsolute(containment)) return false;
+  return true;
 }
 
 export function workflowPromptDirectory(resolved: ResolvedWorkflow): string {
