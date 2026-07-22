@@ -67,13 +67,15 @@ jobs:
             actions/checkout runs before the review, and enable_output exposes
             the structured review through steps.pragent.outputs.review. Do not
             report hypothetical failures of these mechanisms without a concrete
-            contradiction in the changed YAML or an observed failed run.
+            contradiction in the changed YAML or an observed failed run. Do not
+            include an item in key_issues_to_review when its own explanation
+            concludes that no bug or security concern exists.
 
       - name: Explain PR-Agent execution failure
         if: >-
           always() &&
           !(github.event.action == 'labeled' && github.event.label.name == 'ai-review-override') &&
-          steps.pragent.outcome != 'success'
+          (steps.pragent.outcome == 'failure' || steps.pragent.outcome == 'cancelled')
         run: |
           echo "::error::PR-Agent did not complete successfully; the AI review gate remains blocked."
           exit 1
