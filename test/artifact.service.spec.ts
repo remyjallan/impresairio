@@ -221,4 +221,30 @@ describe('ArtifactService', () => {
     writeFileSync(prepared.path, '   \n', 'utf8');
     expect(() => artifactService.completeOutput(prepared)).toThrow('must not be empty');
   });
+
+  it('reads and discards a resolved expected output', () => {
+    const root = temporaryDirectory();
+    const artifactService = new ArtifactService(
+      new PathRendererService(),
+      new FilesystemDocumentationTarget(),
+    );
+    const prepared = artifactService.prepareOutput({
+      target: { kind: 'filesystem', root, defaultFormat: 'markdown' },
+      featurePath: 'Features',
+      bindings,
+      output: { id: 'challenge', filename: '02 - Challenge.md' },
+    });
+    writeFileSync(prepared.path, '# Challenge\n', 'utf8');
+
+    expect(artifactService.readExpectedOutput({} as never, {
+      id: 'challenge', kind: 'agent', status: 'complete', output: prepared,
+    })).toBe('# Challenge\n');
+    artifactService.discardExpectedOutput({
+      id: 'challenge', kind: 'agent', status: 'complete', output: prepared,
+    });
+    expect(existsSync(prepared.path)).toBe(false);
+    expect(() => artifactService.discardExpectedOutput({
+      id: 'missing', kind: 'agent', status: 'complete',
+    })).toThrow('does not declare a resolved documentation output');
+  });
 });

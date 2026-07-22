@@ -169,6 +169,56 @@ describe('CompleteCommand', () => {
     }));
   });
 
+  it('discards a retried internal artifact before reopening its target', () => {
+    const store = {
+      ...createStore({ id: 'verify', kind: 'agent', status: 'in_progress' }),
+      find: (runId: string) => ({
+        id: runId,
+        currentStepId: 'verify',
+        successors: { implement: ['verify'], verify: ['implement'] },
+        steps: [
+          {
+            id: 'verify', kind: 'agent' as const, status: 'in_progress' as const,
+            storage: 'internal' as const,
+            output: {
+              id: 'verification', targetRoot: '/run', directory: '/run/artifacts',
+              path: '/run/artifacts/verification.md', format: 'markdown' as const,
+            },
+          },
+          {
+            id: 'implement', kind: 'agent' as const, status: 'complete' as const,
+            storage: 'internal' as const,
+            output: {
+              id: 'implementation', targetRoot: '/run', directory: '/run/artifacts',
+              path: '/run/artifacts/implementation.md', format: 'markdown' as const,
+            },
+          },
+        ],
+      }),
+    };
+    const discarded: string[] = [];
+    const service = new CompletionService(
+      store,
+      {
+        completeExpectedOutput: () => ({
+          id: 'verification', path: '/docs/v.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+        }),
+        discardExpectedOutput: (step) => discarded.push(step.output?.path ?? ''),
+      },
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'policy',
+        reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
+        transition: { kind: 'retry-from', targetStepId: 'implement' },
+      }) },
+    );
+
+    service.complete('run-42', 'verify');
+
+    expect(discarded).toEqual(['/run/artifacts/verification.md', '/run/artifacts/implementation.md']);
+  });
+
   it.each([
     ['BLOCKED', false, 'verdict.blocked'],
     ['CHANGES_REQUESTED', true, 'verdict.exhausted'],

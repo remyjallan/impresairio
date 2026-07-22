@@ -269,7 +269,7 @@ export const workflowSchema = z
   .strict()
   .superRefine((workflow, context) => {
     const stepIds = new Set<string>();
-    const outputIds = new Set<string>();
+    const outputIds = new Map<string, { readonly index: number; readonly conditional: boolean }>();
 
     workflow.steps.forEach((step, index) => {
       if (stepIds.has(step.id)) {
@@ -291,15 +291,22 @@ export const workflowSchema = z
             message: `duplicate output ID "${step.output.id}"`,
           });
         }
-        outputIds.add(step.output.id);
+        outputIds.set(step.output.id, { index, conditional: step.type === 'agent' && step.when !== undefined });
       }
 
       if (step.type === 'gate') {
-        if (!outputIds.has(step.artifact)) {
+        const producer = outputIds.get(step.artifact);
+        if (!producer) {
           context.addIssue({
             code: 'custom',
             path: ['steps', index, 'artifact'],
             message: `must reference an output produced by a preceding agent step`,
+          });
+        } else if (producer.conditional) {
+          context.addIssue({
+            code: 'custom',
+            path: ['steps', index, 'artifact'],
+            message: 'must reference an output from an unconditional agent step; a false condition would make the gate unreachable',
           });
         }
       }
