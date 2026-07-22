@@ -94,17 +94,10 @@ export class AdvanceCommand extends CommandRunner {
           activeStepId = undefined;
           continue;
         }
-        const stagingPath = join(runDirectory, 'staging', `${result.stepId}.md`);
+        const stagingPath = join(runDirectory, 'staging', result.stepId, 'artifact.md');
         mkdirSync(dirname(stagingPath), { recursive: true });
         rmSync(stagingPath, { force: true });
-        const invocation = {
-          ...handoff.invocation,
-          args: [
-            ...handoff.invocation.args.map((value) => value.replaceAll(handoff.expectedOutput.path, stagingPath)),
-            ...(handoff.invocation.command === 'codex' ? ['--add-dir', runDirectory] : []),
-          ],
-          input: handoff.invocation.input.replaceAll(handoff.expectedOutput.path, stagingPath),
-        };
+        const invocation = prepareExecutionInvocation(handoff.invocation, handoff.expectedOutput.path, stagingPath);
         const currentRun = this.stateStore.findState(runId);
         if (!currentRun) throw new Error(`Run not found while executing ${result.stepId}: ${runId}`);
         this.writeProgress(`${formatAgentProgress('started', result.stepId, handoff)}\n`);
@@ -288,6 +281,21 @@ export function boundedDiagnostic(value: string): string {
 /** Old run states predate the frozen repository field and retain V0's caller-CWD behavior. */
 export function executionDirectory(repositoryDirectory: string | undefined, fallback = process.cwd()): string {
   return repositoryDirectory ?? fallback;
+}
+
+export function prepareExecutionInvocation(
+  invocation: PreparedAgentInvocation,
+  expectedOutputPath: string,
+  stagingPath: string,
+): PreparedAgentInvocation {
+  return {
+    ...invocation,
+    args: [
+      ...invocation.args.map((value) => value.replaceAll(expectedOutputPath, stagingPath)),
+      ...(invocation.command === 'codex' ? ['--add-dir', dirname(stagingPath)] : []),
+    ],
+    input: invocation.input.replaceAll(expectedOutputPath, stagingPath),
+  };
 }
 
 export function extractContent(stdout: string): string {

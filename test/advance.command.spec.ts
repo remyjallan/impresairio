@@ -1,4 +1,5 @@
 import {
+  AdvanceCommand,
   boundedDiagnostic,
   createProviderExecutionError,
   executeAgentProcess,
@@ -6,11 +7,89 @@ import {
   extractContent,
   extractDeniedWriteContent,
   formatAgentProgress,
+  prepareExecutionInvocation,
 } from '../src/commands/advance.command';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('advance command output recovery', () => {
+  it('stages an agent invocation before publishing its output', async () => {
+    const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-'));
+    const expectedOutputPath = join(runDirectory, 'artifacts', 'implement.md');
+    let nextCall = 0;
+    const command = new AdvanceCommand(
+      { next: () => nextCall++ === 0
+        ? { kind: 'agent', stepId: 'implement' }
+        : { kind: 'complete' } } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex',
+        expectedOutput: { path: expectedOutputPath },
+        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("# Result")'], input: expectedOutputPath },
+      }) } as never,
+      { complete: () => undefined } as never,
+      {
+        runDirectory: () => runDirectory,
+        findState: () => ({
+          execution: { agentTimeoutSeconds: 1 },
+          steps: [{ id: 'implement', kind: 'agent', expectedOutput: { path: expectedOutputPath } }],
+        }),
+        markFailed: () => undefined,
+      } as never,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await command.run(['run-1']);
+    } finally {
+      rmSync(runDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('limits Codex writable access to the staging directory', () => {
+    expect(prepareExecutionInvocation({
+      command: 'codex',
+      args: ['exec', '--sandbox', 'read-only'],
+      input: 'write to /run/artifacts/report.md',
+    }, '/run/artifacts/report.md', '/run/staging/implement/artifact.md')).toEqual({
+      command: 'codex',
+      args: ['exec', '--sandbox', 'read-only', '--add-dir', '/run/staging/implement'],
+      input: 'write to /run/staging/implement/artifact.md',
+    });
+  });
+
+  it('rewrites Claude artifact paths without granting an additional directory', () => {
+    expect(prepareExecutionInvocation({
+      command: 'claude',
+      args: ['--output', '/run/artifacts/review.md'],
+      input: 'write to /run/artifacts/review.md',
+    }, '/run/artifacts/review.md', '/run/staging/review/artifact.md')).toEqual({
+      command: 'claude',
+      args: ['--output', '/run/staging/review/artifact.md'],
+      input: 'write to /run/staging/review/artifact.md',
+    });
+  });
+
+  it('rewrites every argument occurrence while preserving unrelated invocation fields', () => {
+    expect(prepareExecutionInvocation({
+      command: 'codex',
+      args: ['exec', '--output', '/run/artifacts/report.md', '--note', '/run/artifacts/report.md.bak'],
+      input: 'write /run/artifacts/report.md and leave /run/artifacts/report.md.bak alone',
+    }, '/run/artifacts/report.md', '/run/staging/review/artifact.md')).toEqual({
+      command: 'codex',
+      args: [
+        'exec', '--output', '/run/staging/review/artifact.md', '--note', '/run/staging/review/artifact.md.bak',
+        '--add-dir', '/run/staging/review',
+      ],
+      input: 'write /run/staging/review/artifact.md and leave /run/staging/review/artifact.md.bak alone',
+    });
+  });
+
   it('uses the frozen repository and preserves caller-CWD fallback for legacy runs', () => {
     expect(executionDirectory('/workspace/project', '/caller')).toBe('/workspace/project');
     expect(executionDirectory(undefined, '/caller')).toBe('/caller');
