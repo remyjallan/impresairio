@@ -8,6 +8,13 @@ import { workflowSchema, type Workflow } from './workflow.schema';
 
 const workflowIdPattern = /^(?!.*--)[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
 
+interface WorkflowValidationIssue {
+  readonly code: string;
+  readonly path: readonly PropertyKey[];
+  readonly message: string;
+  readonly errors?: readonly (readonly WorkflowValidationIssue[])[];
+}
+
 export type WorkflowSource = 'repository' | 'global' | 'package';
 
 export interface ResolvedWorkflow {
@@ -147,13 +154,30 @@ export class WorkflowRegistryService {
           }
         }
       }
-      const issue = result.error.issues[0];
-      const field = issue.path.length > 0 ? issue.path.join('.') : '(root)';
-      throw new WorkflowError(`${path}: ${field}: ${issue.message}`);
+      const diagnostic = workflowValidationDiagnostic(result.error.issues[0]);
+      const field = diagnostic.path.length > 0 ? diagnostic.path.map(String).join('.') : '(root)';
+      throw new WorkflowError(`${path}: ${field}: ${diagnostic.message}`);
     }
 
     return result.data;
   }
+}
+
+function workflowValidationDiagnostic(issue: WorkflowValidationIssue): {
+  readonly path: readonly PropertyKey[];
+  readonly message: string;
+} {
+  if (issue.code !== 'invalid_union' || !issue.errors) {
+    return { path: issue.path, message: issue.message };
+  }
+
+  const bestBranch = [...issue.errors]
+    .filter((branch) => branch.length > 0)
+    .sort((left, right) => left.length - right.length)[0];
+  if (!bestBranch) return { path: issue.path, message: issue.message };
+
+  const nested = workflowValidationDiagnostic(bestBranch[0]);
+  return { path: [...issue.path, ...nested.path], message: nested.message };
 }
 
 function isContainedPath(root: string, candidate: string): boolean {
