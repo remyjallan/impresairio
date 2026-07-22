@@ -23,6 +23,7 @@ export interface ProviderPreparationRequest {
     readonly provider: AgentProviderName;
     readonly modelAlias?: string;
     readonly model?: string;
+    readonly reasoningEffort?: string;
   };
   readonly instruction: PreparedInstruction;
   readonly expectedOutput: string;
@@ -33,6 +34,23 @@ export interface PreparedAgentInvocation {
   readonly args: readonly string[];
   readonly input: string;
   readonly model?: string;
+  readonly reasoningEffort?: string;
+}
+
+export function agentSettingsForEvent(agent: {
+  readonly modelAlias?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+}): {
+  readonly modelAlias?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+} {
+  return {
+    ...(agent.modelAlias ? { modelAlias: agent.modelAlias } : {}),
+    ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+  };
 }
 
 /** A provider-owned, side-effect-free or minimal live connectivity probe. */

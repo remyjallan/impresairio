@@ -29,8 +29,9 @@ export interface ResolvedDocumentationTarget extends DocumentationTargetConfig {
 export type ResolvedAgentProfile =
   | {
       readonly provider: 'claude-code' | 'codex';
+      readonly model?: string;
+      readonly reasoningEffort?: string;
       readonly modelAlias?: undefined;
-      readonly model?: undefined;
       readonly skills?: Readonly<Record<string, string>>;
       readonly fallbackProfiles?: readonly string[];
     }
@@ -160,6 +161,8 @@ export class ConfigService {
     if (profile.provider !== 'opencode') {
       return {
         provider: profile.provider,
+        ...(profile.model ? { model: profile.model } : {}),
+        ...(profile.reasoningEffort ? { reasoningEffort: profile.reasoningEffort } : {}),
         ...(Object.keys(profile.skills).length > 0 ? { skills: profile.skills } : {}),
         ...(profile.fallbackProfiles.length > 0 ? { fallbackProfiles: profile.fallbackProfiles } : {}),
       };

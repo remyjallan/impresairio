@@ -22,6 +22,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       command: 'claude',
       args: [
         '--print', '--output-format', 'json', '--no-session-persistence',
+        ...selectionArgs(request.agent),
         ...(review ? ['--json-schema', JSON.stringify({
           type: 'object', additionalProperties: false,
           required: ['markdown', 'verdict'],
@@ -32,18 +33,27 @@ export class ClaudeCodeProvider implements AgentProvider {
         })] : []),
       ],
       input: instructionText(request),
+      ...(request.agent.model ? { model: request.agent.model } : {}),
+      ...(request.agent.reasoningEffort ? { reasoningEffort: request.agent.reasoningEffort } : {}),
     };
   }
 
-  prepareHealthCheck({ live }: AgentHealthCheckRequest): AgentHealthCheckInvocation {
+  prepareHealthCheck({ agent, live }: AgentHealthCheckRequest): AgentHealthCheckInvocation {
     return live
       ? {
           command: 'claude',
-          args: ['--print', '--output-format', 'json', '--no-session-persistence'],
+          args: ['--print', '--output-format', 'json', '--no-session-persistence', ...selectionArgs(agent)],
           input: 'Reply with exactly OK. Do not use tools or modify files.',
         }
       : { command: 'claude', args: ['--version'] };
   }
+}
+
+function selectionArgs(agent: AgentHealthCheckRequest['agent']): readonly string[] {
+  return [
+    ...(agent.model ? ['--model', agent.model] : []),
+    ...(agent.reasoningEffort ? ['--effort', agent.reasoningEffort] : []),
+  ];
 }
 
 function instructionText(request: ProviderPreparationRequest): string {

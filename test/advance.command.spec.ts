@@ -137,6 +137,13 @@ describe('advance command output recovery', () => {
     })).toBe('step: implement started (provider: opencode, profile: opencode-glm, model: openrouter/z-ai/glm-5.2)');
   });
 
+  it('includes pinned reasoning effort in progress without exposing the prompt', () => {
+    expect(formatAgentProgress('running', 'review', {
+      provider: 'codex', profile: 'codex-sol',
+      invocation: { model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' },
+    }, 2_200)).toBe('step: review running (provider: codex, profile: codex-sol, model: gpt-5.6-sol, reasoning effort: xhigh, elapsed: 2s)');
+  });
+
   it('bounds and redacts provider diagnostics', () => {
     expect(boundedDiagnostic('token=abc123 password: secret-value Bearer abc.def')).toBe(
       'token=[REDACTED] password=[REDACTED] Bearer [REDACTED]',

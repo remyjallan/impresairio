@@ -23,8 +23,11 @@ export class DoctorCommand extends CommandRunner {
   async run(_parameters: string[], options: DoctorOptions): Promise<void> {
     const results = this.health.check(process.cwd(), options.profile ?? [], options.live ?? false);
     for (const result of results) {
-      const model = result.model ? ` (${result.model})` : '';
-      this.write(`${result.ok ? 'OK' : 'FAIL'}\t${result.profile}\t${result.provider}${model}\t${result.detail}\n`);
+      const settings = [
+        ...(result.model ? [`model=${result.model}`] : []),
+        ...(result.reasoningEffort ? [`reasoningEffort=${result.reasoningEffort}`] : []),
+      ];
+      this.write(`${result.ok ? 'OK' : 'FAIL'}\t${result.profile}\t${result.provider}${settings.length > 0 ? ` (${settings.join(', ')})` : ''}\t${result.detail}\n`);
     }
     if (results.some((result) => !result.ok)) {
       throw new Error('One or more agent checks failed.');

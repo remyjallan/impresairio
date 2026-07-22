@@ -6,7 +6,7 @@ import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
 import { EventLogService } from '../src/runs/event-log.service';
 import { FileStateStore } from '../src/runs/file-state.store';
 import { createRunState } from '../src/runs/run-state.schema';
-import { RunReportService } from '../src/runs/run-report.service';
+import { formatRunReport, RunReportService } from '../src/runs/run-report.service';
 
 const directories: string[] = [];
 
@@ -117,6 +117,27 @@ describe('RunReportService', () => {
       },
       availability: [],
     });
+  });
+
+  it('reports frozen Claude Code or Codex model and reasoning effort', () => {
+    const { store, report } = createHarness();
+    const state = store.findState('run-report');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      resolvedActors: {
+        launcher: {
+          profile: 'codex-sol', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+        },
+      },
+    });
+
+    const result = report.create('run-report');
+
+    expect(result.agentSteps[0]).toMatchObject({
+      provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+    });
+    expect(formatRunReport(result)).toContain('codex-sol / codex / gpt-5.6-sol / effort=xhigh');
   });
 
   it('reports unavailable gate timing for runs created before gate.reached existed', () => {

@@ -37,6 +37,7 @@ export interface AgentHealthResult {
   readonly profile: string;
   readonly provider: string;
   readonly model?: string;
+  readonly reasoningEffort?: string;
   readonly ok: boolean;
   readonly detail: string;
 }
@@ -86,11 +87,12 @@ export class AgentHealthService {
   }
 }
 
-function identity(profile: string, agent: ResolvedAgentProfile): Pick<AgentHealthResult, 'profile' | 'provider' | 'model'> {
+function identity(profile: string, agent: ResolvedAgentProfile): Pick<AgentHealthResult, 'profile' | 'provider' | 'model' | 'reasoningEffort'> {
   return {
     profile,
     provider: agent.provider,
-    ...(agent.provider === 'opencode' ? { model: agent.model } : {}),
+    ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.provider !== 'opencode' && agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
   };
 }
 

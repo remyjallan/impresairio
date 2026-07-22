@@ -24,6 +24,7 @@ export interface RunReport {
     readonly provider: string;
     readonly profile: string;
     readonly model?: string;
+    readonly reasoningEffort?: string;
     readonly attempts: readonly ReportAttempt[];
     readonly durationMs?: number;
   }[];
@@ -83,7 +84,8 @@ export class RunReportService {
         status: step.status,
         provider: actor.provider,
         profile: actor.profile,
-        ...(actor.provider === 'opencode' ? { model: actor.model } : {}),
+        ...(actor.model ? { model: actor.model } : {}),
+        ...(actor.provider !== 'opencode' && actor.reasoningEffort ? { reasoningEffort: actor.reasoningEffort } : {}),
         attempts,
         ...(durationMs === undefined ? {} : { durationMs }),
       }];
@@ -133,7 +135,7 @@ export function formatRunReport(report: RunReport): string {
     '',
     'Agent steps',
     ...(report.agentSteps.length === 0 ? ['- none'] : report.agentSteps.map((step) => {
-      const agent = `${step.profile} / ${step.provider}${step.model ? ` / ${step.model}` : ''}`;
+      const agent = `${step.profile} / ${step.provider}${step.model ? ` / ${step.model}` : ''}${step.reasoningEffort ? ` / effort=${step.reasoningEffort}` : ''}`;
       const duration = step.durationMs === undefined ? 'unavailable' : formatDuration(step.durationMs);
       return `- ${step.id}: ${agent}; ${duration}; ${step.status}; attempts: ${step.attempts.length}`;
     })),

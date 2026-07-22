@@ -147,6 +147,36 @@ describe('AgentDispatchService', () => {
     }));
   });
 
+  it('prepares a frozen Codex profile with model and reasoning effort and records both', () => {
+    const { runner, dispatch, processRunner, events, store } = setup('launcher');
+    const state = store.findState('run-agent');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      resolvedActors: {
+        ...state.resolvedActors,
+        launcher: {
+          profile: 'codex-sol', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+        },
+      },
+    });
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff).toMatchObject({
+      profile: 'codex-sol', provider: 'codex',
+      invocation: {
+        command: 'codex',
+        args: ['exec', '--sandbox', 'read-only', '--model', 'gpt-5.6-sol', '-c', 'model_reasoning_effort="xhigh"'],
+        model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+      },
+    });
+    expect(processRunner.calls).toHaveLength(1);
+    expect(events.read('run-agent')).toContainEqual(expect.objectContaining({
+      type: 'agent.invocation.prepared', profile: 'codex-sol', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+    }));
+  });
+
   it('prepares a step using its explicitly selected fallback profile', () => {
     const { runner, dispatch, store } = setup('launcher');
     const state = store.findState('run-agent');
