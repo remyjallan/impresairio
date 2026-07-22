@@ -13,11 +13,7 @@ const identifier = runtimeIdentifier.refine((value) => !value.includes('--') && 
 const nonEmptyString = z.string().trim().min(1);
 
 function hasForbiddenLiteralCharacter(value: string): boolean {
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 0;
-    if (code <= 0x1f || code === 0x7f || code === 0x2028 || code === 0x2029) return true;
-  }
-  return false;
+  return /[\u0000-\u001f\u007f\u2028\u2029]/u.test(value);
 }
 
 function isValidPrimitiveString(value: string): boolean {
