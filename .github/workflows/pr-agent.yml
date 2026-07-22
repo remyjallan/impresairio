@@ -42,6 +42,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI__KEY: ${{ secrets.PR_AGENT_NANOGPT_KEY }}
           OPENAI__API_BASE: https://nano-gpt.com/api/v1legacy
+          # LiteLLM strips the openai/ routing prefix before NanoGPT receives
+          # the documented model ID: zai-org/glm-5.2.
           config.model: openai/zai-org/glm-5.2
           config.fallback_models: '[]'
           config.custom_model_max_tokens: '1000000'
@@ -56,7 +58,10 @@ jobs:
             Report only concrete, actionable defects introduced by this pull
             request. Do not report formatting or style that automated checks
             cover. Treat AGENTS.md as repository context and request tests
-            only when the changed behavior needs one.
+            only when the changed behavior needs one. Do not report speculative
+            provider compatibility concerns when the endpoint and model ID
+            match the provider's documented API; report them only with a
+            concrete incompatibility or failure scenario.
 
       - name: Enforce AI review policy
         env:

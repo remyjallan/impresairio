@@ -35,7 +35,12 @@ function main() {
         if (typeof issue === 'string') return issue.trim().length > 0;
 
         // PR-Agent emits structured objects for actionable findings.
-        return issue !== null && issue !== undefined;
+        return (
+          issue !== null &&
+          typeof issue === 'object' &&
+          typeof issue.issue_content === 'string' &&
+          issue.issue_content.trim().length > 0
+        );
       })
     : null;
 
