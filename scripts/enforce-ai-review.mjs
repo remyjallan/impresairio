@@ -69,5 +69,5 @@ function fail(message) {
 }
 
 function selfNegatingFinding(content) {
-  return /no (?:actual )?(?:bug|defect|issue) (?:found|exists)|no defect exists|this is the intended .* behavior/i.test(content);
+  return /no (?:actual )?(?:bug|defect|issue) (?:found|exists|here)|no defect exists|this is the intended .* behavior/i.test(content);
 }
