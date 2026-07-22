@@ -33,6 +33,7 @@
     "prepack": "pnpm run build",
     "test": "pnpm run build && vitest",
     "test:run": "pnpm run build && vitest run",
+    "test:coverage": "pnpm run build && vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "verify": "pnpm run test:run && pnpm run typecheck && pnpm run lint && pnpm run build",
@@ -49,6 +50,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",
     "tsx": "^4.23.1",
     "typescript": "^6.0.3",
