@@ -29,4 +29,18 @@ describe('ConditionEvaluatorService', () => {
     expect(evaluator.evaluate({ any: [unknown, { equals: { left: true, right: true } }] }, state, {})).toBe(false);
     expect(evaluator.evaluate({ all: [{ equals: { left: false, right: true } }, unknown] }, state, {})).toBe(false);
   });
+
+  it('evaluates resolved boolean compositions and negation', () => {
+    expect(evaluator.evaluate({ equals: { left: true, right: true } }, state, {})).toBe(true);
+    expect(evaluator.evaluate({ notEquals: { left: 'ready', right: 'blocked' } }, state, {})).toBe(true);
+    expect(evaluator.evaluate({ all: [
+      { equals: { left: true, right: true } },
+      { notEquals: { left: 1, right: 2 } },
+    ] }, state, {})).toBe(true);
+    expect(evaluator.evaluate({ any: [
+      { equals: { left: false, right: true } },
+      { equals: { left: 'ready', right: 'ready' } },
+    ] }, state, {})).toBe(true);
+    expect(evaluator.evaluate({ not: { equals: { left: true, right: true } } }, state, {})).toBe(false);
+  });
 });

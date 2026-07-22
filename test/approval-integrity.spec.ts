@@ -196,4 +196,22 @@ describe('approval integrity', () => {
     gates.requestChanges('run-gates', 'approve-design', 'Rework the internal artifact.');
     expect(() => realpathSync(internalOutput.path)).toThrow();
   });
+
+  it('uses the documentation root for legacy outputs without frozen target metadata', () => {
+    const { gates, store, seed } = createHarness();
+    const seeded = seed();
+    const current = store.findState('run-gates');
+    if (!current) throw new Error('missing seeded state');
+    store.save({
+      ...current,
+      steps: current.steps.map((step) => step.id === 'design' && step.kind === 'agent'
+        ? { ...step, expectedOutput: undefined }
+        : step),
+    });
+
+    expect(() => gates.approve('run-gates', 'approve-design')).not.toThrow();
+    expect(store.findState('run-gates')?.steps[2]).toMatchObject({
+      status: 'complete', approval: { approvedArtifactHash: sha256(seeded.content.design) },
+    });
+  });
 });

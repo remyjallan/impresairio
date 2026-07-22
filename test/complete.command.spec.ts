@@ -175,7 +175,7 @@ describe('CompleteCommand', () => {
       find: (runId: string) => ({
         id: runId,
         currentStepId: 'verify',
-        successors: { implement: ['verify'], verify: [] },
+        successors: { implement: ['verify'], verify: ['implement'] },
         steps: [
           {
             id: 'verify', kind: 'agent' as const, status: 'in_progress' as const,
