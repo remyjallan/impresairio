@@ -30,6 +30,7 @@ export interface CompletionRun {
   readonly repositoryPatch?: RepositoryPatchState;
   readonly currentStepId: string | undefined;
   readonly steps: readonly CompletionStep[];
+  readonly successors?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface CompletionRecord {
@@ -240,9 +241,14 @@ export class CompletionService {
       if (policyResult.source === 'policy' && policyResult.reviewOutcome) {
         const transition = policyResult.transition;
         if (transition?.kind === 'retry-from') {
-          const retryTarget = run.steps.find((candidate) => candidate.id === transition.targetStepId);
-          if (retryTarget?.storage === 'internal') {
-            this.outputVerifier.discardExpectedOutput?.(retryTarget);
+          const invalidatedIds = downstreamStepIds(run, transition.targetStepId);
+          for (const retryTarget of run.steps) {
+            if (retryTarget.kind === 'agent'
+              && retryTarget.storage === 'internal'
+              && retryTarget.output
+              && invalidatedIds.has(retryTarget.id)) {
+              this.outputVerifier.discardExpectedOutput?.(retryTarget);
+            }
           }
           this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId);
           this.store.appendEvent(runId, {
@@ -277,4 +283,15 @@ export class CompletionService {
       release();
     }
   }
+}
+
+function downstreamStepIds(run: CompletionRun, sourceStepId: string): ReadonlySet<string> {
+  const ids = new Set<string>();
+  const visit = (stepId: string): void => {
+    if (ids.has(stepId)) return;
+    ids.add(stepId);
+    for (const successor of run.successors?.[stepId] ?? []) visit(successor);
+  };
+  visit(sourceStepId);
+  return ids;
 }

@@ -175,8 +175,16 @@ describe('CompleteCommand', () => {
       find: (runId: string) => ({
         id: runId,
         currentStepId: 'verify',
+        successors: { implement: ['verify'], verify: [] },
         steps: [
-          { id: 'verify', kind: 'agent' as const, status: 'in_progress' as const },
+          {
+            id: 'verify', kind: 'agent' as const, status: 'in_progress' as const,
+            storage: 'internal' as const,
+            output: {
+              id: 'verification', targetRoot: '/run', directory: '/run/artifacts',
+              path: '/run/artifacts/verification.md', format: 'markdown' as const,
+            },
+          },
           {
             id: 'implement', kind: 'agent' as const, status: 'complete' as const,
             storage: 'internal' as const,
@@ -208,7 +216,7 @@ describe('CompleteCommand', () => {
 
     service.complete('run-42', 'verify');
 
-    expect(discarded).toEqual(['/run/artifacts/implementation.md']);
+    expect(discarded).toEqual(['/run/artifacts/verification.md', '/run/artifacts/implementation.md']);
   });
 
   it.each([
