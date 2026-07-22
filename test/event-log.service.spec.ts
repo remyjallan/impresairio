@@ -25,4 +25,16 @@ describe('EventLogService', () => {
 
     expect(events).toEqual([first]);
   });
+
+  it('rejects corruption in a complete event record instead of hiding it', () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-events-')));
+    directories.push(home);
+    const runDirectory = join(home, 'runs', 'run-events');
+    const path = join(runDirectory, 'events.jsonl');
+    mkdirSync(runDirectory, { recursive: true });
+    appendFileSync(path, '{"type":"run.started"}\n{"type":"not-json"oops}\n', 'utf8');
+
+    expect(() => new EventLogService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home })).read('run-events'))
+      .toThrow('Invalid event log for run run-events at line 2');
+  });
 });

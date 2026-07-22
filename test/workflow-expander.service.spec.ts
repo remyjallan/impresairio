@@ -381,4 +381,23 @@ steps:
       'mount:root',
     ]);
   });
+
+  it('rejects workflow composition deeper than the supported limit', () => {
+    const harness = createHarness();
+    for (let index = 0; index <= 32; index += 1) {
+      const next = index === 32
+        ? `\n  - id: terminal\n    type: agent\n    actor: launcher\n    capability: drafting\n    output: { id: final, filename: "Final.md" }`
+        : `\n  - id: child\n    uses: workflow:w${index + 1}`;
+      harness.writeRepository(`w${index}`, `
+id: w${index}
+name: Workflow ${index}
+steps:${next}
+`);
+    }
+
+    expect(() => harness.expander.expand(
+      harness.registry.resolve('w0', harness.repository),
+      harness.repository,
+    )).toThrow('Workflow composition exceeds the maximum depth of 32');
+  });
 });
