@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
 import { AgentDispatchService } from '../agents/agent-dispatch.service';
+import { HostHandoffService } from '../agents/host-handoff.service';
 import { agentSettingsForEvent, type PreparedAgentInvocation } from '../agents/agent-provider';
 import { CompletionService } from '../runs/completion.service';
 import { EventLogService } from '../runs/event-log.service';
@@ -61,6 +62,7 @@ export class AdvanceCommand extends CommandRunner {
     private readonly locks: RunLockService,
     private readonly events: EventLogService,
     @Inject(ADVANCE_PROGRESS_WRITER) private readonly writeProgress: (line: string) => void,
+    @Optional() @Inject(HostHandoffService) private readonly hostHandoffs?: HostHandoffService,
   ) { super(); }
 
   async run([runId]: string[]): Promise<void> {
@@ -79,6 +81,12 @@ export class AdvanceCommand extends CommandRunner {
         if (result.kind === 'blocked') {
           for (const warning of result.warnings) process.stdout.write(`warning: ${warning}\n`);
           process.stdout.write(`blocked: ${result.stepId}\n`);
+          return;
+        }
+        if (result.kind === 'host-handoff') {
+          const handoff = this.hostHandoffs?.prepare(runId, result);
+          if (!handoff) throw new Error(`No host handoff for ${result.stepId}`);
+          process.stdout.write(`${JSON.stringify(handoff)}\n`);
           return;
         }
         activeStepId = result.stepId;

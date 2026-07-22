@@ -10,6 +10,7 @@ import { ConditionEvaluatorService } from './condition-evaluator.service';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
+  | { readonly kind: 'host-handoff'; readonly stepId: string }
   | { readonly kind: 'gate'; readonly stepId: string; readonly warnings?: readonly string[] }
   | { readonly kind: 'blocked'; readonly stepId: string; readonly warnings: readonly string[] }
   | { readonly kind: 'complete' };
@@ -76,7 +77,7 @@ export class WorkflowRunnerService {
         return { kind: 'gate', stepId: step.id, ...(warnings.length > 0 ? { warnings } : {}) };
       }
       if (step.status === 'in_progress') {
-        return { kind: 'agent', stepId: step.id };
+        return { kind: step.kind, stepId: step.id };
       }
 
       const timestamp = this.now().toISOString();
@@ -88,8 +89,11 @@ export class WorkflowRunnerService {
             bindings: state.documentation.bindings,
             output: step.declaredOutput,
           });
-      const inputArtifactHashes = this.inputArtifactHashes(state, step.id);
-      const steps = state.steps.map((candidate) => candidate.id === step.id && candidate.kind === 'agent'
+      const inputArtifactHashes = this.inputArtifactHashes(state, step.id, step.kind === 'host-handoff'
+        ? new Set(step.inputArtifactIds)
+        : undefined);
+      const steps = state.steps.map((candidate) => candidate.id === step.id
+        && (candidate.kind === 'agent' || candidate.kind === 'host-handoff')
         ? {
             ...candidate,
             status: 'in_progress' as const,
@@ -111,7 +115,7 @@ export class WorkflowRunnerService {
         at: timestamp,
         stepId: step.id,
       });
-      return { kind: 'agent', stepId: step.id };
+      return { kind: step.kind, stepId: step.id };
     } finally {
       release();
     }
@@ -125,13 +129,18 @@ export class WorkflowRunnerService {
     return state;
   }
 
-  private inputArtifactHashes(state: RunState, stepId: string): Record<string, string> {
+  private inputArtifactHashes(
+    state: RunState,
+    stepId: string,
+    selectedArtifactIds?: ReadonlySet<string>,
+  ): Record<string, string> {
     const stepIndex = state.steps.findIndex((step) => step.id === stepId);
     const hashes = new Map<string, string>();
     for (const step of state.steps.slice(0, stepIndex)) {
-        if (step.kind !== 'agent' || step.status !== 'complete' || !step.output) {
+        if ((step.kind !== 'agent' && step.kind !== 'host-handoff') || step.status !== 'complete' || !step.output) {
           continue;
         }
+        if (selectedArtifactIds && !selectedArtifactIds.has(step.declaredOutput.id)) continue;
         hashes.set(
           step.declaredOutput.id,
           this.artifacts.currentHash(step.output, step.expectedOutput?.targetRoot ?? state.documentation.target.root),

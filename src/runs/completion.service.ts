@@ -15,7 +15,7 @@ export type CompletionStepStatus =
 
 export interface CompletionStep {
   readonly id: string;
-  readonly kind: 'agent' | 'gate';
+  readonly kind: 'agent' | 'host-handoff' | 'gate';
   readonly status: CompletionStepStatus;
   readonly output?: PreparedDocumentationOutput;
   readonly storage?: 'documentation' | 'internal';
@@ -162,7 +162,7 @@ export class CompletionService {
         throw new CompletionError(`Step ${stepId} is not the current step`);
       }
       if (step.kind === 'gate') {
-        throw new CompletionError(`Step ${stepId} is a gate and cannot be completed by an agent`);
+        throw new CompletionError(`Step ${stepId} is a gate and cannot produce an artifact`);
       }
       if (step.status === 'stale') {
         throw new CompletionError(`Step ${stepId} is stale`);

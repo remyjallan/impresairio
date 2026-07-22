@@ -237,6 +237,17 @@ const promptAgentStepSchema = agentBaseSchema.extend({
   promptFile: safeRelativeMarkdownPath,
 }).strict();
 
+const hostHandoffStepSchema = z.object({
+  id: identifier,
+  type: z.literal('host-handoff'),
+  promptFile: safeRelativeMarkdownPath,
+  inputs: z.array(identifier).max(10).refine((inputs) => new Set(inputs).size === inputs.length, {
+    error: 'must not contain duplicate artifact IDs',
+  }),
+  output: outputSchema,
+  sideEffects: z.literal('none'),
+}).strict();
+
 const gateStepSchema = z
   .object({
     id: identifier,
@@ -281,6 +292,7 @@ export const workflowSchema = z
     steps: z.array(z.union([
       capabilityAgentStepSchema,
       promptAgentStepSchema,
+      hostHandoffStepSchema,
       gateStepSchema,
       reviewCycleStepSchema,
       composedWorkflowStepSchema,
@@ -303,7 +315,7 @@ export const workflowSchema = z
 
       if ('uses' in step) return;
 
-      if (step.type === 'agent' || step.type === 'review-cycle') {
+      if (step.type === 'agent' || step.type === 'host-handoff' || step.type === 'review-cycle') {
         if (outputIds.has(step.output.id)) {
           context.addIssue({
             code: 'custom',
@@ -312,6 +324,25 @@ export const workflowSchema = z
           });
         }
         outputIds.set(step.output.id, { index, conditional: step.type === 'agent' && step.when !== undefined });
+      }
+
+      if (step.type === 'host-handoff') {
+        for (const [inputIndex, input] of step.inputs.entries()) {
+          const producer = outputIds.get(input);
+          if (!producer) {
+            context.addIssue({
+              code: 'custom',
+              path: ['steps', index, 'inputs', inputIndex],
+              message: 'must reference an output produced by a preceding step',
+            });
+          } else if (producer.conditional) {
+            context.addIssue({
+              code: 'custom',
+              path: ['steps', index, 'inputs', inputIndex],
+              message: 'must reference an unconditional output; a false condition would make the handoff input unavailable',
+            });
+          }
+        }
       }
 
       if (step.type === 'gate') {
@@ -388,6 +419,7 @@ export const workflowSchema = z
 export type Workflow = z.infer<typeof workflowSchema>;
 export type WorkflowStep = Workflow['steps'][number];
 export type AgentWorkflowStep = Extract<WorkflowStep, { readonly type: 'agent' }>;
+export type HostHandoffWorkflowStep = Extract<WorkflowStep, { readonly type: 'host-handoff' }>;
 export type GateWorkflowStep = Extract<WorkflowStep, { readonly type: 'gate' }>;
 export type ComposedWorkflowStep = Extract<WorkflowStep, { readonly uses: string }>;
 

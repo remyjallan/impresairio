@@ -252,7 +252,29 @@ const runGateStepSchema = z
   })
   .strict();
 
-export const runStepSchema = z.union([runAgentStepSchema, runGateStepSchema]);
+const runHostHandoffStepSchema = z.object({
+  id: nonEmptyString,
+  kind: z.literal('host-handoff'),
+  status: stepStatusSchema,
+  promptFile: nonEmptyString,
+  prompt: z.string().min(1),
+  inputArtifactIds: z.array(nonEmptyString).max(10),
+  declaredOutput: declaredWorkflowOutputSchema,
+  sideEffects: z.literal('none'),
+  expectedOutput: preparedDocumentationOutputSchema.optional(),
+  output: z.object({
+    id: nonEmptyString,
+    path: nonEmptyString,
+    format: z.literal('markdown'),
+    sha256: sha256Schema,
+    completedAt: timestampSchema,
+  }).strict().optional(),
+  inputArtifactHashes: z.record(nonEmptyString, sha256Schema).optional(),
+  attempts: z.array(attemptSchema),
+  handoffPreparedAt: timestampSchema.optional(),
+}).strict();
+
+export const runStepSchema = z.union([runAgentStepSchema, runHostHandoffStepSchema, runGateStepSchema]);
 
 export const runStateSchema = z
   .object({
@@ -299,12 +321,14 @@ export function createRunState(input: {
   readonly execution?: { readonly agentTimeoutSeconds: number };
   readonly steps: readonly {
     readonly id: string;
-    readonly kind: 'agent' | 'gate';
+    readonly kind: 'agent' | 'host-handoff' | 'gate';
     readonly actor?: string;
     readonly method?: z.input<typeof agentMethodSchema>;
     readonly action?: string;
     readonly promptFile?: string;
     readonly prompt?: string;
+    readonly inputs?: readonly string[];
+    readonly sideEffects?: 'none';
     readonly output?: {
       readonly id: string;
       readonly filename: string;
@@ -365,6 +389,22 @@ export function createRunState(input: {
           status: 'pending' as const,
           artifact: step.artifact,
           feedback: [],
+        };
+      }
+      if (step.kind === 'host-handoff') {
+        if (!step.promptFile || !step.prompt || !step.output || !step.inputs || !step.sideEffects) {
+          throw new Error(`Host handoff ${step.id} requires promptFile, prompt, inputs, output and sideEffects`);
+        }
+        return {
+          id: step.id,
+          kind: 'host-handoff' as const,
+          status: 'pending' as const,
+          promptFile: step.promptFile,
+          prompt: step.prompt,
+          inputArtifactIds: step.inputs,
+          declaredOutput: step.output,
+          sideEffects: step.sideEffects,
+          attempts: [],
         };
       }
       if (!step.actor || !step.output) {

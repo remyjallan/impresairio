@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
 import { WorkflowRunnerService } from '../workflows/workflow-runner.service';
 import { AgentDispatchService } from '../agents/agent-dispatch.service';
+import { HostHandoffService } from '../agents/host-handoff.service';
 
 export const NEXT_WRITER = Symbol('NEXT_WRITER');
 
@@ -19,6 +20,8 @@ export class NextCommand extends CommandRunner {
     private readonly agentDispatch: AgentDispatchService,
     @Inject(NEXT_WRITER)
     private readonly write: (line: string) => void = (line) => process.stdout.write(line),
+    @Optional() @Inject(HostHandoffService)
+    private readonly hostHandoffs?: HostHandoffService,
   ) {
     super();
   }
@@ -28,6 +31,11 @@ export class NextCommand extends CommandRunner {
     const handoff = this.agentDispatch.prepare(runId, result);
     if (handoff) {
       this.write(`${JSON.stringify(handoff)}\n`);
+      return;
+    }
+    const hostHandoff = this.hostHandoffs?.prepare(runId, result);
+    if (hostHandoff) {
+      this.write(`${JSON.stringify(hostHandoff)}\n`);
       return;
     }
     if (result.kind === 'complete') {

@@ -540,4 +540,45 @@ steps:
       method: { promptFile: 'prompts/draft.md', content: 'Write the first draft.\n' },
     });
   });
+
+  it('freezes a host handoff prompt and contract at run start', () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    const workflows = join(repository, '.impresairio', 'workflows');
+    mkdirSync(join(workflows, 'prompts'), { recursive: true });
+    writeFileSync(join(workflows, 'host-handoff.yaml'), `id: host-handoff
+name: Host handoff
+steps:
+  - id: draft
+    type: agent
+    actor: launcher
+    capability: feature-design
+    output:
+      id: draft
+      filename: "01 - Draft.md"
+  - id: review
+    type: host-handoff
+    promptFile: prompts/review.md
+    inputs: [draft]
+    output:
+      id: review
+      filename: "02 - Review.md"
+    sideEffects: none
+`);
+    writeFileSync(join(workflows, 'prompts', 'review.md'), 'Review the draft.\n');
+
+    service.start({
+      id: 'run-host-contract', workflowId: 'host-handoff', roles: { launcher: 'claude' },
+      request: 'Review a frozen host handoff.',
+      feature: { id: 'IMP-56', slug: 'host-contract' }, repositoryDirectory: repository,
+    });
+
+    expect(store.findState('run-host-contract')?.steps[1]).toMatchObject({
+      kind: 'host-handoff', promptFile: 'prompts/review.md', prompt: 'Review the draft.\n',
+      inputArtifactIds: ['draft'], declaredOutput: { id: 'review', filename: '02 - Review.md' },
+      sideEffects: 'none',
+    });
+  });
 });

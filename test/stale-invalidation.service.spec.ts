@@ -66,6 +66,35 @@ function createHarness() {
 }
 
 describe('stale invalidation', () => {
+  it('recovers host handoffs and rejects non-artifact retry targets', () => {
+    const harness = createHarness();
+    const current = harness.state();
+    const original = current.steps[0];
+    if (original.kind !== 'agent') throw new Error('missing agent');
+    const host = {
+      ...original, kind: 'host-handoff' as const, status: 'failed' as const,
+      promptFile: 'prompts/host.md', prompt: 'Review.', inputArtifactIds: [], sideEffects: 'none' as const,
+      handoffPreparedAt: '2026-07-20T10:01:00.000Z',
+    };
+    harness.replace({ ...current, steps: [host, ...current.steps.slice(1)] } as RunState);
+    harness.gates.retry('run-stale', 'design');
+    expect(harness.state().steps[0]).toMatchObject({ kind: 'host-handoff', status: 'pending', handoffPreparedAt: undefined });
+    expect(() => harness.gates.retry('run-stale', 'approve-design')).toThrow('not an agent or host handoff step');
+  });
+
+  it('returns a host producer to pending when its gate requests changes', () => {
+    const harness = createHarness();
+    const current = harness.state();
+    const original = current.steps[0];
+    if (original.kind !== 'agent') throw new Error('missing agent');
+    harness.replace({
+      ...current,
+      steps: [{ ...original, kind: 'host-handoff' as const, promptFile: 'host.md', prompt: 'Review.', inputArtifactIds: [], sideEffects: 'none' as const }, ...current.steps.slice(1)],
+    } as RunState);
+    harness.gates.requestChanges('run-stale', 'approve-design', 'Revise host output.');
+    expect(harness.state().steps[0]).toMatchObject({ kind: 'host-handoff', status: 'pending', handoffPreparedAt: undefined });
+  });
+
   it('recursively stales completed downstream steps and preserves gate feedback', () => {
     const { gates, state } = createHarness();
 

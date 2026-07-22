@@ -134,7 +134,15 @@ export class RunService {
               ...(step.verdictPolicy ? { verdictPolicy: step.verdictPolicy } : {}),
               ...(step.patch ? { patch: step.patch } : {}),
             }
-          : { artifact: step.artifact }),
+          : step.type === 'host-handoff'
+            ? {
+                promptFile: step.promptFile,
+                prompt: this.workflowRegistry.readPromptFile(step.definition, step.promptFile),
+                inputs: step.inputs,
+                output: step.output,
+                sideEffects: step.sideEffects,
+              }
+            : { artifact: step.artifact }),
       })),
     });
     const release = this.locks.acquire(id, 'start');
@@ -194,7 +202,7 @@ export class RunService {
   ): void {
     const destinations = new Map<string, { readonly stepId: string; readonly outputId: string }>();
     for (const step of steps) {
-      if (step.type !== 'agent') continue;
+      if (step.type !== 'agent' && step.type !== 'host-handoff') continue;
       const destinationPath = step.output.storage === 'internal'
         ? this.artifacts.resolveInternalOutputPath(this.stateStore.runDirectory(runId), step.output)
         : this.artifacts.resolveOutputPath({
