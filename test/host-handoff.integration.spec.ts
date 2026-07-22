@@ -198,15 +198,18 @@ describe('host handoff', () => {
     );
     expect(() => bounded.prepare('run', { kind: 'host-handoff', stepId: 'host' })).toThrow('exceeds');
 
-    writeFileSync(output.path, 'x'.repeat(600_000));
+    writeFileSync(output.path, 'x'.repeat(524_288));
     const secondOutput = { ...output, id: 'second', path: join(home, 'second.md') };
-    writeFileSync(secondOutput.path, 'x'.repeat(600_000));
+    writeFileSync(secondOutput.path, 'x'.repeat(524_288));
+    const thirdOutput = { ...output, id: 'third', path: join(home, 'third.md') };
+    writeFileSync(thirdOutput.path, 'x');
     const aggregateState = {
       ...state,
       steps: [
         state.steps[0],
         { ...state.steps[0], id: 'second-source', declaredOutput: { id: 'second' }, output: secondOutput },
-        { ...step, inputArtifactIds: ['input', 'second'], inputArtifactHashes: { input: 'a'.repeat(64), second: 'a'.repeat(64) } },
+        { ...state.steps[0], id: 'third-source', declaredOutput: { id: 'third' }, output: thirdOutput },
+        { ...step, inputArtifactIds: ['input', 'second', 'third'], inputArtifactHashes: { input: 'a'.repeat(64), second: 'a'.repeat(64), third: 'a'.repeat(64) } },
       ],
     };
     const aggregate = new HostHandoffService(

@@ -8,7 +8,8 @@ import type { RunState } from '../runs/run-state.schema';
 import type { NextStepResult } from '../workflows/workflow-runner.service';
 
 export const HOST_HANDOFF_PROTOCOL_VERSION = 1;
-export const MAX_HOST_HANDOFF_INPUT_BYTES = 1_048_576;
+export const MAX_HOST_HANDOFF_INPUT_BYTES = 524_288;
+export const MAX_HOST_HANDOFF_INPUT_AGGREGATE_BYTES = 1_048_576;
 export const MAX_HOST_HANDOFF_OUTPUT_BYTES = 1_048_576;
 
 export interface HostHandoff {
@@ -70,8 +71,8 @@ export class HostHandoffService {
         return { id, path: producer.output.path, sha256: currentHash, format: 'markdown' as const, trust: 'untrusted' as const, bytes };
       });
       const totalBytes = resolvedInputs.reduce((total, input) => total + input.bytes, 0);
-      if (totalBytes > MAX_HOST_HANDOFF_INPUT_BYTES) {
-        throw new RunStateError(`Host handoff inputs exceed the ${MAX_HOST_HANDOFF_INPUT_BYTES}-byte aggregate limit`);
+      if (totalBytes > MAX_HOST_HANDOFF_INPUT_AGGREGATE_BYTES) {
+        throw new RunStateError(`Host handoff inputs exceed the ${MAX_HOST_HANDOFF_INPUT_AGGREGATE_BYTES}-byte aggregate limit`);
       }
       const inputs = resolvedInputs.map(({ bytes: _bytes, ...input }) => input);
       const handoff: HostHandoff = {
