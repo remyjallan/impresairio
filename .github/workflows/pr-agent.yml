@@ -87,7 +87,11 @@ jobs:
           exit 1
 
       - name: Enforce AI review policy
-        if: always()
+        if: >-
+          always() &&
+          !(github.event.action == 'labeled' &&
+          github.event.label != null &&
+          github.event.label.name == 'ai-review-override')
         env:
           PR_REVIEW_OUTPUT: ${{ steps.pragent.outputs.review }}
           PR_REVIEW_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
