@@ -243,5 +243,8 @@ describe('ArtifactService', () => {
       id: 'challenge', kind: 'agent', status: 'complete', output: prepared,
     });
     expect(existsSync(prepared.path)).toBe(false);
+    expect(() => artifactService.discardExpectedOutput({
+      id: 'missing', kind: 'agent', status: 'complete',
+    })).toThrow('does not declare a resolved documentation output');
   });
 });
