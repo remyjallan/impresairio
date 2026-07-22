@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -375,7 +376,7 @@ describe('AgentDispatchService', () => {
             ...step,
             retryContext: {
               sourceStepId: 'verify', artifactPath: feedbackPath,
-              artifactSha256: 'c'.repeat(64), at: '2026-07-20T10:03:00.000Z',
+              artifactSha256: createHash('sha256').update('Fix the empty-name handling.\n\nVERDICT: CHANGES_REQUESTED\n').digest('hex'), at: '2026-07-20T10:03:00.000Z',
             },
           }
         : step),
@@ -385,5 +386,11 @@ describe('AgentDispatchService', () => {
 
     expect(handoff?.invocation?.input).toContain('Reviewer feedback to address:');
     expect(handoff?.invocation?.input).toContain('Fix the empty-name handling.');
+    writeFileSync(feedbackPath, 'Tampered feedback.\n', 'utf8');
+    expect(() => dispatch.prepare('run-agent', runner.next('run-agent')))
+      .toThrow('Reviewer feedback from step verify changed after it was preserved');
+    rmSync(feedbackPath);
+    expect(() => dispatch.prepare('run-agent', runner.next('run-agent')))
+      .toThrow('Reviewer feedback from step verify is unavailable');
   });
 });

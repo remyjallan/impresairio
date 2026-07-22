@@ -223,6 +223,47 @@ describe('CompleteCommand', () => {
     expect(discarded).toEqual(['/run/artifacts/verification.md', '/run/artifacts/implementation.md']);
   });
 
+  it('preserves retry feedback before discarding reusable internal artifacts', () => {
+    const order: string[] = [];
+    const store = {
+      ...createStore({ id: 'verify', kind: 'agent', status: 'in_progress' }),
+      find: (runId: string) => ({
+        id: runId,
+        currentStepId: 'verify',
+        successors: { implement: ['verify'], verify: ['implement'] },
+        steps: [
+          { id: 'verify', kind: 'agent' as const, status: 'in_progress' as const, storage: 'internal' as const, output: { id: 'verification', targetRoot: '/run', directory: '/run/artifacts', path: '/run/artifacts/review.md', format: 'markdown' as const } },
+          { id: 'implement', kind: 'agent' as const, status: 'complete' as const, storage: 'internal' as const, output: { id: 'implementation', targetRoot: '/run', directory: '/run/artifacts', path: '/run/artifacts/implementation.md', format: 'markdown' as const } },
+        ],
+      }),
+      preserveRetryFeedback: () => {
+        order.push('preserve');
+        return { sourceStepId: 'verify', artifactPath: '/run/retry-feedback/review-1.md', artifactSha256: 'a'.repeat(64) };
+      },
+      applyVerdictRetry: (_runId: string, _stepId: string, _targetId: string, feedback: unknown) => {
+        order.push('reopen');
+        expect(feedback).toMatchObject({ artifactPath: '/run/retry-feedback/review-1.md' });
+      },
+    };
+    const service = new CompletionService(
+      store,
+      {
+        completeExpectedOutput: () => ({ id: 'verification', path: '/run/artifacts/review.md', format: 'markdown' as const, sha256: 'a'.repeat(64) }),
+        discardExpectedOutput: () => { order.push('discard'); },
+      },
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'policy', reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
+        transition: { kind: 'retry-from', targetStepId: 'implement' },
+      }) },
+    );
+
+    service.complete('run-42', 'verify');
+
+    expect(order).toEqual(['preserve', 'discard', 'discard', 'reopen']);
+  });
+
   it.each([
     ['BLOCKED', false, 'verdict.blocked'],
     ['CHANGES_REQUESTED', true, 'verdict.exhausted'],

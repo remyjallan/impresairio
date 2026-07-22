@@ -1,4 +1,5 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -169,10 +170,12 @@ describe('FileStateStore', () => {
     expect(readdirSync(join(home, 'runs', state.id))).toEqual([]);
   });
 
-  it('applyVerdictRetry reopens the target with reviewer feedback and counts the retry', () => {
-    const { store } = createStore();
-    const sha = 'b'.repeat(64);
+  it('preserves reviewer feedback before reopening the target and counts the retry', () => {
+    const { home, store } = createStore();
     const at = '2026-07-21T10:00:00.000Z';
+    const content = 'Clarify the output contract.\n\nVERDICT: CHANGES_REQUESTED\n';
+    const sha = createHash('sha256').update(content).digest('hex');
+    const reviewerPath = join(home, 'runs', 'run-vr', 'artifacts', '.review.md');
     store.create({
       version: 1,
       id: 'run-vr',
@@ -196,7 +199,7 @@ describe('FileStateStore', () => {
           id: 'verify', kind: 'agent', status: 'complete', actor: 'adversary',
           method: { action: 'verification' },
           declaredOutput: { id: 'verification', filename: 'v.md', storage: 'documentation' },
-          output: { id: 'verification', path: '/tmp/docs/v.md', format: 'markdown', sha256: sha, completedAt: at },
+          output: { id: 'verification', path: reviewerPath, format: 'markdown', sha256: sha, completedAt: at },
           verdictPolicy: { changesRequested: { retryFrom: 'implement', maxIterations: 2 }, blocked: 'stop' },
           reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
           attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {}, completedAt: at, outputSha256: sha }],
@@ -204,17 +207,37 @@ describe('FileStateStore', () => {
       ],
     });
 
-    store.applyVerdictRetry('run-vr', 'verify', 'implement');
+    store.fileOperations.mkdirSync(join(home, 'runs', 'run-vr', 'artifacts'), { recursive: true });
+    writeFileSync(reviewerPath, content, 'utf8');
+    const retryFeedback = store.preserveRetryFeedback('run-vr', 'verify', { path: reviewerPath, sha256: sha });
+    store.applyVerdictRetry('run-vr', 'verify', 'implement', retryFeedback);
 
     const state = store.findState('run-vr');
     const implement = state?.steps.find((step) => step.id === 'implement');
     const verify = state?.steps.find((step) => step.id === 'verify');
     expect(implement?.status).toBe('pending');
     expect(implement?.kind === 'agent' ? implement.retryContext?.sourceStepId : undefined).toBe('verify');
-    expect(implement?.kind === 'agent' ? implement.retryContext?.artifactPath : undefined).toBe('/tmp/docs/v.md');
+    expect(implement?.kind === 'agent' ? implement.retryContext?.artifactPath : undefined).toBe(retryFeedback.artifactPath);
+    expect(readFileSync(retryFeedback.artifactPath, 'utf8')).toBe(content);
     expect(verify?.status).toBe('pending');
     expect(verify?.kind === 'agent' ? verify.verdictRetries : undefined).toBe(1);
     expect(state?.currentStepId).toBeUndefined();
+  });
+
+  it('rejects a missing verdict step or a changed verdict artifact when preserving retry feedback', () => {
+    const { home, store } = createStore();
+    const at = '2026-07-21T10:00:00.000Z';
+    const content = 'VERDICT: CHANGES_REQUESTED\n';
+    const sha = createHash('sha256').update(content).digest('hex');
+    const reviewerPath = join(home, 'review.md');
+    store.create(createRunState({
+      id: 'run-retry-integrity', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation, steps: [{ id: 'review', kind: 'agent', actor: 'adversary', action: 'verification', output: { id: 'review', filename: 'Review.md' } }], now: at,
+    }));
+    writeFileSync(reviewerPath, content, 'utf8');
+
+    expect(() => store.preserveRetryFeedback('run-retry-integrity', 'missing', { path: reviewerPath, sha256: sha })).toThrow('not an agent verdict step');
+    expect(() => store.preserveRetryFeedback('run-retry-integrity', 'review', { path: reviewerPath, sha256: 'b'.repeat(64) })).toThrow('changed before retry feedback was preserved');
   });
 
   it.each(['../outside', '/tmp/outside', 'run/child', 'run\\child', '..'])(

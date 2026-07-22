@@ -86,6 +86,13 @@ export interface CompletionPolicy {
   evaluate(runId: string, stepId: string, output: CompletedDocumentationOutput): CompletionPolicyResult;
 }
 
+/** A durable copy of a verdict artifact retained as context for a bounded retry. */
+export interface RetryFeedback {
+  readonly sourceStepId: string;
+  readonly artifactPath: string;
+  readonly artifactSha256: string;
+}
+
 export type CompletionEvent =
   | { readonly type: 'step.completed'; readonly stepId: string; readonly at: string; readonly outputSha256: string }
   | { readonly type: 'step.result.recorded'; readonly stepId: string; readonly fields: readonly string[]; readonly outputSha256: string; readonly at: string }
@@ -101,7 +108,8 @@ export interface CompletionRunStore {
   recordCompletion(runId: string, completion: CompletionRecord): void;
   appendEvent(runId: string, event: CompletionEvent): void;
   markFailed?(runId: string, stepId: string, detail: string): void;
-  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string): void;
+  preserveRetryFeedback?(runId: string, policyStepId: string, output: CompletedDocumentationOutput): RetryFeedback;
+  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string, retryFeedback?: RetryFeedback): void;
 }
 
 export interface OutputVerifier {
@@ -178,6 +186,7 @@ export class CompletionService {
       let policyResult: CompletionPolicyResult;
       let result: CompletionRecord['result'];
       let patchApplication: PatchApplication | undefined;
+      let retryFeedback: RetryFeedback | undefined;
       try {
         output = this.outputVerifier.completeExpectedOutput(run, step);
         const content = step.declaredResult || step.patch
@@ -197,6 +206,9 @@ export class CompletionService {
           patchApplication = this.patches.apply(run, step, content, this.now().toISOString());
         }
         policyResult = this.policy.evaluate(runId, stepId, output);
+        if (policyResult.source === 'policy' && policyResult.transition?.kind === 'retry-from') {
+          retryFeedback = this.store.preserveRetryFeedback?.(runId, stepId, output);
+        }
         this.store.recordCompletion(runId, {
           stepId,
           output,
@@ -250,7 +262,11 @@ export class CompletionService {
               this.outputVerifier.discardExpectedOutput?.(retryTarget);
             }
           }
-          this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId);
+          if (retryFeedback) {
+            this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId, retryFeedback);
+          } else {
+            this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId);
+          }
           this.store.appendEvent(runId, {
             type: 'verdict.changes_requested',
             stepId,

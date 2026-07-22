@@ -1,8 +1,13 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HostHandoffService, readHostHandoffOutput } from '../src/agents/host-handoff.service';
+import {
+  HostHandoffService,
+  MAX_HOST_HANDOFF_RETRY_FEEDBACK_BYTES,
+  readHostHandoffOutput,
+} from '../src/agents/host-handoff.service';
 import { NextCommand } from '../src/commands/next.command';
 import { SubmitHostOutputCommand } from '../src/commands/submit-host-output.command';
 import { ArtifactService } from '../src/documentation/artifact.service';
@@ -192,6 +197,10 @@ describe('host handoff', () => {
       type: 'host.handoff.prepared', actor: 'launcher', profile: 'claude', provider: 'claude-code', interaction: 'user-dialog',
     }));
 
+    const reviewContent = 'Ask the user to choose a banner style.\n\nVERDICT: CHANGES_REQUESTED\n';
+    const reviewPath = join(home, 'review.md');
+    const reviewSha256 = createHash('sha256').update(reviewContent).digest('hex');
+    writeFileSync(reviewPath, reviewContent, 'utf8');
     const state = store.findState('run-interactive-host');
     if (!state) throw new Error('missing interactive run state');
     store.save({
@@ -205,12 +214,13 @@ describe('host handoff', () => {
         : step.id === 'review' && step.kind === 'agent'
           ? {
               ...step, status: 'complete' as const,
-              output: { id: 'review', path: join(home, 'review.md'), format: 'markdown' as const, sha256: 'd'.repeat(64), completedAt: '2026-07-23T12:01:00.000Z' },
+            output: { id: 'review', path: reviewPath, format: 'markdown' as const, sha256: reviewSha256, completedAt: '2026-07-23T12:01:00.000Z' },
             }
           : step),
     });
     expect(() => store.applyVerdictRetry('run-interactive-host', 'review', 'missing')).toThrow('not an agent or host-handoff step');
-    store.applyVerdictRetry('run-interactive-host', 'review', 'brainstorm');
+    const retryFeedback = store.preserveRetryFeedback('run-interactive-host', 'review', { path: reviewPath, sha256: reviewSha256 });
+    store.applyVerdictRetry('run-interactive-host', 'review', 'brainstorm', retryFeedback);
     const retried = store.findState('run-interactive-host')?.steps;
     const retriedHost = retried?.find((step) => step.id === 'brainstorm');
     expect(retriedHost).toMatchObject({
@@ -222,7 +232,20 @@ describe('host handoff', () => {
       kind: 'agent', status: 'pending', verdictRetries: 1,
     });
     const retryHandoff = handoffs.prepare('run-interactive-host', runner.next('run-interactive-host'));
-    expect(retryHandoff?.retryFeedback).toMatchObject({ sourceStepId: 'review', trust: 'untrusted' });
+    expect(retryHandoff?.retryFeedback).toMatchObject({ sourceStepId: 'review', path: retryFeedback.artifactPath, trust: 'untrusted' });
+    writeFileSync(retryFeedback.artifactPath, 'Tampered feedback.\n', 'utf8');
+    expect(() => handoffs.prepare('run-interactive-host', runner.next('run-interactive-host')))
+      .toThrow('Retry feedback from step review changed after it was preserved');
+    writeFileSync(retryFeedback.artifactPath, 'x'.repeat(MAX_HOST_HANDOFF_RETRY_FEEDBACK_BYTES + 1), 'utf8');
+    expect(() => handoffs.prepare('run-interactive-host', runner.next('run-interactive-host')))
+      .toThrow('Retry feedback from step review exceeds the');
+    rmSync(retryFeedback.artifactPath);
+    mkdirSync(retryFeedback.artifactPath);
+    expect(() => handoffs.prepare('run-interactive-host', runner.next('run-interactive-host')))
+      .toThrow('Retry feedback from step review is unavailable');
+    rmSync(retryFeedback.artifactPath, { recursive: true });
+    expect(() => handoffs.prepare('run-interactive-host', runner.next('run-interactive-host')))
+      .toThrow('Retry feedback from step review is unavailable');
   });
 
   it('prepares an interactive fallback prompt and rejects an unfrozen host actor', () => {

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { ArtifactService } from '../documentation/artifact.service';
 import { EventLogService } from '../runs/event-log.service';
@@ -12,6 +13,7 @@ export const HOST_HANDOFF_PROTOCOL_VERSION = 1;
 export const MAX_HOST_HANDOFF_INPUT_BYTES = 524_288;
 export const MAX_HOST_HANDOFF_INPUT_AGGREGATE_BYTES = 1_048_576;
 export const MAX_HOST_HANDOFF_OUTPUT_BYTES = 1_048_576;
+export const MAX_HOST_HANDOFF_RETRY_FEEDBACK_BYTES = 1_048_576;
 
 export interface HostHandoff {
   readonly kind: 'host-handoff';
@@ -91,6 +93,9 @@ export class HostHandoffService {
         throw new RunStateError(`Host handoff inputs exceed the ${MAX_HOST_HANDOFF_INPUT_AGGREGATE_BYTES}-byte aggregate limit`);
       }
       const inputs = resolvedInputs.map(({ bytes: _bytes, ...input }) => input);
+      const retryFeedback = step.retryContext
+        ? this.retryFeedbackFor(step.retryContext)
+        : undefined;
       const interactive = step.interaction === 'user-dialog';
       const actor = interactive ? step.actor : undefined;
       const profile = actor ? state.resolvedActors[actor] : undefined;
@@ -113,15 +118,7 @@ export class HostHandoffService {
         ...(interactive ? { interaction: 'user-dialog' as const } : {}),
         instruction,
         inputs,
-        ...(step.retryContext ? {
-          retryFeedback: {
-            sourceStepId: step.retryContext.sourceStepId,
-            path: step.retryContext.artifactPath,
-            sha256: step.retryContext.artifactSha256,
-            format: 'markdown' as const,
-            trust: 'untrusted' as const,
-          },
-        } : {}),
+        ...(retryFeedback ? { retryFeedback } : {}),
         expectedOutput: { id: step.expectedOutput.id, format: 'markdown', maxBytes: MAX_HOST_HANDOFF_OUTPUT_BYTES },
       };
       if (!step.handoffPreparedAt) {
@@ -145,6 +142,33 @@ export class HostHandoffService {
     } finally {
       release();
     }
+  }
+
+  private retryFeedbackFor(retryContext: NonNullable<ArtifactRunStep['retryContext']>): NonNullable<HostHandoff['retryFeedback']> {
+    let stats: ReturnType<typeof statSync>;
+    let content: string;
+    try {
+      stats = statSync(retryContext.artifactPath);
+      if (!stats.isFile()) throw new Error('not a file');
+      if (stats.size > MAX_HOST_HANDOFF_RETRY_FEEDBACK_BYTES) {
+        throw new RunStateError(`Retry feedback from step ${retryContext.sourceStepId} exceeds the ${MAX_HOST_HANDOFF_RETRY_FEEDBACK_BYTES}-byte limit`);
+      }
+      content = readFileSync(retryContext.artifactPath, 'utf8');
+    } catch (error) {
+      if (error instanceof RunStateError) throw error;
+      throw new RunStateError(`Retry feedback from step ${retryContext.sourceStepId} is unavailable; retry the reviewer step to produce it again`);
+    }
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    if (sha256 !== retryContext.artifactSha256) {
+      throw new RunStateError(`Retry feedback from step ${retryContext.sourceStepId} changed after it was preserved; retry the reviewer step to produce it again`);
+    }
+    return {
+      sourceStepId: retryContext.sourceStepId,
+      path: retryContext.artifactPath,
+      sha256: retryContext.artifactSha256,
+      format: 'markdown',
+      trust: 'untrusted',
+    };
   }
 }
 

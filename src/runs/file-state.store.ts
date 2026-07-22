@@ -9,6 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { HomeDirectoryResolver } from '../config/home-directory.resolver';
 import type {
@@ -16,6 +17,7 @@ import type {
   CompletionRecord,
   CompletionRun,
   CompletionRunStore,
+  RetryFeedback,
 } from './completion.service';
 import { runStateSchema, type RunState } from './run-state.schema';
 import { assertValidRunId } from './run-id';
@@ -232,14 +234,43 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     });
   }
 
+  /**
+   * Copies the completed reviewer artifact outside the reusable agent-output
+   * path. The original is deliberately discarded before the reviewer is run
+   * again; this copy remains the durable context for the retried author.
+   */
+  preserveRetryFeedback(runId: string, policyStepId: string, output: { readonly path: string; readonly sha256: string }): RetryFeedback {
+    const state = this.requiredState(runId);
+    const policyStep = state.steps.find((step) => step.id === policyStepId);
+    if (!policyStep || policyStep.kind !== 'agent') {
+      throw new RunStateError(`Step ${policyStepId} is not an agent verdict step`);
+    }
+    const content = this.fileOperations.readFileSync(output.path, 'utf8');
+    const actualSha256 = createHash('sha256').update(content).digest('hex');
+    if (actualSha256 !== output.sha256) {
+      throw new RunStateError(`Verdict artifact for step ${policyStepId} changed before retry feedback was preserved`);
+    }
+    const retryNumber = (policyStep.verdictRetries ?? 0) + 1;
+    const stepHash = createHash('sha256').update(policyStepId).digest('hex');
+    const directory = join(this.runDirectory(runId), 'retry-feedback');
+    const artifactPath = join(directory, `${stepHash}-${retryNumber}.md`);
+    this.fileOperations.mkdirSync(directory, { recursive: true });
+    this.fileOperations.writeFileSync(artifactPath, content, 'utf8');
+    return { sourceStepId: policyStepId, artifactPath, artifactSha256: actualSha256 };
+  }
+
   /** Reopens the retry target after a CHANGES_REQUESTED verdict and stales everything the target feeds, including the verdict step itself. */
-  applyVerdictRetry(runId: string, policyStepId: string, targetStepId: string): void {
+  applyVerdictRetry(runId: string, policyStepId: string, targetStepId: string, retryFeedback?: RetryFeedback): void {
     const state = this.requiredState(runId);
     const policyStep = state.steps.find((step) => step.id === policyStepId);
     if (!policyStep || policyStep.kind !== 'agent' || !policyStep.output) {
       throw new RunStateError(`Step ${policyStepId} has no completed verdict artifact`);
     }
-    const verdictArtifact = policyStep.output;
+    const verdictArtifact = retryFeedback ?? {
+      sourceStepId: policyStepId,
+      artifactPath: policyStep.output.path,
+      artifactSha256: policyStep.output.sha256,
+    };
     const target = state.steps.find((step) => step.id === targetStepId);
     if (!target || (target.kind !== 'agent' && target.kind !== 'host-handoff')) {
       throw new RunStateError(`Verdict retry target is not an agent or host-handoff step: ${targetStepId}`);
@@ -275,9 +306,9 @@ export class FileStateStore implements StateStore, CompletionRunStore {
             ? { dispatchPreparedAt: undefined, result: undefined, conditionDecision: undefined }
             : { handoffPreparedAt: undefined }),
           retryContext: {
-            sourceStepId: policyStepId,
-            artifactPath: verdictArtifact.path,
-            artifactSha256: verdictArtifact.sha256,
+            sourceStepId: verdictArtifact.sourceStepId,
+            artifactPath: verdictArtifact.artifactPath,
+            artifactSha256: verdictArtifact.artifactSha256,
             at: timestamp,
           },
         };
