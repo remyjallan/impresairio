@@ -36,6 +36,25 @@ describe('advance command output recovery', () => {
     });
   });
 
+  it('rewrites every argument occurrence while preserving unrelated invocation fields', () => {
+    expect(prepareExecutionInvocation({
+      command: 'codex',
+      args: ['exec', '--output', '/run/artifacts/report.md', '--note', '/run/artifacts/report.md.bak'],
+      input: 'write /run/artifacts/report.md and leave /run/artifacts/report.md.bak alone',
+      cwd: '/workspace',
+      env: { IMPRESAIRIO_TEST: '1' },
+    }, '/run/artifacts/report.md', '/run/staging/review/artifact.md')).toEqual({
+      command: 'codex',
+      args: [
+        'exec', '--output', '/run/staging/review/artifact.md', '--note', '/run/staging/review/artifact.md.bak',
+        '--add-dir', '/run/staging/review',
+      ],
+      input: 'write /run/staging/review/artifact.md and leave /run/staging/review/artifact.md.bak alone',
+      cwd: '/workspace',
+      env: { IMPRESAIRIO_TEST: '1' },
+    });
+  });
+
   it('uses the frozen repository and preserves caller-CWD fallback for legacy runs', () => {
     expect(executionDirectory('/workspace/project', '/caller')).toBe('/workspace/project');
     expect(executionDirectory(undefined, '/caller')).toBe('/caller');
