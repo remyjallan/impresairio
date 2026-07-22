@@ -75,7 +75,10 @@ jobs:
             event intentionally runs a fresh review after the override is
             removed. Do not report hypothetical limitations of the gate's
             self-negating text filter unless the current review output contains
-            a concrete misclassification caused by it.
+            a concrete misclassification caused by it. The enforcement step
+            intentionally still runs when the override label is added so the
+            required check completes successfully; its script checks the label
+            before requiring review output and returns success for the override.
 
       - name: Explain PR-Agent execution failure
         if: >-
@@ -87,11 +90,7 @@ jobs:
           exit 1
 
       - name: Enforce AI review policy
-        if: >-
-          always() &&
-          !(github.event.action == 'labeled' &&
-          github.event.label != null &&
-          github.event.label.name == 'ai-review-override')
+        if: always()
         env:
           PR_REVIEW_OUTPUT: ${{ steps.pragent.outputs.review }}
           PR_REVIEW_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
