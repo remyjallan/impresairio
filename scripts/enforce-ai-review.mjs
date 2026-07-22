@@ -28,8 +28,10 @@ if (!review || typeof review !== 'object' || Array.isArray(review)) {
 
 const issues = Array.isArray(review.key_issues_to_review)
   ? review.key_issues_to_review.filter((issue) => {
-      if (issue === null || issue === undefined) return false;
-      return typeof issue !== 'string' || issue.trim().length > 0;
+      if (typeof issue === 'string') return issue.trim().length > 0;
+
+      // PR-Agent emits structured objects for actionable findings.
+      return issue !== null && issue !== undefined;
     })
   : null;
 

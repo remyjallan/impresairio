@@ -16,11 +16,9 @@ concurrency:
 jobs:
   review:
     name: AI review
-    if: >-
-      github.event.sender.type != 'Bot' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      (github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
-      github.event.label.name == 'ai-review-override')
+    # Run on normal PR updates, and rerun when the explicit override label is
+    # added or removed. Other label changes must not consume a provider call.
+    if: github.event.sender.type != 'Bot' && github.event.pull_request.head.repo.full_name == github.repository && (github.event.action != 'labeled' && github.event.action != 'unlabeled' || github.event.label.name == 'ai-review-override')
     runs-on: ubuntu-latest
     env:
       PR_AGENT_NANOGPT_KEY: ${{ secrets.PR_AGENT_NANOGPT_KEY }}
