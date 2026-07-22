@@ -232,24 +232,36 @@ describe('host handoff', () => {
     expect(handoff?.repositoryDirectory).toBe(process.cwd());
   });
 
-  it('clears a published host artifact if durable completion fails', () => {
+  it('keeps a published host artifact if durable completion fails after publication', () => {
     const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-host-rollback-')));
     directories.push(home);
     const source = join(home, 'result.md');
     writeFileSync(source, '# Result\n');
     const expectedOutput = { id: 'review', targetRoot: home, directory: home, path: join(home, 'review.md'), format: 'markdown' as const };
-    const artifacts = { publishMarkdown: () => undefined, discardOutput: vi.fn() };
+    const artifacts = { publishMarkdown: vi.fn() };
     const service = new HostHandoffSubmissionService(
       { findState: () => ({ currentStepId: 'host', steps: [{ id: 'host', kind: 'host-handoff', status: 'in_progress', expectedOutput }] }) } as never,
       artifacts as never, { complete: () => { throw new Error('completion failed'); } } as never,
       {} as never, { acquireReentrant: () => () => undefined } as never,
     );
     expect(() => service.submit('run', 'host', source)).toThrow('completion failed');
-    expect(artifacts.discardOutput).toHaveBeenCalledWith(expectedOutput);
+    expect(artifacts.publishMarkdown).toHaveBeenCalledWith(expectedOutput, '# Result\n');
   });
 
   it('clears a stale host-handoff preparation marker during invalidation', () => {
     const state = { workflow: { successors: { host: [] } }, steps: [{ id: 'host', kind: 'host-handoff', status: 'stale', handoffPreparedAt: '2026-07-22T12:00:00.000Z' }] };
     expect(invalidateFrom(state as never, 'host').steps[0]).toMatchObject({ handoffPreparedAt: undefined });
+  });
+
+  it('requires every persisted host-handoff contract field', () => {
+    expect(() => createRunState({
+      id: 'invalid-host', workflowId: 'host', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: process.cwd(), defaultFormat: 'markdown' }, featurePath: 'unused',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'HOST-1', slug: 'host' }, run: { id: 'invalid-host' } },
+      },
+      steps: [{ id: 'host', kind: 'host-handoff', inputs: [], output: { id: 'review', filename: 'review.md' }, sideEffects: 'none' }],
+      now: '2026-07-22T12:00:00.000Z',
+    })).toThrow('requires promptFile, prompt, inputs, output and sideEffects');
   });
 });

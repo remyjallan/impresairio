@@ -62,6 +62,18 @@ describe('FileStateStore', () => {
     store.markFailed('run-completion-state', 'work', 'failed');
     expect(store.findState('run-completion-state')?.steps[0]).toMatchObject({ status: 'complete' });
   });
+
+  it('marks an in-progress agent failure without applying host-only state fields', () => {
+    const { store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const state = createRunState({ id: 'run-agent-failure', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } }], now: at });
+    store.create({ ...state, currentStepId: 'work', steps: state.steps.map((step) => step.kind === 'agent'
+      ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
+      : step) });
+    store.markFailed('run-agent-failure', 'work', 'failed');
+    expect(store.findState('run-agent-failure')?.steps[0]).toMatchObject({ status: 'failed' });
+  });
   it('round-trips a validated run state', () => {
     const { store } = createStore();
     const state = createRunState({

@@ -31,15 +31,8 @@ export class HostHandoffSubmissionService {
         throw new RunStateError('Host output source must not be the Impresairio-managed destination');
       }
       const content = readHostHandoffOutput(sourcePath);
-      let published = false;
-      try {
-        this.artifacts.publishMarkdown(step.expectedOutput, content.endsWith('\n') ? content : `${content}\n`);
-        published = true;
-        this.completion.complete(runId, stepId);
-      } catch (error) {
-        if (published) this.artifacts.discardOutput(step.expectedOutput);
-        throw error;
-      }
+      this.artifacts.publishMarkdown(step.expectedOutput, content.endsWith('\n') ? content : `${content}\n`);
+      this.completion.complete(runId, stepId);
       this.events.append(runId, { type: 'host.handoff.submitted', at: new Date().toISOString(), stepId });
     } finally {
       release();
