@@ -40,7 +40,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change, [SECURITY.md]
 
 ## Documentation
 
-The [GitHub wiki](https://github.com/remyjallan/impresairio/wiki) is the canonical guide for CLI usage, YAML configuration, agent profiles, workflows, recovery, documentation targets, and [repository automation](https://github.com/remyjallan/impresairio/wiki/Repository-automation).
+The [GitHub wiki](https://github.com/remyjallan/impresairio/wiki) is the canonical guide for CLI usage, YAML configuration, agent profiles, workflows, recovery, and documentation targets.
 
 ## Requirements and installation
 
