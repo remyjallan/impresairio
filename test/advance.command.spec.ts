@@ -17,10 +17,10 @@ describe('advance command output recovery', () => {
       command: 'codex',
       args: ['exec', '--sandbox', 'read-only'],
       input: 'write to /run/artifacts/report.md',
-    }, '/run/artifacts/report.md', '/run/staging/implement.md')).toEqual({
+    }, '/run/artifacts/report.md', '/run/staging/implement/artifact.md')).toEqual({
       command: 'codex',
-      args: ['exec', '--sandbox', 'read-only', '--add-dir', '/run/staging'],
-      input: 'write to /run/staging/implement.md',
+      args: ['exec', '--sandbox', 'read-only', '--add-dir', '/run/staging/implement'],
+      input: 'write to /run/staging/implement/artifact.md',
     });
   });
 

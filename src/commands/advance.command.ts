@@ -94,7 +94,7 @@ export class AdvanceCommand extends CommandRunner {
           activeStepId = undefined;
           continue;
         }
-        const stagingPath = join(runDirectory, 'staging', `${result.stepId}.md`);
+        const stagingPath = join(runDirectory, 'staging', result.stepId, 'artifact.md');
         mkdirSync(dirname(stagingPath), { recursive: true });
         rmSync(stagingPath, { force: true });
         const invocation = prepareExecutionInvocation(handoff.invocation, handoff.expectedOutput.path, stagingPath);
