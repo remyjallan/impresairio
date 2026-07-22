@@ -34,6 +34,12 @@ export interface RunReport {
     readonly reachedAt?: string;
     readonly waitMs?: number;
   }[];
+  readonly hostHandoffs: readonly {
+    readonly id: string;
+    readonly status: string;
+    readonly attempts: readonly ReportAttempt[];
+    readonly durationMs?: number;
+  }[];
   readonly recovery: {
     readonly providerFailures: number;
     readonly technicalRetries: number;
@@ -105,6 +111,13 @@ export class RunReportService {
         waitMs: durationBetween(reachedAt, resolvedAt ?? reportEnd),
       }];
     });
+    const hostHandoffs = state.steps.flatMap((step) => {
+      if (step.kind !== 'host-handoff') return [];
+      const attempts = step.attempts.map((attempt) => attemptReport(attempt, step.id, events, reportEnd, runStatus));
+      const unavailable = attempts.some((attempt) => attempt.durationMs === undefined);
+      const durationMs = unavailable ? undefined : attempts.reduce((total, attempt) => total + (attempt.durationMs ?? 0), 0);
+      return [{ id: step.id, status: step.status, attempts, ...(durationMs === undefined ? {} : { durationMs }) }];
+    });
     return {
       run: {
         id: state.id,
@@ -116,6 +129,7 @@ export class RunReportService {
       },
       agentSteps,
       gates,
+      hostHandoffs,
       recovery: {
         providerFailures: events.filter((event) => event.type === 'agent.execution.failed').length,
         technicalRetries: events.filter((event) => event.type === 'step.retry_requested').length,
@@ -142,6 +156,12 @@ export function formatRunReport(report: RunReport): string {
     '',
     'Human gates',
     ...(report.gates.length === 0 ? ['- none'] : report.gates.map((gate) => `- ${gate.id}: ${gate.waitMs === undefined ? 'unavailable' : formatDuration(gate.waitMs)} waiting; ${gate.status}`)),
+    '',
+    'Host handoffs',
+    ...(report.hostHandoffs.length === 0 ? ['- none'] : report.hostHandoffs.map((step) => {
+      const duration = step.durationMs === undefined ? 'unavailable' : formatDuration(step.durationMs);
+      return `- ${step.id}: ${duration}; ${step.status}; attempts: ${step.attempts.length}`;
+    })),
     '',
     'Recovery',
     `- provider failures: ${report.recovery.providerFailures}`,

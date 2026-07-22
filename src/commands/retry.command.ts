@@ -6,7 +6,7 @@ import { GateService } from '../workflows/gate.service';
 @Command({
   name: 'retry',
   arguments: '<run-id> <step-id>',
-  description: 'Return a stale or failed agent step to pending while keeping its attempt history.',
+  description: 'Return a stale or failed agent or host handoff step to pending while keeping its attempt history.',
 })
 export class RetryCommand extends CommandRunner {
   constructor(private readonly gates: GateService) { super(); }

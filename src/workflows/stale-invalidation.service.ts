@@ -6,7 +6,7 @@ import type { RunState } from '../runs/run-state.schema';
 import { invalidateFrom } from '../runs/step-invalidation';
 import { isVerdictHalted } from './verdict-completion.policy';
 
-type AgentRunStep = Extract<RunState['steps'][number], { readonly kind: 'agent' }>;
+type ArtifactRunStep = Extract<RunState['steps'][number], { readonly kind: 'agent' | 'host-handoff' }>;
 
 export const GATE_CLOCK = Symbol('GATE_CLOCK');
 
@@ -83,17 +83,19 @@ export class StaleInvalidationService {
     const invalidated = this.invalidateFrom(state, producer.id, 'request-changes', producer.id);
     const timestamp = this.now().toISOString();
     const steps = invalidated.steps.map((step) => {
-      if (step.id === producer.id && step.kind === 'agent') {
+      if (step.id === producer.id && (step.kind === 'agent' || step.kind === 'host-handoff')) {
         return {
           ...step,
           status: 'pending' as const,
           output: undefined,
           approval: undefined,
           inputArtifactHashes: undefined,
-          dispatchPreparedAt: undefined,
-          reviewOutcome: undefined,
-          result: undefined,
-          conditionDecision: undefined,
+          ...(step.kind === 'agent' ? {
+            dispatchPreparedAt: undefined,
+            reviewOutcome: undefined,
+            result: undefined,
+            conditionDecision: undefined,
+          } : { handoffPreparedAt: undefined }),
         };
       }
       if (step.id === gate.id && step.kind === 'gate') {
@@ -127,8 +129,8 @@ export class StaleInvalidationService {
 
   retry(runId: string, state: RunState, stepId: string): RunState {
     const step = state.steps.find((candidate) => candidate.id === stepId);
-    if (!step || step.kind !== 'agent') {
-      throw new RunStateError(`Step ${stepId} is not an agent step`);
+    if (!step || (step.kind !== 'agent' && step.kind !== 'host-handoff')) {
+      throw new RunStateError(`Step ${stepId} is not an agent or host handoff step`);
     }
     const verdictHalted = isVerdictHalted(step);
     if (step.status !== 'stale' && step.status !== 'failed' && !verdictHalted) {
@@ -138,19 +140,21 @@ export class StaleInvalidationService {
       this.artifacts.discardOutput(step.expectedOutput);
     }
     const timestamp = this.now().toISOString();
-    const steps = state.steps.map((candidate) => candidate.id === stepId && candidate.kind === 'agent'
+    const steps = state.steps.map((candidate) => candidate.id === stepId && (candidate.kind === 'agent' || candidate.kind === 'host-handoff')
       ? {
           ...candidate,
           status: 'pending' as const,
           output: undefined,
           approval: undefined,
           inputArtifactHashes: undefined,
-          dispatchPreparedAt: undefined,
-          reviewOutcome: undefined,
-          result: undefined,
-          conditionDecision: undefined,
-          retryContext: undefined,
-          acknowledgment: undefined,
+          ...(candidate.kind === 'agent' ? {
+            dispatchPreparedAt: undefined,
+            reviewOutcome: undefined,
+            result: undefined,
+            conditionDecision: undefined,
+            retryContext: undefined,
+            acknowledgment: undefined,
+          } : { handoffPreparedAt: undefined }),
         }
       : candidate);
     const next = this.withTimestamp({
@@ -242,7 +246,7 @@ export class StaleInvalidationService {
       });
     }
     const steps = state.steps.map((step) => {
-      if (step.id === producer.id && step.kind === 'agent' && step.output) {
+      if (step.id === producer.id && (step.kind === 'agent' || step.kind === 'host-handoff') && step.output) {
         return { ...step, output: { ...step.output, sha256: currentHash } };
       }
       if (step.id === gateId && step.kind === 'gate') {
@@ -281,30 +285,30 @@ export class StaleInvalidationService {
     state: RunState,
     artifactId: string,
     currentHash: string,
-  ): AgentRunStep[] {
-    return state.steps.filter((step, index): step is AgentRunStep => step.kind === 'agent'
+  ): ArtifactRunStep[] {
+    return state.steps.filter((step, index): step is ArtifactRunStep => (step.kind === 'agent' || step.kind === 'host-handoff')
       && step.status === 'complete'
       && step.inputArtifactHashes?.[artifactId] !== undefined
       && step.inputArtifactHashes[artifactId] !== currentHash
       && step.declaredOutput.id !== artifactId
       // A later consolidation of the same canonical artifact supersedes this
       // consumer. Only the final review of a bounded cycle can block approval.
-      && !state.steps.slice(index + 1).some((later) => later.kind === 'agent'
+      && !state.steps.slice(index + 1).some((later) => (later.kind === 'agent' || later.kind === 'host-handoff')
         && later.status === 'complete'
         && later.declaredOutput.id === artifactId
         && Boolean(later.output)));
   }
 
-  private producerForArtifact(state: RunState, artifactId: string): AgentRunStep & { output: NonNullable<AgentRunStep['output']> } {
-    const producer = state.steps.findLast((step): step is AgentRunStep => step.kind === 'agent'
+  private producerForArtifact(state: RunState, artifactId: string): ArtifactRunStep & { output: NonNullable<ArtifactRunStep['output']> } {
+    const producer = state.steps.findLast((step): step is ArtifactRunStep => (step.kind === 'agent' || step.kind === 'host-handoff')
       && step.declaredOutput.id === artifactId && step.status === 'complete' && Boolean(step.output));
     if (!producer || !producer.output) {
       throw new RunStateError(`Artifact ${artifactId} has no completed producer output`);
     }
-    return producer as AgentRunStep & { output: NonNullable<AgentRunStep['output']> };
+    return producer as ArtifactRunStep & { output: NonNullable<ArtifactRunStep['output']> };
   }
 
-  private artifactRoot(state: RunState, producer: AgentRunStep): string {
+  private artifactRoot(state: RunState, producer: ArtifactRunStep): string {
     if (producer.expectedOutput) return producer.expectedOutput.targetRoot;
     return state.documentation.target.root;
   }

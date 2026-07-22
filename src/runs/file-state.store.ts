@@ -149,9 +149,9 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         status: step.status,
         ...(step.kind === 'agent' && step.cycle ? { cycle: step.cycle } : {}),
         ...(step.kind === 'agent' && step.declaredResult ? { declaredResult: step.declaredResult } : {}),
-        ...(step.kind === 'agent' ? { storage: step.declaredOutput.storage } : {}),
+        ...(step.kind === 'agent' || step.kind === 'host-handoff' ? { storage: step.declaredOutput.storage } : {}),
         ...(step.kind === 'agent' && step.patch ? { patch: step.patch } : {}),
-        ...(step.kind === 'agent' && step.expectedOutput
+        ...((step.kind === 'agent' || step.kind === 'host-handoff') && step.expectedOutput
           ? { output: step.expectedOutput }
           : {}),
       })),
@@ -169,21 +169,17 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       if (index !== stepIndex) {
         return step;
       }
-      if (step.kind !== 'agent') {
-        throw new RunStateError(`Step ${completion.stepId} is not an agent step`);
+      if (step.kind !== 'agent' && step.kind !== 'host-handoff') {
+        throw new RunStateError(`Step ${completion.stepId} cannot produce an artifact`);
       }
       const lastAttempt = step.attempts.at(-1);
       if (!lastAttempt) {
         throw new RunStateError(`Step ${completion.stepId} has no recorded attempt`);
       }
-      return {
+      const completed = {
         ...step,
         status: 'complete' as const,
         output: { ...completion.output, completedAt },
-        retryContext: undefined,
-        ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
-        ...(completion.result ? { result: completion.result } : {}),
-        ...(completion.appliedPatch ? { appliedPatch: completion.appliedPatch } : {}),
         attempts: [
           ...step.attempts.slice(0, -1),
           {
@@ -193,6 +189,15 @@ export class FileStateStore implements StateStore, CompletionRunStore {
           },
         ],
       };
+      return step.kind === 'agent'
+        ? {
+            ...completed,
+            retryContext: undefined,
+            ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
+            ...(completion.result ? { result: completion.result } : {}),
+            ...(completion.appliedPatch ? { appliedPatch: completion.appliedPatch } : {}),
+          }
+        : completed;
     });
     const skipped = new Set(completion.skipStepIds ?? []);
     steps = steps.map((step) => skipped.has(step.id) && step.kind === 'agent' && step.status === 'pending'
@@ -213,10 +218,12 @@ export class FileStateStore implements StateStore, CompletionRunStore {
   markFailed(runId: string, stepId: string, detail: string): void {
     const state = this.requiredState(runId);
     const failedStep = state.steps.find((step) => step.id === stepId);
-    if (!failedStep || failedStep.kind !== 'agent' || failedStep.status !== 'in_progress') return;
+    if (!failedStep || (failedStep.kind !== 'agent' && failedStep.kind !== 'host-handoff') || failedStep.status !== 'in_progress') return;
     const timestamp = new Date().toISOString();
-    const steps = state.steps.map((step) => step.id === stepId && step.kind === 'agent' && step.status === 'in_progress'
-      ? { ...step, status: 'failed' as const, dispatchPreparedAt: undefined }
+    const steps = state.steps.map((step) => step.id === stepId && (step.kind === 'agent' || step.kind === 'host-handoff') && step.status === 'in_progress'
+      ? step.kind === 'agent'
+        ? { ...step, status: 'failed' as const, dispatchPreparedAt: undefined }
+        : { ...step, status: 'failed' as const, handoffPreparedAt: undefined }
       : step);
     this.save({ ...state, steps, updatedAt: timestamp });
     this.appendJsonLine(runId, {

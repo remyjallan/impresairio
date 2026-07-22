@@ -48,6 +48,9 @@ export function invalidateFrom(
         conditionDecision: undefined,
       };
     }
+    if (step.kind === 'host-handoff' && (step.status === 'stale' || step.status === 'failed')) {
+      return { ...step, handoffPreparedAt: undefined };
+    }
     return step;
   });
   return { ...state, steps };

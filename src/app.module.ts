@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CompleteCommand, COMPLETE_WRITER } from './commands/complete.command';
 import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
+import { SubmitHostOutputCommand } from './commands/submit-host-output.command';
 import { ImpresairioRootCommand } from './commands/root.command';
 import { RequestChangesCommand } from './commands/request-changes.command';
 import { RetryCommand } from './commands/retry.command';
@@ -39,6 +40,7 @@ import { GATE_CLOCK, StaleInvalidationService } from './workflows/stale-invalida
 import { WORKFLOW_CLOCK, WorkflowRunnerService } from './workflows/workflow-runner.service';
 import { AgentProfileService } from './agents/agent-profile.service';
 import { AgentDispatchService } from './agents/agent-dispatch.service';
+import { HostHandoffService } from './agents/host-handoff.service';
 import { CAPABILITY_RESOLVER_RUNTIME, CapabilityResolverService } from './agents/capability-resolver.service';
 import { AGENT_PROCESS_RUNNER, PlannedAgentProcessRunner } from './agents/agent-provider';
 import { ClaudeCodeProvider } from './agents/claude-code.provider';
@@ -54,6 +56,7 @@ import { AgentFallbackService } from './agents/agent-fallback.service';
 import { FallbackCommand } from './commands/fallback.command';
 import { ReportCommand, REPORT_WRITER } from './commands/report.command';
 import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
+import { HostHandoffSubmissionService } from './runs/host-handoff-submission.service';
 
 @Module({
   providers: [
@@ -72,8 +75,11 @@ import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
     FallbackCommand,
     ReportCommand,
     NextCommand,
+    SubmitHostOutputCommand,
     AgentProfileService,
     AgentDispatchService,
+    HostHandoffService,
+    HostHandoffSubmissionService,
     AgentFallbackService,
     RunReportService,
     CapabilityResolverService,

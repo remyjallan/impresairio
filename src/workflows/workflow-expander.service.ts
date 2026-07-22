@@ -17,7 +17,7 @@ import {
 } from './workflow-registry.service';
 import { parameterValueType, resolveChildParameters, resolveRootParameters } from './workflow-parameters';
 
-type WorkflowOutput = Extract<WorkflowStep, { readonly type: 'agent' }>['output'];
+type WorkflowOutput = Extract<WorkflowStep, { readonly output: unknown }>['output'];
 
 const MAX_COMPOSITION_DEPTH = 32;
 
@@ -62,7 +62,16 @@ export interface ExpandedGateStep extends ExpandedStepMetadata {
   readonly artifact: string;
 }
 
-export type ExpandedWorkflowStep = ExpandedAgentStep | ExpandedGateStep;
+export interface ExpandedHostHandoffStep extends ExpandedStepMetadata {
+  readonly id: string;
+  readonly type: 'host-handoff';
+  readonly promptFile: string;
+  readonly inputs: readonly string[];
+  readonly output: WorkflowOutput;
+  readonly sideEffects: 'none';
+}
+
+export type ExpandedWorkflowStep = ExpandedAgentStep | ExpandedHostHandoffStep | ExpandedGateStep;
 
 export interface ExpandedWorkflowPlan {
   readonly steps: readonly ExpandedWorkflowStep[];
@@ -92,7 +101,8 @@ type MappedWorkflowStep =
       readonly gateId: string;
       readonly effectiveParameters: Readonly<Record<string, WorkflowPrimitiveValue>>;
       readonly parameterDefinitions: WorkflowParameters | undefined;
-    });
+    })
+  | ExpandedHostHandoffStep;
 
 @Injectable()
 export class WorkflowExpanderService {
@@ -257,6 +267,18 @@ export class WorkflowExpanderService {
         }];
       }
 
+      if (step.type === 'host-handoff') {
+        return [{
+          ...metadata,
+          id: namespace(step.id),
+          type: 'host-handoff',
+          promptFile: step.promptFile,
+          inputs: step.inputs.map(namespace),
+          output: { ...step.output, id: namespace(step.output.id) },
+          sideEffects: step.sideEffects,
+        }];
+      }
+
       const common = {
         ...metadata,
         id: namespace(step.id),
@@ -362,7 +384,7 @@ export class WorkflowExpanderService {
       }
       stepOwners.set(step.id, step.originStepId);
 
-      if (step.type !== 'agent') continue;
+      if (step.type !== 'agent' && step.type !== 'host-handoff') continue;
       const previousOutputOwner = outputOwners.get(step.output.id);
       if (previousOutputOwner && previousOutputOwner !== step.originStepId) {
         throw new WorkflowError(

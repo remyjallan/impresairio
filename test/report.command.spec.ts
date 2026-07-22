@@ -7,7 +7,7 @@ const report: RunReport = {
     id: 'run-42', workflow: 'quick-fix', status: 'complete',
     startedAt: '2026-07-22T10:00:00.000Z', endedAt: '2026-07-22T10:01:00.000Z', durationMs: 60_000,
   },
-  agentSteps: [], gates: [],
+  agentSteps: [], gates: [], hostHandoffs: [],
   recovery: { providerFailures: 0, technicalRetries: 0, fallbacks: 0, productChangeRequests: 0 },
   availability: [],
 };
