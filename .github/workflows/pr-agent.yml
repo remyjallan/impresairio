@@ -46,7 +46,7 @@ jobs:
           openrouter.reasoning_effort: high
           openrouter.reasoning_max_tokens: '4096'
           openrouter.max_tokens: '2048'
-          pr_reviewer.publish_output_no_suggestions: 'false'
+          pr_reviewer.publish_output_no_suggestions: 'true'
           pr_reviewer.extra_instructions: >-
             Report only concrete, actionable defects introduced by this pull
             request. Do not report formatting or style that automated checks
