@@ -6,6 +6,7 @@ import { RunLockService } from '../runs/run-lock.service';
 import type { NextStepResult } from '../workflows/workflow-runner.service';
 import {
   AGENT_PROCESS_RUNNER,
+  agentSettingsForEvent,
   type AgentProcessRunner,
   type PreparedAgentInvocation,
   type PreparedInstruction,
@@ -121,7 +122,7 @@ export class AgentDispatchService {
           actor: step.actor,
           profile: agent.profile,
           provider: agent.provider,
-          ...(agent.provider === 'opencode' ? { modelAlias: agent.modelAlias, model: agent.model } : {}),
+          ...agentSettingsForEvent(agent),
       });
     }
     return handoff;

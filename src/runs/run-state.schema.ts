@@ -81,11 +81,15 @@ const frozenAgentProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
     provider: z.literal('claude-code'),
+    model: nonEmptyString.optional(),
+    reasoningEffort: nonEmptyString.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).optional(),
   }).strict(),
   z.object({
     profile: nonEmptyString,
     provider: z.literal('codex'),
+    model: nonEmptyString.optional(),
+    reasoningEffort: nonEmptyString.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).optional(),
   }).strict(),
   z.object({
@@ -101,12 +105,16 @@ const resolvedActorProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
     provider: z.literal('claude-code'),
+    model: nonEmptyString.optional(),
+    reasoningEffort: nonEmptyString.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).optional(),
     fallbacks: z.array(frozenAgentProfileSchema).max(5).optional(),
   }).strict(),
   z.object({
     profile: nonEmptyString,
     provider: z.literal('codex'),
+    model: nonEmptyString.optional(),
+    reasoningEffort: nonEmptyString.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).optional(),
     fallbacks: z.array(frozenAgentProfileSchema).max(5).optional(),
   }).strict(),

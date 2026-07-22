@@ -230,6 +230,44 @@ steps:
     });
   });
 
+  it('freezes configured Claude Code and Codex model settings into state and run.started', () => {
+    const { home, store, events, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    const configPath = join(home, 'config.yaml');
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, 'utf8').replace(
+        '  claude:\n    provider: claude-code',
+        '  claude:\n    provider: claude-code\n    model: sonnet\n    reasoningEffort: medium',
+      ).replace(
+        '  codex:\n    provider: codex',
+        '  codex:\n    provider: codex\n    model: gpt-5.6-sol\n    reasoningEffort: xhigh',
+      ),
+      'utf8',
+    );
+
+    service.start({
+      workflowId: 'quick-fix', repositoryDirectory: repository,
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'SET-1', slug: 'frozen-settings' }, id: 'run-frozen-settings',
+      request: 'Freeze provider settings.',
+    });
+
+    expect(store.findState('run-frozen-settings')?.resolvedActors).toMatchObject({
+      launcher: { profile: 'claude', provider: 'claude-code', model: 'sonnet', reasoningEffort: 'medium' },
+      adversary: { profile: 'codex', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' },
+    });
+    expect(events.read('run-frozen-settings')).toContainEqual(expect.objectContaining({
+      type: 'run.started',
+      resolvedActors: expect.objectContaining({
+        launcher: expect.objectContaining({ model: 'sonnet', reasoningEffort: 'medium' }),
+        adversary: expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' }),
+      }),
+    }));
+  });
+
   it('binds a custom workflow role with repeatable --actor <role>=<profile>', async () => {
     const { home, store, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));

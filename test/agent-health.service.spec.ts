@@ -19,9 +19,9 @@ const configuration: LoadedConfiguration = {
   execution: { agentTimeoutSeconds: 1_800 },
 };
 
-function service(executor: AgentCommandExecutor) {
+function service(executor: AgentCommandExecutor, loadedConfiguration = configuration) {
   return new AgentHealthService(
-    { load: () => configuration } as never,
+    { load: () => loadedConfiguration } as never,
     {
       get: (name: string) => ({
         prepareHealthCheck: ({ live, agent }: { live: boolean; agent: { model?: string } }) => ({
@@ -69,6 +69,25 @@ describe('AgentHealthService', () => {
       command: 'opencode', args: ['run', '--model', 'openrouter/z-ai/glm-5.2', '--format', 'json'], input: 'Reply with exactly OK.',
     }]);
     expect(results[0]).toMatchObject({ ok: true, detail: 'live probe succeeded' });
+  });
+
+  it('exposes frozen Claude Code and Codex settings in health results', () => {
+    const selected = {
+      ...configuration,
+      agentProfiles: {
+        claude: { provider: 'claude-code' as const, model: 'sonnet', reasoningEffort: 'medium' },
+        codex: { provider: 'codex' as const, model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' },
+      },
+    };
+
+    const results = service({
+      execute: () => ({ status: 0, stdout: '1.2.3\n', stderr: '' }),
+    }, selected).check('/tmp/repo', [], false);
+
+    expect(results).toEqual([
+      expect.objectContaining({ profile: 'claude', model: 'sonnet', reasoningEffort: 'medium' }),
+      expect.objectContaining({ profile: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' }),
+    ]);
   });
 
   it('turns empty or permission-only OpenCode live output into an actionable failed check', () => {

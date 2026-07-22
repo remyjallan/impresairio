@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
 import { AgentDispatchService } from '../agents/agent-dispatch.service';
-import type { PreparedAgentInvocation } from '../agents/agent-provider';
+import { agentSettingsForEvent, type PreparedAgentInvocation } from '../agents/agent-provider';
 import { CompletionService } from '../runs/completion.service';
 import { EventLogService } from '../runs/event-log.service';
 import { WorkflowRunnerService } from '../workflows/workflow-runner.service';
@@ -104,7 +104,7 @@ export class AdvanceCommand extends CommandRunner {
         this.events.append(runId, {
           type: 'agent.execution.started', at: new Date().toISOString(), stepId: result.stepId,
           actor: handoff.actor, profile: handoff.profile, provider: handoff.provider,
-          ...(handoff.invocation.model ? { model: handoff.invocation.model } : {}),
+          ...agentSettingsForEvent(handoff.invocation),
         });
         const child = await executeAgentProcess(invocation, {
           cwd: executionDirectory(currentRun.repositoryDirectory),
@@ -164,7 +164,7 @@ export class AdvanceCommand extends CommandRunner {
             actor: activeHandoff.actor,
             profile: activeHandoff.profile,
             provider: activeHandoff.provider,
-            ...(activeHandoff.invocation?.model ? { model: activeHandoff.invocation.model } : {}),
+            ...agentSettingsForEvent(activeHandoff.invocation ?? {}),
           } : {}),
           ...error.diagnostic,
         });
@@ -260,10 +260,19 @@ export async function executeAgentProcess(
 export function formatAgentProgress(
   phase: 'started' | 'running' | 'completed',
   stepId: string,
-  handoff: { readonly provider: string; readonly profile: string; readonly invocation?: { readonly model?: string } },
+  handoff: {
+    readonly provider: string;
+    readonly profile: string;
+    readonly invocation?: { readonly model?: string; readonly reasoningEffort?: string };
+  },
   elapsedMs?: number,
 ): string {
-  const context = [`provider: ${handoff.provider}`, `profile: ${handoff.profile}`, ...(handoff.invocation?.model ? [`model: ${handoff.invocation.model}`] : [])].join(', ');
+  const context = [
+    `provider: ${handoff.provider}`,
+    `profile: ${handoff.profile}`,
+    ...(handoff.invocation?.model ? [`model: ${handoff.invocation.model}`] : []),
+    ...(handoff.invocation?.reasoningEffort ? [`reasoning effort: ${handoff.invocation.reasoningEffort}`] : []),
+  ].join(', ');
   const elapsed = elapsedMs === undefined ? '' : `, elapsed: ${Math.max(1, Math.floor(elapsedMs / 1_000))}s`;
   return `step: ${stepId} ${phase} (${context}${elapsed})`;
 }
