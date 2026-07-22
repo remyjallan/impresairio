@@ -11,6 +11,13 @@ export class WorkflowParameterError extends Error {
   }
 }
 
+function containsForbiddenLiteralCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f || code === 0x7f || code === 0x2028 || code === 0x2029;
+  });
+}
+
 export function parseParameterAssignments(assignments: readonly string[]): Record<string, string> {
   const values: Record<string, string> = {};
   for (const assignment of assignments) {
@@ -94,7 +101,7 @@ export function validateParameterValue(
 ): WorkflowPrimitiveValue {
   switch (definition.type) {
     case 'string': {
-      if (typeof value !== 'string' || value.includes('{{') || value.includes('}}') || value.includes('\n') || value.includes('\r')) {
+      if (typeof value !== 'string' || value.includes('{{') || value.includes('}}') || containsForbiddenLiteralCharacter(value)) {
         throw new WorkflowParameterError(`Parameter "${name}" must be a single-line literal string`);
       }
       if (definition.minLength !== undefined && value.length < definition.minLength) {

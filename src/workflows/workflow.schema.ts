@@ -235,7 +235,7 @@ const gateStepSchema = z
 const composedWorkflowStepSchema = z
   .object({
     id: identifier,
-    uses: z.string().regex(/^workflow:[a-z][a-z0-9-]*$/, {
+    uses: z.string().regex(/^workflow:(?!.*--)[a-z](?:[a-z0-9-]*[a-z0-9])?$/, {
       error: 'must reference a workflow as workflow:<id>',
     }),
     actors: z.record(identifier, identifier).optional(),
