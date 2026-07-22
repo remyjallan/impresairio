@@ -69,4 +69,9 @@ describe('workflow parameters', () => {
       { summary: 'line\u000bbreak' },
     )).toThrow('single-line literal string');
   });
+
+  it('rejects non-string values before evaluating string content', () => {
+    expect(() => resolveRootParameters(definitions, { summary: 42 as never }))
+      .toThrow('single-line literal string');
+  });
 });

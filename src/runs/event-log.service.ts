@@ -42,7 +42,9 @@ export class EventLogService {
         // A process can be interrupted while appending the final JSON line.
         // Keep the durable prefix readable, but never hide corruption in a
         // complete record or in the middle of the log.
-        if (!hasTrailingNewline && index === lines.length - 1) break;
+        if (!hasTrailingNewline) {
+          if (index === lines.length - 1) break;
+        }
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(`Invalid event log for run ${runId} at line ${index + 1}: ${detail}`, { cause: error });
       }
