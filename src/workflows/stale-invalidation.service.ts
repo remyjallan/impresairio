@@ -305,7 +305,8 @@ export class StaleInvalidationService {
   }
 
   private artifactRoot(state: RunState, producer: AgentRunStep): string {
-    return producer.expectedOutput?.targetRoot ?? state.documentation.target.root;
+    if (producer.expectedOutput) return producer.expectedOutput.targetRoot;
+    return state.documentation.target.root;
   }
 
   private withTimestamp(state: RunState): RunState {
