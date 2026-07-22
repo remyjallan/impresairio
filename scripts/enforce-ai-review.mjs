@@ -31,14 +31,13 @@ function main() {
   }
 
   const issues = Array.isArray(review.key_issues_to_review)
-    ? review.key_issues_to_review.filter((issue) => {
+      ? review.key_issues_to_review.filter((issue) => {
         if (typeof issue === 'string') return issue.trim().length > 0;
+        if (issue === null || typeof issue !== 'object') return false;
 
         // PR-Agent emits structured objects for actionable findings.
-        const content = typeof issue?.issue_content === 'string' ? issue.issue_content.trim() : '';
+        const content = typeof issue.issue_content === 'string' ? issue.issue_content.trim() : '';
         return (
-          issue !== null &&
-          typeof issue === 'object' &&
           content.length > 0 &&
           !selfNegatingFinding(content)
         );
