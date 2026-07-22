@@ -50,7 +50,7 @@ export class HostHandoffService {
       if (!step || step.kind !== 'host-handoff' || !step.expectedOutput || step.status !== 'in_progress') {
         throw new RunStateError(`Host handoff ${result.stepId} has not been prepared`);
       }
-      const inputs = step.inputArtifactIds.map((id) => {
+      const resolvedInputs = step.inputArtifactIds.map((id) => {
         const producer = state.steps.findLast((candidate): candidate is ArtifactRunStep => (candidate.kind === 'agent' || candidate.kind === 'host-handoff')
           && candidate.declaredOutput.id === id && candidate.status === 'complete' && Boolean(candidate.output));
         if (!producer || !producer.output) throw new RunStateError(`Host handoff input ${id} has no completed artifact`);
@@ -65,12 +65,13 @@ export class HostHandoffService {
         if (step.inputArtifactHashes?.[id] !== currentHash) {
           throw new RunStateError(`Host handoff input ${id} changed after the handoff was prepared; retry ${step.id}`);
         }
-        return { id, path: producer.output.path, sha256: currentHash, format: 'markdown' as const, trust: 'untrusted' as const };
+        return { id, path: producer.output.path, sha256: currentHash, format: 'markdown' as const, trust: 'untrusted' as const, bytes };
       });
-      const totalBytes = inputs.reduce((total, input) => total + statSync(input.path).size, 0);
+      const totalBytes = resolvedInputs.reduce((total, input) => total + input.bytes, 0);
       if (totalBytes > MAX_HOST_HANDOFF_INPUT_BYTES) {
         throw new RunStateError(`Host handoff inputs exceed the ${MAX_HOST_HANDOFF_INPUT_BYTES}-byte aggregate limit`);
       }
+      const inputs = resolvedInputs.map(({ bytes: _bytes, ...input }) => input);
       const handoff: HostHandoff = {
         kind: 'host-handoff',
         protocolVersion: HOST_HANDOFF_PROTOCOL_VERSION,

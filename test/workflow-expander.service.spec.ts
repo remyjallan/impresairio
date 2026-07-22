@@ -42,6 +42,29 @@ afterEach(() => {
 });
 
 describe('WorkflowExpanderService', () => {
+  it('expands a host handoff and namespaces its selected inputs', () => {
+    const harness = createHarness();
+    harness.writeRepository('host', `
+id: host
+name: Host
+steps:
+  - id: draft
+    type: agent
+    actor: author
+    capability: drafting
+    output: { id: draft, filename: "Draft.md" }
+  - id: host-review
+    type: host-handoff
+    promptFile: prompts/host.md
+    inputs: [draft]
+    output: { id: review, filename: "Review.md" }
+    sideEffects: none
+`);
+    const root = harness.registry.resolve('host', harness.repository);
+    const plan = harness.expander.expand(root, harness.repository);
+    expect(plan.steps[1]).toMatchObject({ type: 'host-handoff', id: 'host-review', inputs: ['draft'], output: { id: 'review' } });
+  });
+
   it('expands a child workflow with actor mapping, namespaces and frozen provenance', () => {
     const harness = createHarness();
     harness.writePackage('child', `

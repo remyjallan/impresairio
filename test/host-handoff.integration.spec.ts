@@ -1,7 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HostHandoffService, readHostHandoffOutput } from '../src/agents/host-handoff.service';
 import { NextCommand } from '../src/commands/next.command';
 import { SubmitHostOutputCommand } from '../src/commands/submit-host-output.command';
@@ -19,6 +19,7 @@ import { createRunState } from '../src/runs/run-state.schema';
 import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
 import { workflowSchema } from '../src/workflows/workflow.schema';
+import { invalidateFrom } from '../src/runs/step-invalidation';
 
 const directories: string[] = [];
 
@@ -96,7 +97,12 @@ describe('host handoff', () => {
 
     const source = join(home, 'returned-by-host.md');
     writeFileSync(source, '# Host review\n\nThe host returned a bounded result.\n');
-    new HostHandoffSubmissionService(store, artifacts, completion, events, locks).submit('run-host', 'host-review', source);
+    const submission = new HostHandoffSubmissionService(store, artifacts, completion, events, locks);
+    const managedDestination = store.findState('run-host')?.steps[1];
+    if (!managedDestination || managedDestination.kind !== 'host-handoff' || !managedDestination.expectedOutput) throw new Error('missing host output');
+    const managedPath = managedDestination.expectedOutput.path;
+    expect(() => submission.submit('run-host', 'host-review', managedPath)).toThrow('must not be the Impresairio-managed destination');
+    submission.submit('run-host', 'host-review', source);
 
     expect(store.findState('run-host')?.steps[1]).toMatchObject({ kind: 'host-handoff', status: 'complete' });
     expect(events.read('run-host')).toContainEqual(expect.objectContaining({ type: 'host.handoff.submitted', stepId: 'host-review' }));
@@ -113,6 +119,20 @@ describe('host handoff', () => {
       }],
     });
     expect(parsed.success).toBe(false);
+    const missingInput = workflowSchema.safeParse({
+      id: 'missing-input', name: 'Missing input', steps: [{
+        id: 'host', type: 'host-handoff', promptFile: 'prompts/host.md', inputs: ['missing'],
+        output: { id: 'review', filename: 'Review.md' }, sideEffects: 'none',
+      }],
+    });
+    expect(missingInput.error?.issues.map((issue) => issue.message)).toContain('must reference an output produced by a preceding step');
+    const conditionalInput = workflowSchema.safeParse({
+      id: 'conditional-input', name: 'Conditional input', steps: [
+        { id: 'draft', type: 'agent', actor: 'author', capability: 'feature-design', when: { equals: { left: true, right: true } }, output: { id: 'draft', filename: 'Draft.md' } },
+        { id: 'host', type: 'host-handoff', promptFile: 'prompts/host.md', inputs: ['draft'], output: { id: 'review', filename: 'Review.md' }, sideEffects: 'none' },
+      ],
+    });
+    expect(conditionalInput.error?.issues.map((issue) => issue.message)).toContain('must reference an unconditional output; a false condition would make the handoff input unavailable');
   });
 
   it('rejects stale input and unsupported host-output sources', () => {
@@ -193,5 +213,43 @@ describe('host handoff', () => {
       { findState: () => aggregateState } as never, {} as never, { currentHash: () => 'a'.repeat(64) } as never, lock as never,
     );
     expect(() => aggregate.prepare('run', { kind: 'host-handoff', stepId: 'host' })).toThrow('aggregate limit');
+  });
+
+  it('uses the caller directory only for a legacy run without a frozen repository', () => {
+    const lock = { acquire: () => () => undefined };
+    const state = {
+      documentation: { target: { root: process.cwd() } },
+      steps: [{
+        id: 'host', kind: 'host-handoff' as const, status: 'in_progress' as const,
+        promptFile: 'host.md', prompt: 'Review.', inputArtifactIds: [], inputArtifactHashes: {},
+        declaredOutput: { id: 'review', filename: 'Review.md', storage: 'documentation' as const }, sideEffects: 'none' as const,
+        expectedOutput: { id: 'review', targetRoot: process.cwd(), directory: process.cwd(), path: join(process.cwd(), 'review.md'), format: 'markdown' as const }, attempts: [], handoffPreparedAt: '2026-07-22T12:00:00.000Z',
+      }],
+    };
+    const handoff = new HostHandoffService(
+      { findState: () => state } as never, {} as never, {} as never, lock as never,
+    ).prepare('run', { kind: 'host-handoff', stepId: 'host' });
+    expect(handoff?.repositoryDirectory).toBe(process.cwd());
+  });
+
+  it('clears a published host artifact if durable completion fails', () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-host-rollback-')));
+    directories.push(home);
+    const source = join(home, 'result.md');
+    writeFileSync(source, '# Result\n');
+    const expectedOutput = { id: 'review', targetRoot: home, directory: home, path: join(home, 'review.md'), format: 'markdown' as const };
+    const artifacts = { publishMarkdown: () => undefined, discardOutput: vi.fn() };
+    const service = new HostHandoffSubmissionService(
+      { findState: () => ({ currentStepId: 'host', steps: [{ id: 'host', kind: 'host-handoff', status: 'in_progress', expectedOutput }] }) } as never,
+      artifacts as never, { complete: () => { throw new Error('completion failed'); } } as never,
+      {} as never, { acquireReentrant: () => () => undefined } as never,
+    );
+    expect(() => service.submit('run', 'host', source)).toThrow('completion failed');
+    expect(artifacts.discardOutput).toHaveBeenCalledWith(expectedOutput);
+  });
+
+  it('clears a stale host-handoff preparation marker during invalidation', () => {
+    const state = { workflow: { successors: { host: [] } }, steps: [{ id: 'host', kind: 'host-handoff', status: 'stale', handoffPreparedAt: '2026-07-22T12:00:00.000Z' }] };
+    expect(invalidateFrom(state as never, 'host').steps[0]).toMatchObject({ handoffPreparedAt: undefined });
   });
 });
