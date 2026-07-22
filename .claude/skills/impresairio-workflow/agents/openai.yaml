@@ -1,0 +1,4 @@
+interface:
+  display_name: "Impresairio Workflow"
+  short_description: "Manage durable Impresairio workflow runs."
+  default_prompt: "Manage this Impresairio run safely, including any host handoff."
