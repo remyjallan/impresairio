@@ -24,6 +24,18 @@ describe('advance command output recovery', () => {
     });
   });
 
+  it('rewrites Claude artifact paths without granting an additional directory', () => {
+    expect(prepareExecutionInvocation({
+      command: 'claude',
+      args: ['--output', '/run/artifacts/review.md'],
+      input: 'write to /run/artifacts/review.md',
+    }, '/run/artifacts/review.md', '/run/staging/review/artifact.md')).toEqual({
+      command: 'claude',
+      args: ['--output', '/run/staging/review/artifact.md'],
+      input: 'write to /run/staging/review/artifact.md',
+    });
+  });
+
   it('uses the frozen repository and preserves caller-CWD fallback for legacy runs', () => {
     expect(executionDirectory('/workspace/project', '/caller')).toBe('/workspace/project');
     expect(executionDirectory(undefined, '/caller')).toBe('/caller');
