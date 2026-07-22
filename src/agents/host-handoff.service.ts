@@ -29,6 +29,8 @@ export interface HostHandoff {
   readonly expectedOutput: { readonly id: string; readonly format: 'markdown'; readonly maxBytes: number };
 }
 
+type ResolvedHostHandoffInput = HostHandoff['inputs'][number] & { readonly bytes: number };
+
 type ArtifactRunStep = Extract<RunState['steps'][number], { readonly kind: 'agent' | 'host-handoff' }>;
 
 @Injectable()
@@ -50,7 +52,7 @@ export class HostHandoffService {
       if (!step || step.kind !== 'host-handoff' || !step.expectedOutput || step.status !== 'in_progress') {
         throw new RunStateError(`Host handoff ${result.stepId} has not been prepared`);
       }
-      const resolvedInputs = step.inputArtifactIds.map((id) => {
+      const resolvedInputs: ResolvedHostHandoffInput[] = step.inputArtifactIds.map((id) => {
         const producer = state.steps.findLast((candidate): candidate is ArtifactRunStep => (candidate.kind === 'agent' || candidate.kind === 'host-handoff')
           && candidate.declaredOutput.id === id && candidate.status === 'complete' && Boolean(candidate.output));
         if (!producer || !producer.output) throw new RunStateError(`Host handoff input ${id} has no completed artifact`);

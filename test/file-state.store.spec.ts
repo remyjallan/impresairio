@@ -45,6 +45,23 @@ afterEach(() => {
 });
 
 describe('FileStateStore', () => {
+  it('records only artifact-producing steps and preserves agent patch metadata on completion', () => {
+    const { store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const state = createRunState({ id: 'run-completion-state', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [
+        { id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } },
+        { id: 'gate', kind: 'gate', artifact: 'work' },
+      ], now: at });
+    store.create({ ...state, currentStepId: 'work', steps: state.steps.map((step) => step.kind === 'agent'
+      ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
+      : step) });
+    store.recordCompletion('run-completion-state', { stepId: 'work', output: { id: 'work', path: '/tmp/docs/work.md', format: 'markdown', sha256: 'b'.repeat(64) }, appliedPatch: { sha256: 'c'.repeat(64), paths: ['src/a.ts'], appliedAt: at } });
+    expect(store.findState('run-completion-state')?.steps[0]).toMatchObject({ appliedPatch: { paths: ['src/a.ts'] } });
+    expect(() => store.recordCompletion('run-completion-state', { stepId: 'gate', output: { id: 'work', path: '/tmp/docs/work.md', format: 'markdown', sha256: 'b'.repeat(64) } })).toThrow('cannot produce an artifact');
+    store.markFailed('run-completion-state', 'work', 'failed');
+    expect(store.findState('run-completion-state')?.steps[0]).toMatchObject({ status: 'complete' });
+  });
   it('round-trips a validated run state', () => {
     const { store } = createStore();
     const state = createRunState({
