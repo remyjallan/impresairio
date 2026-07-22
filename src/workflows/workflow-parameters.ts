@@ -12,7 +12,14 @@ export class WorkflowParameterError extends Error {
 }
 
 function containsForbiddenLiteralCharacter(value: string): boolean {
-  return /[\u0000-\u001f\u007f\u2028\u2029]/u.test(value);
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x1f) return true;
+    if (code === 0x7f) return true;
+    if (code === 0x2028) return true;
+    if (code === 0x2029) return true;
+  }
+  return false;
 }
 
 export function parseParameterAssignments(assignments: readonly string[]): Record<string, string> {
