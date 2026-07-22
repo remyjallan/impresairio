@@ -62,6 +62,12 @@ jobs:
             provider compatibility concerns when the endpoint and model ID
             match the provider's documented API; report them only with a
             concrete incompatibility or failure scenario.
+            This workflow has been verified live with NanoGPT: the action
+            receives OPENAI__KEY and OPENAI__API_BASE from the step environment,
+            actions/checkout runs before the review, and enable_output exposes
+            the structured review through steps.pragent.outputs.review. Do not
+            report hypothetical failures of these mechanisms without a concrete
+            contradiction in the changed YAML or an observed failed run.
 
       - name: Explain PR-Agent execution failure
         if: >-
