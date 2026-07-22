@@ -2,15 +2,35 @@ import { isAbsolute, win32 } from 'node:path';
 import { z } from 'zod';
 import { isKnownDocumentationTemplate } from '../documentation/templates';
 
-const identifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
+const runtimeIdentifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
   error: 'must use lowercase letters, numbers and hyphens, starting with a letter',
+});
+
+const identifier = runtimeIdentifier.refine((value) => !value.includes('--') && !value.endsWith('-'), {
+  error: 'must use lowercase letters, numbers and single hyphens, without a trailing hyphen',
 });
 
 const nonEmptyString = z.string().trim().min(1);
 
+function hasForbiddenLiteralCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x1f) return true;
+    if (code === 0x7f) return true;
+    if (code === 0x2028) return true;
+    if (code === 0x2029) return true;
+  }
+  return false;
+}
+
+function isValidPrimitiveString(value: string): boolean {
+  if (value.includes('{{') || value.includes('}}')) return false;
+  return !hasForbiddenLiteralCharacter(value);
+}
+
 const primitiveString = z.string().refine(
-  (value) => !value.includes('{{') && !value.includes('}}') && !value.includes('\n') && !value.includes('\r'),
-  'must not contain a dynamic expression or newline',
+  isValidPrimitiveString,
+  'must not contain a dynamic expression or control character',
 );
 
 export const workflowPrimitiveValueSchema = z.union([
@@ -111,7 +131,7 @@ export type WorkflowResult = z.infer<typeof workflowResultSchema>;
 
 const parameterReferenceSchema = z.object({ parameter: identifier }).strict();
 const resultReferenceSchema = z.object({
-  result: z.object({ step: identifier, field: identifier }).strict(),
+  result: z.object({ step: runtimeIdentifier, field: identifier }).strict(),
 }).strict();
 export const workflowConditionOperandSchema = z.union([
   workflowPrimitiveValueSchema,
@@ -228,7 +248,7 @@ const gateStepSchema = z
 const composedWorkflowStepSchema = z
   .object({
     id: identifier,
-    uses: z.string().regex(/^workflow:[a-z][a-z0-9-]*$/, {
+    uses: z.string().regex(/^workflow:(?!.*--)[a-z](?:[a-z0-9-]*[a-z0-9])?$/, {
       error: 'must reference a workflow as workflow:<id>',
     }),
     actors: z.record(identifier, identifier).optional(),

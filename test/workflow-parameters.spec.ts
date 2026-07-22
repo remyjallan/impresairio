@@ -57,4 +57,21 @@ describe('workflow parameters', () => {
     expect(() => resolveRootParameters(definitions, { summary: 'line\nbreak' }))
       .toThrow('single-line literal string');
   });
+
+  it('rejects control characters in parameter values', () => {
+    expect(() => workflowParametersSchema.parse({ summary: { type: 'string', default: 'line\u2028break' } }))
+      .toThrow('control character');
+    expect(() => resolveRootParameters(definitions, { summary: 'line\u001bbreak' }))
+      .toThrow('single-line literal string');
+    expect(() => resolveChildParameters(
+      workflowParametersSchema.parse({ summary: { type: 'string' } }),
+      {},
+      { summary: 'line\u000bbreak' },
+    )).toThrow('single-line literal string');
+  });
+
+  it('rejects non-string values before evaluating string content', () => {
+    expect(() => resolveRootParameters(definitions, { summary: 42 as never }))
+      .toThrow('single-line literal string');
+  });
 });

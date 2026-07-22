@@ -77,4 +77,10 @@ describe('workflow verdictPolicy schema', () => {
     expect(JSON.stringify(result.success ? [] : result.error.issues))
       .toContain('unconditional agent step');
   });
+
+  it('rejects source identifiers that can collide with composition namespaces', () => {
+    const result = workflowSchema.safeParse(workflowWith([{ ...implement, id: 'unsafe--step' }]));
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.success ? [] : result.error.issues)).toContain('single hyphens');
+  });
 });

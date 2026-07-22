@@ -6,7 +6,7 @@ import { parseDocument, YAMLParseError } from 'yaml';
 import { HomeDirectoryResolver } from '../config/home-directory.resolver';
 import { workflowSchema, type Workflow } from './workflow.schema';
 
-const workflowIdPattern = /^[a-z][a-z0-9-]*$/;
+const workflowIdPattern = /^(?!.*--)[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
 
 export type WorkflowSource = 'repository' | 'global' | 'package';
 

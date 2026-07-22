@@ -29,10 +29,27 @@ export class EventLogService {
       return [];
     }
 
-    return readFileSync(path, 'utf8')
-      .split('\n')
-      .filter((line) => line.length > 0)
-      .map((line) => JSON.parse(line) as RunEvent);
+    const content = readFileSync(path, 'utf8');
+    const lines = content.split('\n');
+    const hasTrailingNewline = content.endsWith('\n');
+    const events: RunEvent[] = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (line.length === 0) continue;
+      try {
+        events.push(JSON.parse(line) as RunEvent);
+      } catch (error) {
+        // A process can be interrupted while appending the final JSON line.
+        // Keep the durable prefix readable, but never hide corruption in a
+        // complete record or in the middle of the log.
+        if (!hasTrailingNewline) {
+          if (index === lines.length - 1) break;
+        }
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`Invalid event log for run ${runId} at line ${index + 1}: ${detail}`, { cause: error });
+      }
+    }
+    return events;
   }
 
   private runDirectory(runId: string): string {
