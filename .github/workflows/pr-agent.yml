@@ -69,7 +69,13 @@ jobs:
             report hypothetical failures of these mechanisms without a concrete
             contradiction in the changed YAML or an observed failed run. Do not
             include an item in key_issues_to_review when its own explanation
-            concludes that no bug or security concern exists.
+            concludes that no bug or security concern exists. Trace GitHub
+            Actions event filters and job/step conditions concretely before
+            reporting a control-flow defect; an unlabeled ai-review-override
+            event intentionally runs a fresh review after the override is
+            removed. Do not report hypothetical limitations of the gate's
+            self-negating text filter unless the current review output contains
+            a concrete misclassification caused by it.
 
       - name: Explain PR-Agent execution failure
         if: >-
