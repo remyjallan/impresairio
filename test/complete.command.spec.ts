@@ -41,12 +41,14 @@ describe('CompleteCommand', () => {
         sha256: 'a'.repeat(64),
       }),
     };
-    const command = new CompleteCommand(new CompletionService(store, artifactService));
+    const output: string[] = [];
+    const command = new CompleteCommand(new CompletionService(store, artifactService), (line) => output.push(line));
 
     await command.run(['run-42', 'design']);
 
     expect(store.completions).toEqual([{ stepId: 'design', output: artifactService.completeExpectedOutput() }]);
     expect(store.events).toEqual([expect.objectContaining({ type: 'step.completed', stepId: 'design' })]);
+    expect(output).toEqual(['completed: run-42 design\n']);
   });
 
   it('applies a declared patch after publishing its Markdown output', () => {
@@ -116,12 +118,14 @@ describe('CompleteCommand', () => {
 
   it('surfaces missing output failures without recording a completion', async () => {
     const store = createStore({ id: 'design', kind: 'agent', status: 'in_progress' });
+    const output: string[] = [];
     const command = new CompleteCommand(new CompletionService(store, {
       completeExpectedOutput: () => { throw new Error('Expected output does not exist'); },
-    }));
+    }), (line) => output.push(line));
 
     await expect(command.run(['run-42', 'design'])).rejects.toThrow('Expected output does not exist');
     expect(store.completions).toEqual([]);
+    expect(output).toEqual([]);
   });
 
   it('uses a stable domain error for an unknown run', async () => {

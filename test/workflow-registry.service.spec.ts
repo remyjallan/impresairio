@@ -169,6 +169,26 @@ steps:
     expect(() => createRegistry(home, packageDirectory).resolve('custom', home)).toThrow(WorkflowError);
   });
 
+  it('reports the relevant field for an invalid workflow step variant', () => {
+    const home = temporaryDirectory('impresairio-workflow-home-');
+    const packageDirectory = temporaryDirectory('impresairio-workflow-package-');
+    writeFileSync(join(packageDirectory, 'custom.yaml'), `id: custom
+name: Custom
+steps:
+  - id: write
+    type: agent
+    actor: launcher
+    capability: final-report
+    patch: unsupported
+    output:
+      id: report
+      filename: "01 - Report.md"
+`);
+
+    expect(() => createRegistry(home, packageDirectory).resolve('custom', home))
+      .toThrow('steps.0.patch: Invalid input: expected "apply-unified-diff"');
+  });
+
   it('rejects duplicate step IDs, unsafe gate references and unknown roles', () => {
     const home = temporaryDirectory('impresairio-workflow-home-');
     const packageDirectory = temporaryDirectory('impresairio-workflow-package-');

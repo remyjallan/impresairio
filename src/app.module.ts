@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { CompleteCommand } from './commands/complete.command';
+import { CompleteCommand, COMPLETE_WRITER } from './commands/complete.command';
 import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
 import { ImpresairioRootCommand } from './commands/root.command';
@@ -7,7 +7,7 @@ import { RequestChangesCommand } from './commands/request-changes.command';
 import { RetryCommand } from './commands/retry.command';
 import { StartCommand, START_WRITER } from './commands/start.command';
 import { StatusCommand, STATUS_WRITER } from './commands/status.command';
-import { UnlockCommand } from './commands/unlock.command';
+import { UnlockCommand, UNLOCK_WRITER } from './commands/unlock.command';
 import { AcknowledgeCommand } from './commands/acknowledge.command';
 import { ListCommand, LIST_WRITER } from './commands/list.command';
 import { AdvanceCommand, ADVANCE_PROGRESS_WRITER } from './commands/advance.command';
@@ -165,6 +165,14 @@ import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
     },
     {
       provide: NEXT_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: COMPLETE_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: UNLOCK_WRITER,
       useValue: (line: string) => process.stdout.write(line),
     },
     {
