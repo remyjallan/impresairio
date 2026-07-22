@@ -1,5 +1,6 @@
 import type {
   AgentAction,
+  AgentProfileSelection,
   AgentHealthCheckInvocation,
   AgentHealthCheckRequest,
   AgentProvider,
@@ -49,7 +50,7 @@ export class ClaudeCodeProvider implements AgentProvider {
   }
 }
 
-function selectionArgs(agent: AgentHealthCheckRequest['agent']): readonly string[] {
+function selectionArgs(agent: Pick<AgentProfileSelection, 'model' | 'reasoningEffort'>): readonly string[] {
   return [
     ...(agent.model ? ['--model', agent.model] : []),
     ...(agent.reasoningEffort ? ['--effort', agent.reasoningEffort] : []),

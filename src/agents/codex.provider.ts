@@ -1,5 +1,6 @@
 import type {
   AgentAction,
+  AgentProfileSelection,
   AgentHealthCheckInvocation,
   AgentHealthCheckRequest,
   AgentProvider,
@@ -39,7 +40,7 @@ export class CodexProvider implements AgentProvider {
   }
 }
 
-function selectionArgs(agent: AgentHealthCheckRequest['agent']): readonly string[] {
+function selectionArgs(agent: Pick<AgentProfileSelection, 'model' | 'reasoningEffort'>): readonly string[] {
   return [
     ...(agent.model ? ['--model', agent.model] : []),
     ...(agent.reasoningEffort ? ['-c', `model_reasoning_effort="${agent.reasoningEffort}"`] : []),
