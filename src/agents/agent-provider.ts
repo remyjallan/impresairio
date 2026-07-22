@@ -12,19 +12,21 @@ export type PreparedInstruction =
   | { readonly kind: 'fallback-prompt'; readonly content: string }
   | { readonly kind: 'prompt-file'; readonly source: string; readonly content: string };
 
+export interface AgentProfileSelection {
+  readonly profile: string;
+  readonly provider: AgentProviderName;
+  readonly modelAlias?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+}
+
 export interface ProviderPreparationRequest {
   readonly runId: string;
   readonly stepId: string;
   readonly expectsVerdict?: boolean;
   readonly profile: string;
   /** The port validates its own provider-specific requirements before use. */
-  readonly agent: {
-    readonly profile: string;
-    readonly provider: AgentProviderName;
-    readonly modelAlias?: string;
-    readonly model?: string;
-    readonly reasoningEffort?: string;
-  };
+  readonly agent: AgentProfileSelection;
   readonly instruction: PreparedInstruction;
   readonly expectedOutput: string;
 }
@@ -62,7 +64,7 @@ export interface AgentHealthCheckInvocation {
 
 export interface AgentHealthCheckRequest {
   readonly profile: string;
-  readonly agent: ProviderPreparationRequest['agent'];
+  readonly agent: AgentProfileSelection;
   readonly live: boolean;
 }
 
