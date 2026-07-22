@@ -3,6 +3,7 @@ import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import { RunLockService } from '../runs/run-lock.service';
 import type { RunState } from '../runs/run-state.schema';
+import { agentSettingsForEvent } from './agent-provider';
 
 type AgentStep = Extract<RunState['steps'][number], { readonly kind: 'agent' }>;
 type FrozenAgent = NonNullable<AgentStep['agentOverride']>;
@@ -85,7 +86,7 @@ export class AgentFallbackService {
         fromProvider: from.provider,
         toProfile: fallback.profile,
         toProvider: fallback.provider,
-        ...(fallback.provider === 'opencode' ? { modelAlias: fallback.modelAlias, model: fallback.model } : {}),
+        ...agentSettingsForEvent(fallback),
         reason: normalizedReason,
       });
     } finally {

@@ -28,7 +28,7 @@ function setup() {
     resolvedActors: {
       implementer: {
         profile: 'opencode-glm', provider: 'opencode', modelAlias: 'glm-5.2', model: 'openrouter/z-ai/glm-5.2',
-        fallbacks: [{ profile: 'codex', provider: 'codex' }],
+        fallbacks: [{ profile: 'codex', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' }],
       },
     },
     documentation: {
@@ -75,14 +75,15 @@ describe('AgentFallbackService', () => {
     const step = store.findState('run-fallback')?.steps[0];
     expect(step).toMatchObject({
       id: 'implement', status: 'pending',
-      agentOverride: { profile: 'codex', provider: 'codex' },
+      agentOverride: { profile: 'codex', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' },
       fallbackHistory: [{
         from: { profile: 'opencode-glm', provider: 'opencode', model: 'openrouter/z-ai/glm-5.2' },
-        to: { profile: 'codex', provider: 'codex' },
+        to: { profile: 'codex', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' },
       }],
     });
     expect(events.read('run-fallback')).toContainEqual(expect.objectContaining({
       type: 'agent.fallback.selected', stepId: 'implement', fromProfile: 'opencode-glm', toProfile: 'codex',
+      model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
     }));
   });
 

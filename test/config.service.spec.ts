@@ -209,6 +209,55 @@ describe('ConfigService', () => {
     expect(profiles['opencode-kimi']).toMatchObject({ model: 'openrouter/moonshotai/kimi-k2' });
   });
 
+  it('resolves several named Claude Code and Codex profiles with explicit settings', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    const configPath = join(home, 'config.yaml');
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, 'utf8').replace(
+        '  claude:\n    provider: claude-code\n    skills:',
+        '  claude-fast:\n    provider: claude-code\n    model: sonnet\n    reasoningEffort: medium\n    skills:',
+      ).replace(
+        '  codex:\n    provider: codex',
+        '  codex-terra:\n    provider: codex\n    model: gpt-5.6-terra\n    reasoningEffort: high\n  codex-sol:\n    provider: codex\n    model: gpt-5.6-sol\n    reasoningEffort: xhigh',
+      ),
+      'utf8',
+    );
+
+    const profiles = new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }))
+      .load(repository).agentProfiles;
+
+    expect(profiles['claude-fast']).toMatchObject({
+      provider: 'claude-code', model: 'sonnet', reasoningEffort: 'medium',
+    });
+    expect(profiles['codex-terra']).toMatchObject({
+      provider: 'codex', model: 'gpt-5.6-terra', reasoningEffort: 'high',
+    });
+    expect(profiles['codex-sol']).toMatchObject({
+      provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+    });
+  });
+
+  it('reports the exact profile field for an unsupported reasoning effort', () => {
+    const home = createDirectory();
+    const repository = createDirectory();
+    writeValidConfiguration(home, repository);
+    const configPath = join(home, 'config.yaml');
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, 'utf8').replace(
+        'provider: codex',
+        'provider: codex\n    reasoningEffort: deepest',
+      ),
+      'utf8',
+    );
+
+    expect(() => new ConfigService(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home })).load(repository))
+      .toThrow(`${configPath}: agentProfiles.codex.reasoningEffort`);
+  });
+
   it('rejects an unregistered provider name in global configuration', () => {
     const home = createDirectory();
     const repository = createDirectory();

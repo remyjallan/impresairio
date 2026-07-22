@@ -12,18 +12,21 @@ export type PreparedInstruction =
   | { readonly kind: 'fallback-prompt'; readonly content: string }
   | { readonly kind: 'prompt-file'; readonly source: string; readonly content: string };
 
+export interface AgentProfileSelection {
+  readonly profile: string;
+  readonly provider: AgentProviderName;
+  readonly modelAlias?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+}
+
 export interface ProviderPreparationRequest {
   readonly runId: string;
   readonly stepId: string;
   readonly expectsVerdict?: boolean;
   readonly profile: string;
   /** The port validates its own provider-specific requirements before use. */
-  readonly agent: {
-    readonly profile: string;
-    readonly provider: AgentProviderName;
-    readonly modelAlias?: string;
-    readonly model?: string;
-  };
+  readonly agent: AgentProfileSelection;
   readonly instruction: PreparedInstruction;
   readonly expectedOutput: string;
 }
@@ -33,6 +36,23 @@ export interface PreparedAgentInvocation {
   readonly args: readonly string[];
   readonly input: string;
   readonly model?: string;
+  readonly reasoningEffort?: string;
+}
+
+export function agentSettingsForEvent(agent: {
+  readonly modelAlias?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+}): {
+  readonly modelAlias?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+} {
+  return {
+    ...(agent.modelAlias ? { modelAlias: agent.modelAlias } : {}),
+    ...(agent.model ? { model: agent.model } : {}),
+    ...(agent.reasoningEffort ? { reasoningEffort: agent.reasoningEffort } : {}),
+  };
 }
 
 /** A provider-owned, side-effect-free or minimal live connectivity probe. */
@@ -44,7 +64,7 @@ export interface AgentHealthCheckInvocation {
 
 export interface AgentHealthCheckRequest {
   readonly profile: string;
-  readonly agent: ProviderPreparationRequest['agent'];
+  readonly agent: AgentProfileSelection;
   readonly live: boolean;
 }
 

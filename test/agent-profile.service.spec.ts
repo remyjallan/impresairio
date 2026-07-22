@@ -89,4 +89,26 @@ describe('AgentProfileService', () => {
       },
     });
   });
+
+  it('freezes independently selected Claude Code and Codex model and reasoning settings', () => {
+    expect(service.resolveForActors(
+      { launcher: 'claude-fast', adversary: 'codex-sol', implementer: 'codex-terra' },
+      ['launcher', 'adversary', 'implementer'],
+      {
+        'claude-fast': { provider: 'claude-code', model: 'sonnet', reasoningEffort: 'medium' },
+        'codex-sol': { provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh' },
+        'codex-terra': { provider: 'codex', model: 'gpt-5.6-terra', reasoningEffort: 'high' },
+      },
+    )).toEqual({
+      launcher: {
+        profile: 'claude-fast', provider: 'claude-code', model: 'sonnet', reasoningEffort: 'medium',
+      },
+      adversary: {
+        profile: 'codex-sol', provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
+      },
+      implementer: {
+        profile: 'codex-terra', provider: 'codex', model: 'gpt-5.6-terra', reasoningEffort: 'high',
+      },
+    });
+  });
 });

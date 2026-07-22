@@ -2,6 +2,8 @@ import { isAbsolute, win32 } from 'node:path';
 import { z } from 'zod';
 
 const nonEmptyString = z.string().trim().min(1);
+const claudeReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+const codexReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
 const fallbackProfilesSchema = z.array(nonEmptyString).max(5).superRefine((profiles, context) => {
   if (new Set(profiles).size !== profiles.length) {
@@ -25,6 +27,8 @@ const filesystemDocumentationTargetSchema = z
 const claudeCodeProfileSchema = z
   .object({
     provider: z.literal('claude-code'),
+    model: nonEmptyString.optional(),
+    reasoningEffort: claudeReasoningEffortSchema.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
     fallbackProfiles: fallbackProfilesSchema.default([]),
   })
@@ -33,6 +37,8 @@ const claudeCodeProfileSchema = z
 const codexProfileSchema = z
   .object({
     provider: z.literal('codex'),
+    model: nonEmptyString.optional(),
+    reasoningEffort: codexReasoningEffortSchema.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
     fallbackProfiles: fallbackProfilesSchema.default([]),
   })
