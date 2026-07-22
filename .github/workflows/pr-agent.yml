@@ -35,7 +35,7 @@ jobs:
           exit 1
 
       - name: Review pull request
-        if: env.PR_AGENT_NANOGPT_KEY != ''
+        if: env.PR_AGENT_NANOGPT_KEY != '' && !(github.event.action == 'labeled' && github.event.label.name == 'ai-review-override')
         uses: The-PR-Agent/pr-agent@v0.35.0
         id: pragent
         env:
@@ -63,7 +63,17 @@ jobs:
             match the provider's documented API; report them only with a
             concrete incompatibility or failure scenario.
 
+      - name: Explain PR-Agent execution failure
+        if: >-
+          always() &&
+          !(github.event.action == 'labeled' && github.event.label.name == 'ai-review-override') &&
+          steps.pragent.outcome != 'success'
+        run: |
+          echo "::error::PR-Agent did not complete successfully; the AI review gate remains blocked."
+          exit 1
+
       - name: Enforce AI review policy
+        if: always()
         env:
           PR_REVIEW_OUTPUT: ${{ steps.pragent.outputs.review }}
           PR_REVIEW_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
