@@ -84,9 +84,11 @@ export class RunService {
       },
     };
     this.validateArtifactDestinations(id, steps, documentation);
-    const actors = [...new Set(steps.flatMap((step) => (
-      step.type === 'agent' ? [step.actor] : []
-    )))];
+    const actors = [...new Set(steps.flatMap((step) => {
+      if (step.type === 'agent') return [step.actor];
+      if (step.type === 'host-handoff' && 'actor' in step) return [step.actor];
+      return [];
+    }))];
     const resolvedActors = this.agentProfiles.resolveForActors(
       request.roles,
       actors,
@@ -135,13 +137,27 @@ export class RunService {
               ...(step.patch ? { patch: step.patch } : {}),
             }
           : step.type === 'host-handoff'
-            ? {
-                promptFile: step.promptFile,
-                prompt: this.workflowRegistry.readPromptFile(step.definition, step.promptFile),
-                inputs: step.inputs,
-                output: step.output,
-                sideEffects: step.sideEffects,
-              }
+            ? ('capability' in step
+              ? {
+                  actor: step.actor,
+                  method: this.capabilities.resolve(
+                    step.capability,
+                    step.actor,
+                    request.roles[step.actor] ?? '(unbound)',
+                    resolvedActors[step.actor],
+                  ),
+                  interaction: step.interaction,
+                  inputs: step.inputs,
+                  output: step.output,
+                  sideEffects: step.sideEffects,
+                }
+              : {
+                  promptFile: step.promptFile,
+                  prompt: this.workflowRegistry.readPromptFile(step.definition, step.promptFile),
+                  inputs: step.inputs,
+                  output: step.output,
+                  sideEffects: step.sideEffects,
+                })
             : { artifact: step.artifact }),
       })),
     });

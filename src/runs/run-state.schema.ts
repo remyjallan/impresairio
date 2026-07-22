@@ -77,6 +77,13 @@ const agentMethodSchema = z.union([
   }).strict(),
 ]);
 
+const retryContextSchema = z.object({
+  sourceStepId: nonEmptyString,
+  artifactPath: nonEmptyString,
+  artifactSha256: sha256Schema,
+  at: timestampSchema,
+}).strict();
+
 const frozenAgentProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
@@ -207,12 +214,7 @@ const runAgentStepSchema = z
       blocked: z.literal('stop').optional(),
     }).strict().optional(),
     verdictRetries: z.number().int().nonnegative().optional(),
-    retryContext: z.object({
-      sourceStepId: nonEmptyString,
-      artifactPath: nonEmptyString,
-      artifactSha256: sha256Schema,
-      at: timestampSchema,
-    }).strict().optional(),
+    retryContext: retryContextSchema.optional(),
     acknowledgment: z.object({
       at: timestampSchema,
       comment: z.string().min(1),
@@ -256,8 +258,11 @@ const runHostHandoffStepSchema = z.object({
   id: nonEmptyString,
   kind: z.literal('host-handoff'),
   status: stepStatusSchema,
-  promptFile: nonEmptyString,
-  prompt: z.string().min(1),
+  actor: nonEmptyString.optional(),
+  method: agentMethodSchema.optional(),
+  interaction: z.literal('user-dialog').optional(),
+  promptFile: nonEmptyString.optional(),
+  prompt: z.string().min(1).optional(),
   inputArtifactIds: z.array(nonEmptyString).max(10),
   declaredOutput: declaredWorkflowOutputSchema,
   sideEffects: z.literal('none'),
@@ -272,7 +277,26 @@ const runHostHandoffStepSchema = z.object({
   inputArtifactHashes: z.record(nonEmptyString, sha256Schema).optional(),
   attempts: z.array(attemptSchema),
   handoffPreparedAt: timestampSchema.optional(),
-}).strict();
+  retryContext: retryContextSchema.optional(),
+}).strict().superRefine((step, context) => {
+  const isInteractive = step.interaction === 'user-dialog';
+  const hasPrompt = step.promptFile !== undefined && step.prompt !== undefined;
+  if (isInteractive) {
+    if (!step.actor || !step.method || !('capability' in step.method)) {
+      context.addIssue({ code: 'custom', message: 'interactive host handoff requires actor and capability method' });
+    }
+    if (hasPrompt) {
+      context.addIssue({ code: 'custom', message: 'interactive host handoff must not declare promptFile or prompt' });
+    }
+    return;
+  }
+  if (!hasPrompt) {
+    context.addIssue({ code: 'custom', message: 'host handoff requires promptFile and prompt' });
+  }
+  if (step.actor || step.method) {
+    context.addIssue({ code: 'custom', message: 'prompt host handoff must not declare actor or method' });
+  }
+});
 
 export const runStepSchema = z.union([runAgentStepSchema, runHostHandoffStepSchema, runGateStepSchema]);
 
@@ -325,6 +349,7 @@ export function createRunState(input: {
     readonly actor?: string;
     readonly method?: z.input<typeof agentMethodSchema>;
     readonly action?: string;
+    readonly interaction?: 'user-dialog';
     readonly promptFile?: string;
     readonly prompt?: string;
     readonly inputs?: readonly string[];
@@ -392,15 +417,21 @@ export function createRunState(input: {
         };
       }
       if (step.kind === 'host-handoff') {
-        if (!step.promptFile || !step.prompt || !step.output || !step.inputs || !step.sideEffects) {
-          throw new Error(`Host handoff ${step.id} requires promptFile, prompt, inputs, output and sideEffects`);
+        if (!step.output || !step.inputs || !step.sideEffects) {
+          throw new Error(`Host handoff ${step.id} requires inputs, output and sideEffects`);
+        }
+        const interactive = step.interaction === 'user-dialog';
+        const hasPrompt = Boolean(step.promptFile && step.prompt);
+        if (interactive === hasPrompt || (interactive && (!step.actor || !step.method))) {
+          throw new Error(`Host handoff ${step.id} requires exactly one promptFile/prompt pair or interactive actor/method`);
         }
         return {
           id: step.id,
           kind: 'host-handoff' as const,
           status: 'pending' as const,
-          promptFile: step.promptFile,
-          prompt: step.prompt,
+          ...(interactive
+            ? { actor: step.actor, method: step.method, interaction: step.interaction }
+            : { promptFile: step.promptFile, prompt: step.prompt }),
           inputArtifactIds: step.inputs,
           declaredOutput: step.output,
           sideEffects: step.sideEffects,

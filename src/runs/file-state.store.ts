@@ -241,8 +241,8 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     }
     const verdictArtifact = policyStep.output;
     const target = state.steps.find((step) => step.id === targetStepId);
-    if (!target || target.kind !== 'agent') {
-      throw new RunStateError(`Verdict retry target is not an agent step: ${targetStepId}`);
+    if (!target || (target.kind !== 'agent' && target.kind !== 'host-handoff')) {
+      throw new RunStateError(`Verdict retry target is not an agent or host-handoff step: ${targetStepId}`);
     }
     const timestamp = new Date().toISOString();
     const invalidated = invalidateFrom(state, targetStepId);
@@ -265,15 +265,15 @@ export class FileStateStore implements StateStore, CompletionRunStore {
           ...(step.id === policyStepId ? { verdictRetries: (step.verdictRetries ?? 0) + 1 } : {}),
         };
       }
-      if (step.id === targetStepId && step.kind === 'agent') {
+      if (step.id === targetStepId && (step.kind === 'agent' || step.kind === 'host-handoff')) {
         return {
           ...step,
           status: 'pending' as const,
           output: undefined,
           inputArtifactHashes: undefined,
-          dispatchPreparedAt: undefined,
-          result: undefined,
-          conditionDecision: undefined,
+          ...(step.kind === 'agent'
+            ? { dispatchPreparedAt: undefined, result: undefined, conditionDecision: undefined }
+            : { handoffPreparedAt: undefined }),
           retryContext: {
             sourceStepId: policyStepId,
             artifactPath: verdictArtifact.path,

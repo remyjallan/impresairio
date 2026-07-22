@@ -163,7 +163,7 @@ export class AgentDispatchService {
     const index = state.steps.findIndex((step) => step.id === stepId);
     const artifacts = new Map<string, string>();
     for (const step of state.steps.slice(0, index)) {
-      if (step.kind !== 'agent' || step.status !== 'complete' || !step.output) continue;
+      if ((step.kind !== 'agent' && step.kind !== 'host-handoff') || step.status !== 'complete' || !step.output) continue;
       try { artifacts.set(step.declaredOutput.id, readFileSync(step.output.path, 'utf8')); } catch { /* completion will surface missing inputs */ }
     }
     return [...artifacts.entries()].map(([id, content]) => `## ${id}\n${content}`).join('\n\n');

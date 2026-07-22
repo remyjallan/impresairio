@@ -237,16 +237,30 @@ const promptAgentStepSchema = agentBaseSchema.extend({
   promptFile: safeRelativeMarkdownPath,
 }).strict();
 
-const hostHandoffStepSchema = z.object({
+const hostHandoffBaseSchema = z.object({
   id: identifier,
   type: z.literal('host-handoff'),
-  promptFile: safeRelativeMarkdownPath,
   inputs: z.array(identifier).max(10).refine((inputs) => new Set(inputs).size === inputs.length, {
     error: 'must not contain duplicate artifact IDs',
   }),
   output: outputSchema,
   sideEffects: z.literal('none'),
 }).strict();
+
+const promptHostHandoffStepSchema = hostHandoffBaseSchema.extend({
+  promptFile: safeRelativeMarkdownPath,
+}).strict();
+
+const interactiveHostHandoffStepSchema = hostHandoffBaseSchema.extend({
+  actor: identifier,
+  capability: identifier,
+  interaction: z.literal('user-dialog'),
+}).strict();
+
+const hostHandoffStepSchema = z.union([
+  promptHostHandoffStepSchema,
+  interactiveHostHandoffStepSchema,
+]);
 
 const gateStepSchema = z
   .object({
@@ -351,7 +365,7 @@ export const workflowSchema = z
           context.addIssue({
             code: 'custom',
             path: ['steps', index, 'artifact'],
-            message: `must reference an output produced by a preceding agent step`,
+            message: `must reference an output produced by a preceding step`,
           });
         } else if (producer.conditional) {
           context.addIssue({
@@ -370,11 +384,11 @@ export const workflowSchema = z
         const target = workflow.steps
           .slice(0, index)
           .find((candidate) => candidate.id === retryFrom);
-        if (!target || !('type' in target) || target.type !== 'agent') {
+        if (!target || !('type' in target) || (target.type !== 'agent' && target.type !== 'host-handoff')) {
           context.addIssue({
             code: 'custom',
             path: ['steps', index, 'verdictPolicy', 'changesRequested', 'retryFrom'],
-            message: 'must reference an earlier agent step',
+            message: 'must reference an earlier agent or host-handoff step',
           });
         }
       }

@@ -15,7 +15,7 @@ import { FileStateStore } from '../src/runs/file-state.store';
 import { HostHandoffSubmissionService } from '../src/runs/host-handoff-submission.service';
 import { RunReportService, formatRunReport } from '../src/runs/run-report.service';
 import { RunLockService } from '../src/runs/run-lock.service';
-import { createRunState } from '../src/runs/run-state.schema';
+import { createRunState, runStateSchema } from '../src/runs/run-state.schema';
 import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
 import { workflowSchema } from '../src/workflows/workflow.schema';
@@ -133,6 +133,174 @@ describe('host handoff', () => {
       ],
     });
     expect(conditionalInput.error?.issues.map((issue) => issue.message)).toContain('must reference an unconditional output; a false condition would make the handoff input unavailable');
+  });
+
+  it('supports an interactive host capability, a gate on its artifact, and a reviewer retry', () => {
+    const parsed = workflowSchema.safeParse({
+      id: 'interactive-host', name: 'Interactive host', steps: [
+        {
+          id: 'brainstorm', type: 'host-handoff', actor: 'launcher', capability: 'feature-design', interaction: 'user-dialog',
+          inputs: [], output: { id: 'brainstorm', filename: 'Brainstorm.md' }, sideEffects: 'none',
+        },
+        {
+          id: 'review', type: 'agent', actor: 'adversary', capability: 'adversarial-review',
+          output: { id: 'review', filename: 'Review.md' },
+          verdictPolicy: { changesRequested: { retryFrom: 'brainstorm', maxIterations: 2 }, blocked: 'stop' },
+        },
+        { id: 'approve-brainstorm', type: 'gate', artifact: 'brainstorm' },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('prepares an interactive host skill without invoking a provider and reopens it with reviewer feedback', () => {
+    const { home, store, events, runner, handoffs } = harness();
+    store.create(createRunState({
+      id: 'run-interactive-host', workflowId: 'interactive-host', workflowSha256: 'b'.repeat(64),
+      request: 'Clarify the requested feature with the user before drafting a design.',
+      roles: { launcher: 'claude', adversary: 'codex' },
+      resolvedActors: {
+        launcher: { profile: 'claude', provider: 'claude-code', skills: { 'feature-design': 'superpowers:brainstorming' } },
+        adversary: { profile: 'codex', provider: 'codex' },
+      },
+      repositoryDirectory: home,
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: home, defaultFormat: 'markdown' },
+        featurePath: 'Features/{{ feature.id }}',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'HOST-2', slug: 'interactive' }, run: { id: 'run-interactive-host' } },
+      },
+      steps: [
+        {
+          id: 'brainstorm', kind: 'host-handoff', actor: 'launcher',
+          method: { capability: 'feature-design', skill: 'superpowers:brainstorming' }, interaction: 'user-dialog',
+          inputs: [], output: { id: 'brainstorm', filename: 'Brainstorm.md' }, sideEffects: 'none',
+        },
+        { id: 'review', kind: 'agent', actor: 'adversary', action: 'adversarial-review', output: { id: 'review', filename: 'Review.md' } },
+      ],
+      now: '2026-07-23T12:00:00.000Z',
+    }));
+
+    const next = runner.next('run-interactive-host');
+    const handoff = handoffs.prepare('run-interactive-host', next);
+    expect(handoff).toMatchObject({
+      kind: 'host-handoff', stepId: 'brainstorm', actor: 'launcher', profile: 'claude', provider: 'claude-code',
+      interaction: 'user-dialog',
+      instruction: { source: 'capability:feature-design', skill: 'superpowers:brainstorming' },
+    });
+    expect(handoff?.instruction.content).toContain('Clarify the requested feature');
+    expect(events.read('run-interactive-host')).toContainEqual(expect.objectContaining({
+      type: 'host.handoff.prepared', actor: 'launcher', profile: 'claude', provider: 'claude-code', interaction: 'user-dialog',
+    }));
+
+    const state = store.findState('run-interactive-host');
+    if (!state) throw new Error('missing interactive run state');
+    store.save({
+      ...state,
+      currentStepId: 'review',
+      steps: state.steps.map((step) => step.id === 'brainstorm' && step.kind === 'host-handoff'
+        ? {
+            ...step, status: 'complete' as const,
+            output: { id: 'brainstorm', path: join(home, 'brainstorm.md'), format: 'markdown' as const, sha256: 'c'.repeat(64), completedAt: '2026-07-23T12:01:00.000Z' },
+          }
+        : step.id === 'review' && step.kind === 'agent'
+          ? {
+              ...step, status: 'complete' as const,
+              output: { id: 'review', path: join(home, 'review.md'), format: 'markdown' as const, sha256: 'd'.repeat(64), completedAt: '2026-07-23T12:01:00.000Z' },
+            }
+          : step),
+    });
+    expect(() => store.applyVerdictRetry('run-interactive-host', 'review', 'missing')).toThrow('not an agent or host-handoff step');
+    store.applyVerdictRetry('run-interactive-host', 'review', 'brainstorm');
+    const retried = store.findState('run-interactive-host')?.steps;
+    const retriedHost = retried?.find((step) => step.id === 'brainstorm');
+    expect(retriedHost).toMatchObject({
+      kind: 'host-handoff', status: 'pending',
+      retryContext: { sourceStepId: 'review' },
+    });
+    expect(retriedHost).not.toHaveProperty('handoffPreparedAt');
+    expect(retried?.find((step) => step.id === 'review')).toMatchObject({
+      kind: 'agent', status: 'pending', verdictRetries: 1,
+    });
+    const retryHandoff = handoffs.prepare('run-interactive-host', runner.next('run-interactive-host'));
+    expect(retryHandoff?.retryFeedback).toMatchObject({ sourceStepId: 'review', trust: 'untrusted' });
+  });
+
+  it('prepares an interactive fallback prompt and rejects an unfrozen host actor', () => {
+    const { home, store, runner, handoffs } = harness();
+    const documentation = {
+      target: { name: 'test', kind: 'filesystem' as const, root: home, defaultFormat: 'markdown' as const },
+      featurePath: 'Features/{{ feature.id }}',
+      bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'HOST-3', slug: 'fallback' }, run: { id: 'run-host-fallback' } },
+    };
+    store.create(createRunState({
+      id: 'run-host-fallback', workflowId: 'interactive-host', workflowSha256: 'e'.repeat(64),
+      request: 'Use the fallback prompt.', roles: { launcher: 'claude' },
+      resolvedActors: { launcher: { profile: 'claude', provider: 'claude-code' } },
+      repositoryDirectory: home, documentation,
+      steps: [{
+        id: 'brainstorm', kind: 'host-handoff', actor: 'launcher',
+        method: { capability: 'feature-design', promptSource: 'package', content: 'Ask a clarifying question.' }, interaction: 'user-dialog',
+        inputs: [], output: { id: 'brainstorm', filename: 'Brainstorm.md' }, sideEffects: 'none',
+      }],
+      now: '2026-07-23T12:00:00.000Z',
+    }));
+    const fallback = handoffs.prepare('run-host-fallback', runner.next('run-host-fallback'));
+    expect(fallback?.instruction).toEqual(expect.objectContaining({
+      source: 'capability:feature-design', content: 'Ask a clarifying question.\n\nWork request:\nUse the fallback prompt.',
+    }));
+
+    store.create(createRunState({
+      id: 'run-host-unfrozen', workflowId: 'interactive-host', workflowSha256: 'f'.repeat(64),
+      roles: { launcher: 'claude' }, repositoryDirectory: home,
+      documentation: { ...documentation, bindings: { ...documentation.bindings, run: { id: 'run-host-unfrozen' } } },
+      steps: [{
+        id: 'brainstorm', kind: 'host-handoff', actor: 'launcher',
+        method: { capability: 'feature-design', skill: 'superpowers:brainstorming' }, interaction: 'user-dialog',
+        inputs: [], output: { id: 'brainstorm', filename: 'Brainstorm.md' }, sideEffects: 'none',
+      }],
+      now: '2026-07-23T12:00:00.000Z',
+    }));
+    expect(() => handoffs.prepare('run-host-unfrozen', runner.next('run-host-unfrozen'))).toThrow('has no frozen host actor or method');
+  });
+
+  it('rejects invalid persisted combinations for prompt and interactive host handoffs', () => {
+    const { store } = harness();
+    const interactive = createRunState({
+      id: 'run-host-schema', workflowId: 'interactive-host', workflowSha256: 'a'.repeat(64), roles: { launcher: 'claude' },
+      resolvedActors: { launcher: { profile: 'claude', provider: 'claude-code' } },
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: process.cwd(), defaultFormat: 'markdown' }, featurePath: 'unused',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'HOST-4', slug: 'schema' }, run: { id: 'run-host-schema' } },
+      },
+      steps: [{
+        id: 'host', kind: 'host-handoff', actor: 'launcher',
+        method: { capability: 'feature-design', skill: 'superpowers:brainstorming' }, interaction: 'user-dialog',
+        inputs: [], output: { id: 'host', filename: 'host.md' }, sideEffects: 'none',
+      }],
+      now: '2026-07-23T12:00:00.000Z',
+    });
+    const host = interactive.steps[0];
+    expect(runStateSchema.safeParse({
+      ...interactive,
+      steps: [{ ...host, actor: undefined, method: undefined }],
+    }).error?.issues.map((issue) => issue.message)).toContain('interactive host handoff requires actor and capability method');
+    expect(runStateSchema.safeParse({
+      ...interactive,
+      steps: [{ ...host, promptFile: 'prompt.md', prompt: 'Do not combine these.' }],
+    }).error?.issues.map((issue) => issue.message)).toContain('interactive host handoff must not declare promptFile or prompt');
+
+    const prompt = store.findState('run-host')?.steps.find((step) => step.id === 'host-review');
+    if (!prompt || prompt.kind !== 'host-handoff') throw new Error('missing prompt handoff');
+    const base = store.findState('run-host');
+    if (!base) throw new Error('missing prompt run');
+    expect(runStateSchema.safeParse({
+      ...base,
+      steps: base.steps.map((step) => step.id === 'host-review' ? { ...prompt, promptFile: undefined, prompt: undefined } : step),
+    }).error?.issues.map((issue) => issue.message)).toContain('host handoff requires promptFile and prompt');
+    expect(runStateSchema.safeParse({
+      ...base,
+      steps: base.steps.map((step) => step.id === 'host-review' ? { ...prompt, actor: 'launcher' } : step),
+    }).error?.issues.map((issue) => issue.message)).toContain('prompt host handoff must not declare actor or method');
   });
 
   it('rejects stale input and unsupported host-output sources', () => {
@@ -276,6 +444,15 @@ describe('host handoff', () => {
 
   it('requires every persisted host-handoff contract field', () => {
     expect(() => createRunState({
+      id: 'missing-host-contract', workflowId: 'host', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: process.cwd(), defaultFormat: 'markdown' }, featurePath: 'unused',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'HOST-0', slug: 'host' }, run: { id: 'missing-host-contract' } },
+      },
+      steps: [{ id: 'host', kind: 'host-handoff', inputs: [], output: { id: 'review', filename: 'review.md' } }],
+      now: '2026-07-22T12:00:00.000Z',
+    })).toThrow('requires inputs, output and sideEffects');
+    expect(() => createRunState({
       id: 'invalid-host', workflowId: 'host', workflowSha256: 'a'.repeat(64), roles: {},
       documentation: {
         target: { name: 'test', kind: 'filesystem', root: process.cwd(), defaultFormat: 'markdown' }, featurePath: 'unused',
@@ -283,6 +460,6 @@ describe('host handoff', () => {
       },
       steps: [{ id: 'host', kind: 'host-handoff', inputs: [], output: { id: 'review', filename: 'review.md' }, sideEffects: 'none' }],
       now: '2026-07-22T12:00:00.000Z',
-    })).toThrow('requires promptFile, prompt, inputs, output and sideEffects');
+    })).toThrow('requires exactly one promptFile/prompt pair or interactive actor/method');
   });
 });

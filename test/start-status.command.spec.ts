@@ -581,4 +581,45 @@ steps:
       sideEffects: 'none',
     });
   });
+
+  it('freezes an interactive host capability and allows its artifact at a gate', () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    const workflows = join(repository, '.impresairio', 'workflows');
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, 'interactive-host.yaml'), `id: interactive-host
+name: Interactive host
+steps:
+  - id: brainstorm
+    type: host-handoff
+    actor: launcher
+    capability: feature-design
+    interaction: user-dialog
+    inputs: []
+    output:
+      id: brainstorm
+      filename: "01 - Brainstorm.md"
+    sideEffects: none
+  - id: approve-brainstorm
+    type: gate
+    artifact: brainstorm
+`);
+
+    service.start({
+      id: 'run-interactive-host', workflowId: 'interactive-host', roles: { launcher: 'claude' },
+      request: 'Clarify the user request before drafting.',
+      feature: { id: 'IMP-57', slug: 'interactive-host' }, repositoryDirectory: repository,
+    });
+
+    const steps = store.findState('run-interactive-host')?.steps;
+    expect(steps?.find((step) => step.id === 'brainstorm')).toMatchObject({
+      kind: 'host-handoff', actor: 'launcher', interaction: 'user-dialog',
+      method: { capability: 'feature-design', promptSource: 'package' },
+    });
+    expect(steps?.find((step) => step.id === 'approve-brainstorm')).toMatchObject({
+      kind: 'gate', artifact: 'brainstorm',
+    });
+  });
 });

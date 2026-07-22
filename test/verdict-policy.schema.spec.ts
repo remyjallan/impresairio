@@ -40,7 +40,7 @@ describe('workflow verdictPolicy schema', () => {
       verdictPolicy: { changesRequested: { retryFrom: 'implement', maxIterations: 2 } },
     }, implement]));
     expect(later.success).toBe(false);
-    expect(JSON.stringify(later.success ? [] : later.error.issues)).toContain('earlier agent step');
+    expect(JSON.stringify(later.success ? [] : later.error.issues)).toContain('earlier agent or host-handoff step');
   });
 
   it('rejects verdictPolicy on gate and review-cycle steps', () => {
