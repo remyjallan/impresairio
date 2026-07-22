@@ -232,13 +232,13 @@ describe('host handoff', () => {
     expect(handoff?.repositoryDirectory).toBe(process.cwd());
   });
 
-  it('keeps a published host artifact if durable completion fails after publication', () => {
+  it('removes a host artifact when durable completion fails before recording state', () => {
     const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-host-rollback-')));
     directories.push(home);
     const source = join(home, 'result.md');
     writeFileSync(source, '# Result\n');
     const expectedOutput = { id: 'review', targetRoot: home, directory: home, path: join(home, 'review.md'), format: 'markdown' as const };
-    const artifacts = { publishMarkdown: vi.fn() };
+    const artifacts = { publishMarkdown: vi.fn(), discardOutput: vi.fn() };
     const service = new HostHandoffSubmissionService(
       { findState: () => ({ currentStepId: 'host', steps: [{ id: 'host', kind: 'host-handoff', status: 'in_progress', expectedOutput }] }) } as never,
       artifacts as never, { complete: () => { throw new Error('completion failed'); } } as never,
@@ -246,6 +246,24 @@ describe('host handoff', () => {
     );
     expect(() => service.submit('run', 'host', source)).toThrow('completion failed');
     expect(artifacts.publishMarkdown).toHaveBeenCalledWith(expectedOutput, '# Result\n');
+    expect(artifacts.discardOutput).toHaveBeenCalledWith(expectedOutput);
+  });
+
+  it('keeps a host artifact when completion recorded state before a later failure', () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-host-rollback-')));
+    directories.push(home);
+    const source = join(home, 'result.md');
+    writeFileSync(source, '# Result\n');
+    const expectedOutput = { id: 'review', targetRoot: home, directory: home, path: join(home, 'review.md'), format: 'markdown' as const };
+    const artifacts = { publishMarkdown: vi.fn(), discardOutput: vi.fn() };
+    let completed = false;
+    const service = new HostHandoffSubmissionService(
+      { findState: () => ({ currentStepId: 'host', steps: [{ id: 'host', kind: 'host-handoff', status: completed ? 'complete' : 'in_progress', expectedOutput }] }) } as never,
+      artifacts as never, { complete: () => { completed = true; throw new Error('event write failed'); } } as never,
+      {} as never, { acquireReentrant: () => () => undefined } as never,
+    );
+    expect(() => service.submit('run', 'host', source)).toThrow('event write failed');
+    expect(artifacts.discardOutput).not.toHaveBeenCalled();
   });
 
   it('clears a stale host-handoff preparation marker during invalidation', () => {

@@ -32,7 +32,20 @@ export class HostHandoffSubmissionService {
       }
       const content = readHostHandoffOutput(sourcePath);
       this.artifacts.publishMarkdown(step.expectedOutput, content.endsWith('\n') ? content : `${content}\n`);
-      this.completion.complete(runId, stepId);
+      try {
+        this.completion.complete(runId, stepId);
+      } catch (error) {
+        // Completion can fail before recording the state transition (for
+        // example while verifying a structured result). Compensate only when
+        // the state is still incomplete: an error after recordCompletion,
+        // such as an event-log failure, must retain the referenced artifact.
+        const persisted = this.stateStore.findState(runId);
+        const persistedStep = persisted?.steps.find((candidate) => candidate.id === stepId);
+        if (persistedStep?.kind === 'host-handoff' && persistedStep.status !== 'complete') {
+          this.artifacts.discardOutput(step.expectedOutput);
+        }
+        throw error;
+      }
       this.events.append(runId, { type: 'host.handoff.submitted', at: new Date().toISOString(), stepId });
     } finally {
       release();
