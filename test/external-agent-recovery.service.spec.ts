@@ -190,6 +190,28 @@ describe('ExternalAgentRecoveryService', () => {
     expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));
   });
 
+  it('records submission metadata when completion records patch application independently', () => {
+    const { store, events, locks, recovery } = harness();
+    recovery.prepare('run-external', 'implement', 'Manual recovery.');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    const submission = new AgentRecoverySubmissionService(
+      store,
+      { publishMarkdown: vi.fn() } as unknown as ArtifactService,
+      { complete: () => undefined } as never,
+      events,
+      locks,
+      new RepositoryPatchService(),
+    );
+
+    submission.submit('run-external', 'implement', source);
+    expect(events.read('run-external')).toContainEqual(expect.objectContaining({
+      type: 'agent.external_recovery.submitted', stepId: 'implement', artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
+  });
+
   it('rejects a repository source, a run-directory source, malformed Markdown, and oversized output before publishing', () => {
     const { home, store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Manual recovery.');
