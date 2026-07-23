@@ -3,7 +3,7 @@ import type { CompletedDocumentationOutput } from '../documentation/documentatio
 import type { PreparedDocumentationOutput } from '../documentation/documentation-target';
 import { readFileSync } from 'node:fs';
 import type { WorkflowPatch, WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
-import { parseStructuredResult, StructuredResultError } from '../workflows/structured-result';
+import { parseStructuredResult } from '../workflows/structured-result';
 import { assertRunActive } from './run-state.schema';
 
 export type CompletionStepStatus =
