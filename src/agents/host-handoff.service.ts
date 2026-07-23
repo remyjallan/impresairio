@@ -105,7 +105,7 @@ export class HostHandoffService {
       }
       const instruction = interactive
         ? interactiveInstruction(method as ResolvedCapabilityMethod, state.request)
-        : promptInstruction(step.promptFile!, step.prompt!, state.request);
+        : promptInstructionForStep(step, state.request);
       const handoff: HostHandoff = {
         kind: 'host-handoff',
         protocolVersion: HOST_HANDOFF_PROTOCOL_VERSION,
@@ -177,6 +177,16 @@ function promptInstruction(promptFile: string, prompt: string, request: string |
     source: promptFile,
     content: request ? `${prompt}\n\nWork request:\n${request}` : prompt,
   };
+}
+
+function promptInstructionForStep(
+  step: Extract<RunState['steps'][number], { readonly kind: 'host-handoff' }>,
+  request: string | undefined,
+): HostHandoff['instruction'] {
+  if (!step.promptFile || !step.prompt) {
+    throw new RunStateError(`Prompt host handoff ${step.id} has no frozen prompt`);
+  }
+  return promptInstruction(step.promptFile, step.prompt, request);
 }
 
 function interactiveInstruction(

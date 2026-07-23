@@ -376,6 +376,29 @@ describe('host handoff', () => {
     }).error?.issues.map((issue) => issue.message)).toContain('prompt host handoff must not declare actor or method');
   });
 
+  it('rejects a corrupted prompt host handoff with a descriptive error', () => {
+    const { home } = harness();
+    for (const [promptFile, prompt] of [[undefined, 'Review the artifact.'], ['prompts/review.md', undefined]] as const) {
+      const handoffs = new HostHandoffService(
+        {
+          findState: () => ({
+            request: 'Review the requested change.', repositoryDirectory: home, resolvedActors: {},
+            steps: [{
+              id: 'host', kind: 'host-handoff', status: 'in_progress', inputArtifactIds: [], sideEffects: 'none',
+              expectedOutput: { id: 'review', format: 'markdown' }, promptFile, prompt,
+            }],
+          }),
+        } as never,
+        { append: vi.fn() } as never,
+        {} as never,
+        { acquire: () => () => undefined } as never,
+      );
+
+      expect(() => handoffs.prepare('corrupted-run', { kind: 'host-handoff', stepId: 'host' }))
+        .toThrow('Prompt host handoff host has no frozen prompt');
+    }
+  });
+
   it('rejects stale input and unsupported host-output sources', () => {
     const { home, store, artifacts, runner, completion, handoffs } = harness();
     runner.next('run-host');

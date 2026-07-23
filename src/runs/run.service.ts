@@ -200,7 +200,7 @@ export class RunService {
     }
     // AgentProfileService freezes the exact role binding in `profile`; resolve
     // from that immutable run snapshot rather than the mutable start request.
-    return this.capabilities.resolve(capability, actor, frozenActor.profile, frozenActor);
+    return this.capabilities.resolve(capability, actor, frozenActor);
   }
 
   private validateFeature(feature: StartRunRequest['feature']): void {
