@@ -75,10 +75,7 @@ export class AgentRecoverySubmissionService {
         this.artifacts.publishMarkdown(step.expectedOutput, artifact);
         appliedPatch = this.completion.complete(runId, stepId);
       } catch (error) {
-        const latestStep = this.stateStore.findState(runId)?.steps.find((candidate) => candidate.id === stepId);
-        if (latestStep?.status !== 'complete') {
-          this.artifacts.discardOutput(step.expectedOutput);
-        }
+        this.discardIncompleteOutput(runId, stepId, step.expectedOutput);
         throw error;
       }
       this.events.append(runId, {
@@ -90,6 +87,11 @@ export class AgentRecoverySubmissionService {
     } finally {
       release();
     }
+  }
+
+  private discardIncompleteOutput(runId: string, stepId: string, output: Parameters<ArtifactService['discardOutput']>[0]): void {
+    const latestStep = this.stateStore.findState(runId)?.steps.find((candidate) => candidate.id === stepId);
+    if (latestStep?.status !== 'complete') this.artifacts.discardOutput(output);
   }
 }
 

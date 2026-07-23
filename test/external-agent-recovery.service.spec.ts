@@ -66,7 +66,9 @@ describe('ExternalAgentRecoveryService', () => {
     const prepared = store.findState('run-external');
     if (!prepared) throw new Error('missing prepared state');
     store.save({ ...prepared, repositoryDirectory: undefined });
-    expect(recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })?.repositoryDirectory).toBe(process.cwd());
+    expect(() => recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })).toThrow('requires a frozen repository directory');
+    store.save({ ...prepared, repositoryDirectory: join(home, 'missing-repository') });
+    expect(() => recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })).toThrow('requires a readable frozen repository directory');
     expect(store.findState('run-external')?.steps[0]).toMatchObject({
       status: 'in_progress', externalRecovery: { reason: 'The configured provider produced an unappliable patch.' },
       attempts: [{ number: 1 }, { number: 2 }],

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { realpathSync } from 'node:fs';
 import { EventLogService } from './event-log.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
@@ -82,12 +83,21 @@ export class ExternalAgentRecoveryService {
     if (!step || step.kind !== 'agent' || step.status !== 'in_progress' || !step.expectedOutput || !step.externalRecovery) {
       throw new RunStateError(`External recovery for ${stepId} has not been prepared`);
     }
+    if (!state.repositoryDirectory) {
+      throw new RunStateError('External recovery requires a frozen repository directory');
+    }
+    let repositoryDirectory: string;
+    try {
+      repositoryDirectory = realpathSync(state.repositoryDirectory);
+    } catch {
+      throw new RunStateError('External recovery requires a readable frozen repository directory');
+    }
     return {
       kind: 'external-agent-output',
       protocolVersion: 1,
       runId: state.id,
       stepId,
-      repositoryDirectory: state.repositoryDirectory ?? process.cwd(),
+      repositoryDirectory,
       reason: step.externalRecovery.reason,
       expectedOutput: { id: step.expectedOutput.id, format: 'markdown', maxBytes: MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES },
       instruction: 'Inspect the repository and return Markdown containing exactly one impresairio-patch fenced block. Do not write to the Impresairio-managed output path. Save the response to a separate file, then run submit-agent-output so Impresairio validates, applies, and records the patch.',
