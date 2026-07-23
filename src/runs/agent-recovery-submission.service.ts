@@ -6,7 +6,6 @@ import { readHostHandoffOutput } from '../agents/host-handoff.service';
 import { ArtifactService } from '../documentation/artifact.service';
 import { CompletionService } from './completion.service';
 import { EventLogService } from './event-log.service';
-import { MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES } from './external-agent-recovery.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RepositoryPatchService } from './repository-patch.service';
 import { RunLockService } from './run-lock.service';
@@ -49,14 +48,17 @@ export class AgentRecoverySubmissionService {
         throw new RunStateError('Agent output source must be outside the Impresairio run directory');
       }
       const content = readHostHandoffOutput(source);
-      if (Buffer.byteLength(content, 'utf8') > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
-        throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);
-      }
       this.patches.validate(content);
       const artifact = content.endsWith('\n') ? content : `${content}\n`;
       const artifactSha256 = createHash('sha256').update(artifact, 'utf8').digest('hex');
       this.artifacts.publishMarkdown(step.expectedOutput, artifact);
-      const appliedPatch = this.completion.complete(runId, stepId);
+      let appliedPatch: ReturnType<CompletionService['complete']>;
+      try {
+        appliedPatch = this.completion.complete(runId, stepId);
+      } catch (error) {
+        this.artifacts.discardOutput(step.expectedOutput);
+        throw error;
+      }
       if (!appliedPatch) {
         throw new RunStateError(`External recovery ${stepId} completed without applying a patch`);
       }

@@ -186,6 +186,29 @@ describe('ExternalAgentRecoveryService', () => {
     expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));
   });
 
+  it('discards the copied artifact when patch application fails', () => {
+    const { store, events, locks, recovery } = harness();
+    recovery.prepare('run-external', 'implement', 'Manual recovery.');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    const publishMarkdown = vi.fn();
+    const discardOutput = vi.fn();
+    const submission = new AgentRecoverySubmissionService(
+      store,
+      { publishMarkdown, discardOutput } as unknown as ArtifactService,
+      { complete: () => { throw new Error('Patch cannot be applied'); } } as never,
+      events,
+      locks,
+      new RepositoryPatchService(),
+    );
+
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Patch cannot be applied');
+    expect(discardOutput).toHaveBeenCalledWith(expect.objectContaining({ id: 'implementation' }));
+    expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));
+  });
+
   it('rejects a repository source, a run-directory source, malformed Markdown, and oversized output before publishing', () => {
     const { home, store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Manual recovery.');
@@ -214,7 +237,7 @@ describe('ExternalAgentRecoveryService', () => {
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('Expected exactly one impresairio-patch fenced block');
     expect(publishMarkdown).not.toHaveBeenCalled();
     writeFileSync(source, 'x'.repeat(1_048_577), 'utf8');
-    expect(() => submission.submit('run-external', 'implement', source)).toThrow('exceeds the 1048576-byte limit');
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Host output exceeds the 1048576-byte limit');
     expect(publishMarkdown).not.toHaveBeenCalled();
   });
 });
