@@ -77,6 +77,17 @@ describe('FileStateStore', () => {
     expect(failed).toMatchObject({ status: 'failed', failedAgentOutput: { diagnostic: 'failed', truncated: false } });
     if (!failed || failed.kind !== 'agent' || !failed.failedAgentOutput) throw new Error('missing failed output');
     expect(readFileSync(failed.failedAgentOutput.artifactPath, 'utf8')).toBe('The provider returned an incomplete patch.');
+    const retried = store.findState('run-agent-failure');
+    if (!retried) throw new Error('missing failed state');
+    store.save({
+      ...retried,
+      currentStepId: 'work',
+      steps: retried.steps.map((step) => step.kind === 'agent' ? { ...step, status: 'in_progress' as const } : step),
+    });
+    store.markFailed('run-agent-failure', 'work', 'x'.repeat(1_001), 'second response');
+    expect(store.findState('run-agent-failure')?.steps[0]).toMatchObject({
+      failedAgentOutput: { diagnostic: `${'x'.repeat(997)}...` },
+    });
   });
 
   it('marks an in-progress host handoff failure without agent dispatch state', () => {

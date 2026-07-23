@@ -222,9 +222,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     const failedStep = state.steps.find((step) => step.id === stepId);
     if (!failedStep || (failedStep.kind !== 'agent' && failedStep.kind !== 'host-handoff') || failedStep.status !== 'in_progress') return;
     const timestamp = new Date().toISOString();
-    const failureOutput = failedStep.kind === 'agent' && rawOutput?.trim()
-      ? this.preserveFailedAgentOutput(runId, failedStep.id, failedStep.attempts.at(-1)?.number ?? 1, rawOutput, detail, timestamp)
-      : undefined;
+    const failureOutput = this.failedOutputFor(runId, failedStep, rawOutput, detail, timestamp);
     const steps = state.steps.map((step) => step.id === stepId && (step.kind === 'agent' || step.kind === 'host-handoff') && step.status === 'in_progress'
       ? step.kind === 'agent'
         ? { ...step, status: 'failed' as const, dispatchPreparedAt: undefined, ...(failureOutput ? { failedAgentOutput: failureOutput } : {}) }
@@ -235,6 +233,17 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       type: 'step.failed', at: timestamp, stepId,
       detail: detail.length > 1000 ? `${detail.slice(0, 997)}...` : detail,
     });
+  }
+
+  private failedOutputFor(
+    runId: string,
+    step: Extract<RunState['steps'][number], { readonly kind: 'agent' | 'host-handoff' }>,
+    rawOutput: string | undefined,
+    detail: string,
+    timestamp: string,
+  ) {
+    if (step.kind !== 'agent' || !rawOutput?.trim()) return undefined;
+    return this.preserveFailedAgentOutput(runId, step.id, step.attempts.at(-1)?.number ?? 1, rawOutput, detail, timestamp);
   }
 
   private preserveFailedAgentOutput(
@@ -254,11 +263,14 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     const artifactPath = join(directory, `${stepHash}-${attempt}.md`);
     this.fileOperations.mkdirSync(directory, { recursive: true });
     this.fileOperations.writeFileSync(artifactPath, content, 'utf8');
+    const boundedDiagnostic = diagnostic.length > 1_000
+      ? `${diagnostic.slice(0, 997)}...`
+      : diagnostic;
     return {
       artifactPath,
       artifactSha256: createHash('sha256').update(content).digest('hex'),
       at,
-      diagnostic: diagnostic.length > 1_000 ? `${diagnostic.slice(0, 997)}...` : diagnostic,
+      diagnostic: boundedDiagnostic,
       truncated,
     };
   }

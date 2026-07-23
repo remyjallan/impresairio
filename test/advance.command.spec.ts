@@ -97,6 +97,32 @@ describe('advance command output recovery', () => {
     }
   });
 
+  it('records a non-Error completion failure as a durable diagnostic', async () => {
+    const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-non-error-'));
+    const markFailed = vi.fn();
+    const command = new AdvanceCommand(
+      { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex',
+        expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') },
+        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("result")'], input: 'work' },
+      }) } as never,
+      { complete: () => { throw 'completion failed'; } } as never,
+      { runDirectory: () => runDirectory, findState: () => ({ execution: { agentTimeoutSeconds: 1 }, steps: [{ id: 'implement', kind: 'agent', expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') } }] }), markFailed } as never,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await expect(command.run(['run-1'])).rejects.toBe('completion failed');
+      expect(markFailed).toHaveBeenCalledWith('run-1', 'implement', 'completion failed', 'result');
+    } finally {
+      rmSync(runDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('limits Codex writable access to the staging directory', () => {
     expect(prepareExecutionInvocation({
       command: 'codex',

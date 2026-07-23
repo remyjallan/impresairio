@@ -38,6 +38,7 @@ export class StatusCommand extends CommandRunner {
     const abandonmentDetails = run.abandonment
       ? abandonedStatusDetails(run.abandonment)
       : [];
+    const failedOutputs = failedOutputDetails(run.steps);
     this.write([
       `run: ${run.id}`,
       `workflow: ${run.workflow.id}`,
@@ -48,9 +49,7 @@ export class StatusCommand extends CommandRunner {
       `current-step: ${run.currentStepId ?? 'not-started'}`,
       `steps: ${run.steps.length}`,
       ...run.steps.map((step) => `${step.id}: ${step.status}${step.kind === 'agent' && step.conditionDecision ? ' (condition false)' : ''}${step.kind === 'agent' && step.agentOverride ? ` (fallback: ${step.agentOverride.profile})` : ''}`),
-      ...run.steps.flatMap((step) => step.kind === 'agent' && step.failedAgentOutput
-        ? [`failed-output: ${step.id}: ${step.failedAgentOutput.artifactPath}${step.failedAgentOutput.truncated ? ' (truncated)' : ''}`]
-        : []),
+      ...failedOutputs,
       ...verdictWarnings(run).map((warning) => `warning: ${warning}`),
       '',
     ].join('\n'));
@@ -64,4 +63,10 @@ function abandonedStatusDetails(abandonment: { readonly at: string; readonly rea
     `abandon-reason: ${abandonment.reason}`,
     ...(abandonment.externalReference ? [`external-reference: ${abandonment.externalReference}`] : []),
   ];
+}
+
+function failedOutputDetails(steps: NonNullable<ReturnType<FileStateStore['findState']>>['steps']): string[] {
+  return steps.flatMap((step) => step.kind === 'agent' && step.failedAgentOutput
+    ? [`failed-output: ${step.id}: ${step.failedAgentOutput.artifactPath}${step.failedAgentOutput.truncated ? ' (truncated)' : ''}`]
+    : []);
 }
