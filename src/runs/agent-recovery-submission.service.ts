@@ -55,8 +55,8 @@ export class AgentRecoverySubmissionService {
       if (state.repositoryDirectory && isWithin(source, realpathSync(state.repositoryDirectory))) {
         throw new RunStateError('Agent output source must be outside the repository');
       }
-      if (isWithin(source, dirname(step.expectedOutput.directory))) {
-        throw new RunStateError('Agent output source must be outside the Impresairio run directory');
+      if (isWithin(source, dirname(dirname(step.expectedOutput.directory)))) {
+        throw new RunStateError('Agent output source must be outside the Impresairio run directories');
       }
       if (sourceStats.size > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
         throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);

@@ -1,6 +1,6 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArtifactService } from '../src/documentation/artifact.service';
 import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
@@ -232,7 +232,11 @@ describe('ExternalAgentRecoveryService', () => {
     store.save({ ...prepared, repositoryDirectory: undefined });
     const runSource = join(home, 'runs', 'run-external', 'response.md');
     writeFileSync(runSource, '# Response\n', 'utf8');
-    expect(() => submission.submit('run-external', 'implement', runSource)).toThrow('outside the Impresairio run directory');
+    expect(() => submission.submit('run-external', 'implement', runSource)).toThrow('outside the Impresairio run directories');
+    const siblingRunSource = join(home, 'runs', 'run-other', 'response.md');
+    mkdirSync(dirname(siblingRunSource), { recursive: true });
+    writeFileSync(siblingRunSource, '# Response\n', 'utf8');
+    expect(() => submission.submit('run-external', 'implement', siblingRunSource)).toThrow('outside the Impresairio run directories');
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
