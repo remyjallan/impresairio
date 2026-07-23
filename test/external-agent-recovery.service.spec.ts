@@ -118,9 +118,11 @@ describe('ExternalAgentRecoveryService', () => {
   });
 
   it('submits external Markdown through the runner-owned completion path', async () => {
-    const { home, store, events, locks, recovery } = harness();
+    const { store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Taking over the failed patch.');
-    const source = join(home, 'host-authored-patch.md');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
     writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
     const publishMarkdown = vi.fn();
     const complete = vi.fn();
@@ -130,18 +132,21 @@ describe('ExternalAgentRecoveryService', () => {
       { complete } as never,
       events,
       locks,
+      { validate: vi.fn() } as never,
     );
 
     await new SubmitAgentOutputCommand(submission).run(['run-external', 'implement', source]);
 
     expect(publishMarkdown).toHaveBeenCalledWith(expect.objectContaining({ id: 'implementation' }), expect.stringContaining('impresairio-patch'));
     expect(complete).toHaveBeenCalledWith('run-external', 'implement');
-    expect(events.read('run-external')).toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted', stepId: 'implement' }));
+    expect(events.read('run-external')).toContainEqual(expect.objectContaining({
+      type: 'agent.external_recovery.submitted', stepId: 'implement', artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
   });
 
   it('rejects unprepared, inactive, and managed-file submissions', () => {
     const { home, store, events, locks, recovery } = harness();
-    const submission = new AgentRecoverySubmissionService(store, {} as never, {} as never, events, locks);
+    const submission = new AgentRecoverySubmissionService(store, {} as never, {} as never, events, locks, {} as never);
     const source = join(home, 'response.md');
     writeFileSync(source, '# Response\n', 'utf8');
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('not awaiting external agent output');
@@ -155,5 +160,39 @@ describe('ExternalAgentRecoveryService', () => {
     if (!step || step.kind !== 'agent' || !step.expectedOutput) throw new Error('missing output');
     const managedPath = step.expectedOutput.path;
     expect(() => submission.submit('run-external', 'implement', managedPath)).toThrow('must not be the Impresairio-managed destination');
+  });
+
+  it('rejects a repository source, a run-directory source, malformed Markdown, and oversized output before publishing', () => {
+    const { home, store, events, locks, recovery } = harness();
+    recovery.prepare('run-external', 'implement', 'Manual recovery.');
+    const publishMarkdown = vi.fn();
+    const validate = vi.fn();
+    const submission = new AgentRecoverySubmissionService(
+      store,
+      { publishMarkdown } as unknown as ArtifactService,
+      { complete: vi.fn() } as never,
+      events,
+      locks,
+      { validate } as never,
+    );
+    const repositorySource = join(home, 'repository-response.md');
+    writeFileSync(repositorySource, '# Response\n', 'utf8');
+    expect(() => submission.submit('run-external', 'implement', repositorySource)).toThrow('outside the repository');
+    const prepared = store.findState('run-external');
+    if (!prepared) throw new Error('missing prepared state');
+    store.save({ ...prepared, repositoryDirectory: undefined });
+    const runSource = join(home, 'runs', 'run-external', 'response.md');
+    writeFileSync(runSource, '# Response\n', 'utf8');
+    expect(() => submission.submit('run-external', 'implement', runSource)).toThrow('outside the Impresairio run directory');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
+    writeFileSync(source, '# Missing patch\n', 'utf8');
+    validate.mockImplementation(() => { throw new Error('Expected exactly one impresairio-patch fenced block'); });
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Expected exactly one impresairio-patch fenced block');
+    expect(publishMarkdown).not.toHaveBeenCalled();
+    writeFileSync(source, 'x'.repeat(1_048_577), 'utf8');
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('exceeds the 1048576-byte limit');
+    expect(publishMarkdown).not.toHaveBeenCalled();
   });
 });

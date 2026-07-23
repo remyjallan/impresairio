@@ -4,6 +4,8 @@ import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
 import type { NextStepResult } from '../workflows/workflow-runner.service';
 
+export const MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES = 1_048_576;
+
 export interface ExternalAgentRecoveryHandoff {
   readonly kind: 'external-agent-output';
   readonly protocolVersion: 1;
@@ -87,7 +89,7 @@ export class ExternalAgentRecoveryService {
       stepId,
       repositoryDirectory: state.repositoryDirectory ?? process.cwd(),
       reason: step.externalRecovery.reason,
-      expectedOutput: { id: step.expectedOutput.id, format: 'markdown', maxBytes: 1_048_576 },
+      expectedOutput: { id: step.expectedOutput.id, format: 'markdown', maxBytes: MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES },
       instruction: 'Inspect the repository and return Markdown containing exactly one impresairio-patch fenced block. Do not write to the Impresairio-managed output path. Save the response to a separate file, then run submit-agent-output so Impresairio validates, applies, and records the patch.',
     };
   }
