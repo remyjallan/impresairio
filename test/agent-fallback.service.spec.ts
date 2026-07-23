@@ -67,6 +67,16 @@ afterEach(() => {
 });
 
 describe('AgentFallbackService', () => {
+  it('does not select a fallback after a run is abandoned', () => {
+    const { store, service } = setup();
+    const state = store.findState('run-fallback');
+    if (!state) throw new Error('missing run state');
+    store.save({ ...state, abandonment: { at: '2026-07-21T12:01:00.000Z', reason: 'Delivered manually.' } });
+
+    expect(() => service.select('run-fallback', 'implement', 'codex', 'Provider failed.'))
+      .toThrow('was abandoned');
+  });
+
   it('reopens a failed step with a frozen configured fallback and durable audit history', () => {
     const { store, events, service } = setup();
 

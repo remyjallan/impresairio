@@ -3,6 +3,7 @@ import { CompleteCommand, COMPLETE_WRITER } from './commands/complete.command';
 import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
 import { SubmitHostOutputCommand } from './commands/submit-host-output.command';
+import { AbandonCommand } from './commands/abandon.command';
 import { ImpresairioRootCommand } from './commands/root.command';
 import { RequestChangesCommand } from './commands/request-changes.command';
 import { RetryCommand } from './commands/retry.command';
@@ -57,6 +58,7 @@ import { FallbackCommand } from './commands/fallback.command';
 import { ReportCommand, REPORT_WRITER } from './commands/report.command';
 import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
 import { HostHandoffSubmissionService } from './runs/host-handoff-submission.service';
+import { RunAbandonService } from './runs/run-abandon.service';
 
 @Module({
   providers: [
@@ -76,12 +78,14 @@ import { HostHandoffSubmissionService } from './runs/host-handoff-submission.ser
     ReportCommand,
     NextCommand,
     SubmitHostOutputCommand,
+    AbandonCommand,
     AgentProfileService,
     AgentDispatchService,
     HostHandoffService,
     HostHandoffSubmissionService,
     AgentFallbackService,
     RunReportService,
+    RunAbandonService,
     CapabilityResolverService,
     AgentHealthService,
     ProviderRegistryService,

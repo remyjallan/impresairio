@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import { RunLockService } from '../runs/run-lock.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
+import { assertRunActive } from '../runs/run-state.schema';
 
 @Injectable()
 export class GateService {
@@ -47,6 +48,7 @@ export class GateService {
       if (!state) {
         throw new RunStateError(`Run not found: ${runId}`);
       }
+      assertRunActive(state);
       operation(state);
     } finally {
       release();

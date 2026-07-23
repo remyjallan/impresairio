@@ -35,9 +35,13 @@ export class StatusCommand extends CommandRunner {
       throw new RunNotFoundError(runId);
     }
 
+    const abandonmentDetails = run.abandonment
+      ? abandonedStatusDetails(run.abandonment)
+      : [];
     this.write([
       `run: ${run.id}`,
       `workflow: ${run.workflow.id}`,
+      ...abandonmentDetails,
       ...(run.parameters && Object.keys(run.parameters).length > 0
         ? [`parameters: ${JSON.stringify(run.parameters)}`]
         : []),
@@ -48,4 +52,13 @@ export class StatusCommand extends CommandRunner {
       '',
     ].join('\n'));
   }
+}
+
+function abandonedStatusDetails(abandonment: { readonly at: string; readonly reason: string; readonly externalReference?: string }): string[] {
+  return [
+    'run-status: abandoned',
+    `abandoned-at: ${abandonment.at}`,
+    `abandon-reason: ${abandonment.reason}`,
+    ...(abandonment.externalReference ? [`external-reference: ${abandonment.externalReference}`] : []),
+  ];
 }
