@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AbandonCommand } from '../src/commands/abandon.command';
 import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
 import { EventLogService } from '../src/runs/event-log.service';
@@ -9,6 +9,7 @@ import { FileStateStore } from '../src/runs/file-state.store';
 import { RunAbandonService } from '../src/runs/run-abandon.service';
 import { RunLockService } from '../src/runs/run-lock.service';
 import { assertRunActive, createRunState } from '../src/runs/run-state.schema';
+import { GateService } from '../src/workflows/gate.service';
 
 const directories: string[] = [];
 
@@ -63,6 +64,20 @@ describe('RunAbandonService', () => {
     expect(store.findState('run-abandon')?.abandonment).toMatchObject({ reason: 'Stop here.' });
     expect(store.findState('run-abandon')?.abandonment).not.toHaveProperty('externalReference');
     expect(events.read('run-abandon').at(-1)).not.toHaveProperty('externalReference');
+  });
+
+  it('allows a pending run to be abandoned and blocks retry afterward', () => {
+    const { store, locks, service } = harness();
+    const failed = store.findState('run-abandon');
+    if (!failed) throw new Error('missing run state');
+    store.save({ ...failed, steps: failed.steps.map((step) => step.kind === 'agent' ? { ...step, status: 'pending' as const } : step) });
+
+    service.abandon('run-abandon', 'No provider work should run for this request.');
+
+    const staleInvalidation = { retry: vi.fn() };
+    const gates = new GateService(store, locks, staleInvalidation as never);
+    expect(() => gates.retry('run-abandon', 'implement')).toThrow('was abandoned');
+    expect(staleInvalidation.retry).not.toHaveBeenCalled();
   });
 
   it('exposes a required CLI reason', async () => {

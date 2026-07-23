@@ -190,6 +190,26 @@ describe('start and status commands', () => {
     expect(output.join('')).toContain('external-reference: abc123');
   });
 
+  it('renders an abandoned run without an external reference', async () => {
+    const { store } = createRunService();
+    const now = '2026-07-23T12:00:00.000Z';
+    const run = createRunState({
+      id: 'run-without-reference', workflowId: 'quick-fix', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: '/tmp', defaultFormat: 'markdown' }, featurePath: 'Features/{{ feature.id }}',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'IMP-2', slug: 'test' }, run: { id: 'run-without-reference' } },
+      },
+      steps: [{ id: 'implement', kind: 'agent', actor: 'implementer', action: 'implementation', output: { id: 'report', filename: 'report.md' } }], now,
+    });
+    store.create({ ...run, abandonment: { at: now, reason: 'Stopped before execution.' } });
+    const output: string[] = [];
+
+    await new StatusCommand(store, (line) => output.push(line)).run(['run-without-reference']);
+
+    expect(output.join('')).toContain('abandon-reason: Stopped before execution.');
+    expect(output.join('')).not.toContain('external-reference:');
+  });
+
   it('freezes a declared verdictPolicy into the run state', () => {
     const { home, store, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));

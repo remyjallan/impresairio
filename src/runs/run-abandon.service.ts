@@ -17,7 +17,7 @@ export class RunAbandonService {
       const state = this.stateStore.findState(runId);
       if (!state) throw new RunStateError(`Run not found: ${runId}`);
       if (state.abandonment) throw new RunStateError(`Run ${runId} is already abandoned`);
-      if (state.steps.every((step) => step.status === 'complete' || step.status === 'skipped')) {
+      if (isCompletedRun(state.steps)) {
         throw new RunStateError(`Run ${runId} is already complete and cannot be abandoned`);
       }
       if (state.steps.some((step) => step.status === 'in_progress')) {
@@ -45,4 +45,8 @@ export class RunAbandonService {
       release();
     }
   }
+}
+
+function isCompletedRun(steps: readonly { readonly status: string }[]): boolean {
+  return steps.length > 0 && steps.every((step) => step.status === 'complete' || step.status === 'skipped');
 }
