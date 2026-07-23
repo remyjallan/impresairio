@@ -56,7 +56,7 @@ export class AgentRecoverySubmissionService {
       if (isWithin(source, realpathSync(state.repositoryDirectory))) {
         throw new RunStateError('Agent output source must be outside the repository');
       }
-      if (isWithin(source, dirname(dirname(step.expectedOutput.directory)))) {
+      if (isWithin(source, dirname(this.stateStore.runDirectory(runId)))) {
         throw new RunStateError('Agent output source must be outside the Impresairio run directories');
       }
       const content = readExternalRecoveryOutput(source);
@@ -91,18 +91,10 @@ function isWithin(path: string, directory: string): boolean {
 }
 
 function readExternalRecoveryOutput(path: string): string {
-  let descriptor: number;
-  try {
-    descriptor = openSync(path, 'r');
-  } catch {
-    throw new RunStateError(`Agent output source is not a readable file: ${path}`);
-  }
+  const descriptor = openSync(path, 'r');
   try {
     const stats = fstatSync(descriptor);
     if (!stats.isFile()) throw new RunStateError('Agent output source must be a file');
-    if (stats.size > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
-      throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);
-    }
     const buffer = Buffer.alloc(MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES + 1);
     const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0);
     if (bytesRead > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
