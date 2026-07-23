@@ -66,7 +66,9 @@ function abandonedStatusDetails(abandonment: { readonly at: string; readonly rea
 }
 
 function failedOutputDetails(steps: NonNullable<ReturnType<FileStateStore['findState']>>['steps']): string[] {
-  return steps.flatMap((step) => step.kind === 'agent' && step.failedAgentOutput
-    ? [`failed-output: ${step.id}: ${step.failedAgentOutput.artifactPath}${step.failedAgentOutput.truncated ? ' (truncated)' : ''}`]
-    : []);
+  return steps.flatMap((step) => {
+    if (step.kind !== 'agent' || !step.failedAgentOutput) return [];
+    const suffix = step.failedAgentOutput.truncated ? ' (truncated)' : '';
+    return [`failed-output: ${step.id}: ${step.failedAgentOutput.artifactPath}${suffix}`];
+  });
 }

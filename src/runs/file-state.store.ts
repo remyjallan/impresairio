@@ -48,6 +48,15 @@ const nativeFileOperations: StateFileOperations = {
 
 export const FILE_STATE_OPERATIONS = Symbol('FILE_STATE_OPERATIONS');
 
+/** Returns the largest valid UTF-8 prefix whose byte length does not exceed `limit`. */
+function utf8Boundary(bytes: Buffer, limit: number): number {
+  let boundary = Math.min(limit, bytes.length);
+  while (boundary > 0 && (bytes[boundary] ?? 0) >> 6 === 0b10) {
+    boundary -= 1;
+  }
+  return boundary;
+}
+
 export class RunStateError extends Error {
   constructor(message: string) {
     super(message);
@@ -257,7 +266,9 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     const maximumBytes = 256 * 1024;
     const bytes = Buffer.from(rawOutput, 'utf8');
     const truncated = bytes.length > maximumBytes;
-    const content = (truncated ? bytes.subarray(0, maximumBytes).toString('utf8') : rawOutput).trimEnd();
+    const content = (truncated
+      ? bytes.subarray(0, utf8Boundary(bytes, maximumBytes)).toString('utf8')
+      : rawOutput).trimEnd();
     const stepHash = createHash('sha256').update(stepId).digest('hex');
     const directory = join(this.runDirectory(runId), 'failed-agent-output');
     const artifactPath = join(directory, `${stepHash}-${attempt}.md`);
