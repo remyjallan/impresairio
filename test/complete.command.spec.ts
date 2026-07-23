@@ -154,7 +154,13 @@ describe('CompleteCommand', () => {
       }),
     };
     const service = new CompletionService(
-      { ...store, applyVerdictRetry: (...call: unknown[]) => { retries.push(call); } },
+      {
+        ...store,
+        preserveRetryFeedback: () => ({
+          sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
+        }),
+        applyVerdictRetry: (...call: unknown[]) => { retries.push(call); },
+      },
       artifactService,
       undefined,
       undefined,
@@ -167,7 +173,9 @@ describe('CompleteCommand', () => {
 
     service.complete('run-42', 'verify');
 
-    expect(retries).toEqual([['run-42', 'verify', 'implement']]);
+    expect(retries).toEqual([['run-42', 'verify', 'implement', {
+      sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
+    }]]);
     expect(store.events).toContainEqual(expect.objectContaining({
       type: 'verdict.changes_requested', stepId: 'verify', retryFrom: 'implement',
     }));
@@ -199,6 +207,10 @@ describe('CompleteCommand', () => {
           },
         ],
       }),
+      preserveRetryFeedback: () => ({
+        sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
+      }),
+      applyVerdictRetry: () => undefined,
     };
     const discarded: string[] = [];
     const service = new CompletionService(
@@ -221,6 +233,30 @@ describe('CompleteCommand', () => {
     service.complete('run-42', 'verify');
 
     expect(discarded).toEqual(['/run/artifacts/verification.md', '/run/artifacts/implementation.md']);
+  });
+
+  it('rejects a retry when the run store cannot preserve durable feedback', () => {
+    const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
+    const discarded: string[] = [];
+    const service = new CompletionService(
+      { ...store, applyVerdictRetry: () => undefined },
+      {
+        completeExpectedOutput: () => ({
+          id: 'verification', path: '/run/artifacts/review.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+        }),
+        discardExpectedOutput: (step) => discarded.push(step.id),
+      },
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'policy', reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
+        transition: { kind: 'retry-from', targetStepId: 'implement' },
+      }) },
+    );
+
+    expect(() => service.complete('run-42', 'verify')).toThrow('Verdict retries require durable retry-feedback support');
+    expect(store.completions).toEqual([]);
+    expect(discarded).toEqual([]);
   });
 
   it('preserves retry feedback before discarding reusable internal artifacts', () => {

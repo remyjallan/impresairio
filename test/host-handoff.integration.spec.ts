@@ -219,7 +219,9 @@ describe('host handoff', () => {
             }
           : step),
     });
-    expect(() => store.applyVerdictRetry('run-interactive-host', 'review', 'missing')).toThrow('not an agent or host-handoff step');
+    expect(() => store.applyVerdictRetry('run-interactive-host', 'review', 'missing', {
+      sourceStepId: 'review', artifactPath: reviewPath, artifactSha256: reviewSha256,
+    })).toThrow('not an agent or host-handoff step');
     const retryFeedback = store.preserveRetryFeedback('run-interactive-host', 'review', { path: reviewPath, sha256: reviewSha256 });
     store.applyVerdictRetry('run-interactive-host', 'review', 'brainstorm', retryFeedback);
     const retried = store.findState('run-interactive-host')?.steps;

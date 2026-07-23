@@ -266,17 +266,12 @@ export class FileStateStore implements StateStore, CompletionRunStore {
   }
 
   /** Reopens the retry target after a CHANGES_REQUESTED verdict and stales everything the target feeds, including the verdict step itself. */
-  applyVerdictRetry(runId: string, policyStepId: string, targetStepId: string, retryFeedback?: RetryFeedback): void {
+  applyVerdictRetry(runId: string, policyStepId: string, targetStepId: string, retryFeedback: RetryFeedback): void {
     const state = this.requiredState(runId);
     const policyStep = state.steps.find((step) => step.id === policyStepId);
     if (!policyStep || policyStep.kind !== 'agent' || !policyStep.output) {
       throw new RunStateError(`Step ${policyStepId} has no completed verdict artifact`);
     }
-    const verdictArtifact = retryFeedback ?? {
-      sourceStepId: policyStepId,
-      artifactPath: policyStep.output.path,
-      artifactSha256: policyStep.output.sha256,
-    };
     const target = state.steps.find((step) => step.id === targetStepId);
     if (!target || (target.kind !== 'agent' && target.kind !== 'host-handoff')) {
       throw new RunStateError(`Verdict retry target is not an agent or host-handoff step: ${targetStepId}`);
@@ -312,9 +307,9 @@ export class FileStateStore implements StateStore, CompletionRunStore {
             ? { dispatchPreparedAt: undefined, result: undefined, conditionDecision: undefined }
             : { handoffPreparedAt: undefined }),
           retryContext: {
-            sourceStepId: verdictArtifact.sourceStepId,
-            artifactPath: verdictArtifact.artifactPath,
-            artifactSha256: verdictArtifact.artifactSha256,
+            sourceStepId: retryFeedback.sourceStepId,
+            artifactPath: retryFeedback.artifactPath,
+            artifactSha256: retryFeedback.artifactSha256,
             at: timestamp,
           },
         };

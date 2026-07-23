@@ -109,7 +109,7 @@ export interface CompletionRunStore {
   appendEvent(runId: string, event: CompletionEvent): void;
   markFailed?(runId: string, stepId: string, detail: string): void;
   preserveRetryFeedback?(runId: string, policyStepId: string, output: CompletedDocumentationOutput): RetryFeedback;
-  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string, retryFeedback?: RetryFeedback): void;
+  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string, retryFeedback: RetryFeedback): void;
 }
 
 export interface OutputVerifier {
@@ -207,7 +207,10 @@ export class CompletionService {
         }
         policyResult = this.policy.evaluate(runId, stepId, output);
         if (policyResult.source === 'policy' && policyResult.transition?.kind === 'retry-from') {
-          retryFeedback = this.store.preserveRetryFeedback?.(runId, stepId, output);
+          if (!this.store.preserveRetryFeedback || !this.store.applyVerdictRetry) {
+            throw new CompletionError('Verdict retries require durable retry-feedback support from the run store');
+          }
+          retryFeedback = this.store.preserveRetryFeedback(runId, stepId, output);
         }
         this.store.recordCompletion(runId, {
           stepId,
@@ -262,11 +265,10 @@ export class CompletionService {
               this.outputVerifier.discardExpectedOutput?.(retryTarget);
             }
           }
-          if (retryFeedback) {
-            this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId, retryFeedback);
-          } else {
-            this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId);
+          if (!retryFeedback || !this.store.applyVerdictRetry) {
+            throw new CompletionError('Verdict retries require preserved retry feedback');
           }
+          this.store.applyVerdictRetry(runId, stepId, transition.targetStepId, retryFeedback);
           this.store.appendEvent(runId, {
             type: 'verdict.changes_requested',
             stepId,
