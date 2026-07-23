@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -209,7 +209,10 @@ describe('FileStateStore', () => {
 
     store.fileOperations.mkdirSync(join(home, 'runs', 'run-vr', 'artifacts'), { recursive: true });
     writeFileSync(reviewerPath, content, 'utf8');
-    const retryFeedback = store.preserveRetryFeedback('run-vr', 'verify', { path: reviewerPath, sha256: sha });
+    let retryFeedback = store.preserveRetryFeedback('run-vr', 'verify', { path: reviewerPath, sha256: sha });
+    store.discardRetryFeedback('run-vr', retryFeedback);
+    expect(existsSync(retryFeedback.artifactPath)).toBe(false);
+    retryFeedback = store.preserveRetryFeedback('run-vr', 'verify', { path: reviewerPath, sha256: sha });
     store.applyVerdictRetry('run-vr', 'verify', 'implement', retryFeedback);
 
     const state = store.findState('run-vr');
@@ -222,6 +225,12 @@ describe('FileStateStore', () => {
     expect(verify?.status).toBe('pending');
     expect(verify?.kind === 'agent' ? verify.verdictRetries : undefined).toBe(1);
     expect(state?.currentStepId).toBeUndefined();
+    expect(() => store.discardRetryFeedback('run-vr', {
+      ...retryFeedback, sourceStepId: 'missing', artifactPath: join(home, 'outside.md'),
+    })).toThrow('not an agent verdict step');
+    expect(() => store.discardRetryFeedback('run-vr', {
+      ...retryFeedback, artifactPath: join(home, 'outside.md'),
+    })).toThrow('outside the run retry-feedback directory');
   });
 
   it('rejects a missing verdict step or a changed verdict artifact when preserving retry feedback', () => {
@@ -238,6 +247,9 @@ describe('FileStateStore', () => {
 
     expect(() => store.preserveRetryFeedback('run-retry-integrity', 'missing', { path: reviewerPath, sha256: sha })).toThrow('not an agent verdict step');
     expect(() => store.preserveRetryFeedback('run-retry-integrity', 'review', { path: reviewerPath, sha256: 'b'.repeat(64) })).toThrow('changed before retry feedback was preserved');
+    expect(() => store.applyVerdictRetry('run-retry-integrity', 'review', 'review', {
+      sourceStepId: 'review', artifactPath: reviewerPath, artifactSha256: sha,
+    })).toThrow('has no completed verdict artifact');
   });
 
   it('rejects retry feedback that changes while its durable copy is being saved', () => {

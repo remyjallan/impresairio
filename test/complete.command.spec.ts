@@ -159,6 +159,7 @@ describe('CompleteCommand', () => {
         preserveRetryFeedback: () => ({
           sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
         }),
+        discardRetryFeedback: () => undefined,
         applyVerdictRetry: (...call: unknown[]) => { retries.push(call); },
       },
       artifactService,
@@ -210,6 +211,7 @@ describe('CompleteCommand', () => {
       preserveRetryFeedback: () => ({
         sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
       }),
+      discardRetryFeedback: () => undefined,
       applyVerdictRetry: () => undefined,
     };
     const discarded: string[] = [];
@@ -233,6 +235,38 @@ describe('CompleteCommand', () => {
     service.complete('run-42', 'verify');
 
     expect(discarded).toEqual(['/run/artifacts/verification.md', '/run/artifacts/implementation.md']);
+  });
+
+  it('cleans retry feedback if recording the verdict completion fails', () => {
+    const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
+    const discardedFeedback: unknown[] = [];
+    const service = new CompletionService(
+      {
+        ...store,
+        recordCompletion: () => { throw new Error('state write failed'); },
+        preserveRetryFeedback: () => ({
+          sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
+        }),
+        discardRetryFeedback: (...call: unknown[]) => { discardedFeedback.push(call); },
+        applyVerdictRetry: () => undefined,
+      },
+      {
+        completeExpectedOutput: () => ({
+          id: 'verification', path: '/run/artifacts/review.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+        }),
+      },
+      undefined,
+      undefined,
+      { evaluate: () => ({
+        skipStepIds: [], source: 'policy', reviewOutcome: { verdict: 'CHANGES_REQUESTED', exhausted: false },
+        transition: { kind: 'retry-from', targetStepId: 'implement' },
+      }) },
+    );
+
+    expect(() => service.complete('run-42', 'verify')).toThrow('state write failed');
+    expect(discardedFeedback).toEqual([['run-42', {
+      sourceStepId: 'verify', artifactPath: '/run/retry-feedback/verify.md', artifactSha256: 'a'.repeat(64),
+    }]]);
   });
 
   it('rejects a retry when the run store cannot preserve durable feedback', () => {
@@ -276,6 +310,7 @@ describe('CompleteCommand', () => {
         order.push('preserve');
         return { sourceStepId: 'verify', artifactPath: '/run/retry-feedback/review-1.md', artifactSha256: 'a'.repeat(64) };
       },
+      discardRetryFeedback: () => undefined,
       applyVerdictRetry: (_runId: string, _stepId: string, _targetId: string, feedback: unknown) => {
         order.push('reopen');
         expect(feedback).toMatchObject({ artifactPath: '/run/retry-feedback/review-1.md' });

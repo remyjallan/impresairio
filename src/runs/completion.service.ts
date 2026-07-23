@@ -109,6 +109,7 @@ export interface CompletionRunStore {
   appendEvent(runId: string, event: CompletionEvent): void;
   markFailed?(runId: string, stepId: string, detail: string): void;
   preserveRetryFeedback?(runId: string, policyStepId: string, output: CompletedDocumentationOutput): RetryFeedback;
+  discardRetryFeedback?(runId: string, retryFeedback: RetryFeedback): void;
   applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string, retryFeedback: RetryFeedback): void;
 }
 
@@ -186,7 +187,11 @@ export class CompletionService {
       let policyResult: CompletionPolicyResult;
       let result: CompletionRecord['result'];
       let patchApplication: PatchApplication | undefined;
-      let retryFeedback: RetryFeedback | undefined;
+      let retryOperation: {
+        readonly feedback: RetryFeedback;
+        readonly discard: (runId: string, feedback: RetryFeedback) => void;
+        readonly apply: (runId: string, policyStepId: string, targetStepId: string, feedback: RetryFeedback) => void;
+      } | undefined;
       try {
         output = this.outputVerifier.completeExpectedOutput(run, step);
         const content = step.declaredResult || step.patch
@@ -207,10 +212,13 @@ export class CompletionService {
         }
         policyResult = this.policy.evaluate(runId, stepId, output);
         if (policyResult.source === 'policy' && policyResult.transition?.kind === 'retry-from') {
-          if (!this.store.preserveRetryFeedback || !this.store.applyVerdictRetry) {
+          const preserve = this.store.preserveRetryFeedback?.bind(this.store);
+          const discard = this.store.discardRetryFeedback?.bind(this.store);
+          const apply = this.store.applyVerdictRetry?.bind(this.store);
+          if (!preserve || !discard || !apply) {
             throw new CompletionError('Verdict retries require durable retry-feedback support from the run store');
           }
-          retryFeedback = this.store.preserveRetryFeedback(runId, stepId, output);
+          retryOperation = { feedback: preserve(runId, stepId, output), discard, apply };
         }
         this.store.recordCompletion(runId, {
           stepId,
@@ -224,6 +232,13 @@ export class CompletionService {
           } : {}),
         });
       } catch (error) {
+        if (retryOperation) {
+          try {
+            retryOperation.discard(runId, retryOperation.feedback);
+          } catch {
+            // Preserve the original completion failure; cleanup is best effort.
+          }
+        }
         if (!(error instanceof StructuredResultError)) {
           this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
         }
@@ -265,10 +280,7 @@ export class CompletionService {
               this.outputVerifier.discardExpectedOutput?.(retryTarget);
             }
           }
-          if (!retryFeedback || !this.store.applyVerdictRetry) {
-            throw new CompletionError('Verdict retries require preserved retry feedback');
-          }
-          this.store.applyVerdictRetry(runId, stepId, transition.targetStepId, retryFeedback);
+          retryOperation!.apply(runId, stepId, transition.targetStepId, retryOperation!.feedback);
           this.store.appendEvent(runId, {
             type: 'verdict.changes_requested',
             stepId,

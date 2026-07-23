@@ -265,6 +265,22 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     return { sourceStepId: policyStepId, artifactPath, artifactSha256: actualSha256 };
   }
 
+  /** Removes an uncommitted retry-feedback copy after completion state could not be saved. */
+  discardRetryFeedback(runId: string, retryFeedback: RetryFeedback): void {
+    const state = this.requiredState(runId);
+    const policyStep = state.steps.find((step) => step.id === retryFeedback.sourceStepId);
+    if (!policyStep || policyStep.kind !== 'agent') {
+      throw new RunStateError(`Step ${retryFeedback.sourceStepId} is not an agent verdict step`);
+    }
+    const retryNumber = (policyStep.verdictRetries ?? 0) + 1;
+    const stepHash = createHash('sha256').update(retryFeedback.sourceStepId).digest('hex');
+    const expectedPath = join(this.runDirectory(runId), 'retry-feedback', `${stepHash}-${retryNumber}.md`);
+    if (retryFeedback.artifactPath !== expectedPath) {
+      throw new RunStateError(`Retry feedback for step ${retryFeedback.sourceStepId} is outside the run retry-feedback directory`);
+    }
+    this.fileOperations.rmSync(expectedPath, { force: true });
+  }
+
   /** Reopens the retry target after a CHANGES_REQUESTED verdict and stales everything the target feeds, including the verdict step itself. */
   applyVerdictRetry(runId: string, policyStepId: string, targetStepId: string, retryFeedback: RetryFeedback): void {
     const state = this.requiredState(runId);
