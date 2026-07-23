@@ -300,7 +300,10 @@ describe('host handoff', () => {
       now: '2026-07-23T12:00:00.000Z',
     }));
     expect(handoffs.prepare('run-host-fallback-no-request', runner.next('run-host-fallback-no-request'))?.instruction)
-      .toEqual({ source: 'capability:feature-design', content: 'Ask a clarifying question.' });
+      .toEqual({
+        source: 'capability:feature-design',
+        content: 'Ask a clarifying question.\n\nNo work request was recorded for this run. Ask the operator for the goal and required constraints before continuing.',
+      });
 
     store.create(createRunState({
       id: 'run-host-skill-no-request', workflowId: 'interactive-host', workflowSha256: 'c'.repeat(64),

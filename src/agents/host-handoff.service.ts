@@ -204,7 +204,9 @@ function interactiveInstruction(
   }
   return {
     source: `capability:${method.capability}`,
-    content: request ? `${method.content}\n\nWork request:\n${request}` : method.content,
+    content: request
+      ? `${method.content}\n\nWork request:\n${request}`
+      : `${method.content}\n\nNo work request was recorded for this run. Ask the operator for the goal and required constraints before continuing.`,
   };
 }
 
