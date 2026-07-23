@@ -159,6 +159,7 @@ export class CompletionService {
 
   complete(runId: string, stepId: string): AppliedPatch | undefined {
     const release = this.lock.acquire(runId, 'complete');
+    let completedPatch: AppliedPatch | undefined;
     try {
       const run = this.store.find(runId);
       if (!run) {
@@ -314,10 +315,11 @@ export class CompletionService {
           });
         }
       }
-      return patchApplication?.patch;
+      completedPatch = patchApplication?.patch;
     } finally {
       release();
     }
+    return completedPatch;
   }
 }
 

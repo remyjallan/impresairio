@@ -57,7 +57,7 @@ describe('ExternalAgentRecoveryService', () => {
 
     expect(handoff).toMatchObject({
       kind: 'external-agent-output', runId: 'run-external', stepId: 'implement', repositoryDirectory: home,
-      expectedOutput: { id: 'implementation', maxBytes: 1_048_576 },
+      expectedOutput: { id: 'implementation', maxBytes: 1_000_000 },
     });
     expect(handoff.instruction).toContain('submit-agent-output');
     expect(recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })).toMatchObject({
@@ -236,8 +236,8 @@ describe('ExternalAgentRecoveryService', () => {
     writeFileSync(source, '# Missing patch\n', 'utf8');
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('Expected exactly one impresairio-patch fenced block');
     expect(publishMarkdown).not.toHaveBeenCalled();
-    writeFileSync(source, 'x'.repeat(1_048_577), 'utf8');
-    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Host output exceeds the 1048576-byte limit');
+    writeFileSync(source, 'x'.repeat(1_000_001), 'utf8');
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Agent output exceeds the 1000000-byte limit');
     expect(publishMarkdown).not.toHaveBeenCalled();
   });
 });

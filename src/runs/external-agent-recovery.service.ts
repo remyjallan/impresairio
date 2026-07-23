@@ -4,7 +4,7 @@ import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
 import type { NextStepResult } from '../workflows/workflow-runner.service';
 
-export const MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES = 1_048_576;
+export const MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES = 1_000_000;
 
 export interface ExternalAgentRecoveryHandoff {
   readonly kind: 'external-agent-output';
