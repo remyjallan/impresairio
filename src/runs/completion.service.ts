@@ -242,9 +242,7 @@ export class CompletionService {
             // Preserve the original completion failure; cleanup is best effort.
           }
         }
-        if (!(error instanceof StructuredResultError)) {
-          this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
-        }
+        this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
         throw error;
       }
       this.store.appendEvent(runId, {

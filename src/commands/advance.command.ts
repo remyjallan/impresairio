@@ -12,7 +12,6 @@ import { WorkflowRunnerService } from '../workflows/workflow-runner.service';
 import { FileStateStore } from '../runs/file-state.store';
 import { ArtifactService } from '../documentation/artifact.service';
 import { RunLockService } from '../runs/run-lock.service';
-import { StructuredResultError } from '../workflows/structured-result';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../agents/opencode.provider';
 
 const MAX_AGENT_OUTPUT_BYTES = 16 * 1024 * 1024;
@@ -165,7 +164,7 @@ export class AdvanceCommand extends CommandRunner {
         activeHandoff = undefined;
       }
     } catch (error) {
-      if (activeStepId && !(error instanceof StructuredResultError)) {
+      if (activeStepId) {
         this.stateStore.markFailed(
           runId,
           activeStepId,
