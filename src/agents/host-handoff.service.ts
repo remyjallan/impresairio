@@ -198,7 +198,7 @@ function interactiveInstruction(
       source: `capability:${method.capability}`,
       content: request
         ? `Work request:\n${request}`
-        : 'No work request was recorded for this run. Ask the operator for the goal and required constraints before continuing.',
+        : `No work request was recorded for this run. Use the ${method.capability} capability, review the listed input artifacts for workflow context, then ask the operator for the goal and required constraints before continuing.`,
       skill: method.skill,
     };
   }
@@ -206,7 +206,7 @@ function interactiveInstruction(
     source: `capability:${method.capability}`,
     content: request
       ? `${method.content}\n\nWork request:\n${request}`
-      : `${method.content}\n\nNo work request was recorded for this run. Ask the operator for the goal and required constraints before continuing.`,
+      : `${method.content}\n\nNo work request was recorded for this run. Use the ${method.capability} capability, review the listed input artifacts for workflow context, then ask the operator for the goal and required constraints before continuing.`,
   };
 }
 
