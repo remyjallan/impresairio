@@ -10,10 +10,13 @@ import {
   prepareExecutionInvocation,
 } from '../src/commands/advance.command';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
+import { FileStateStore } from '../src/runs/file-state.store';
+import { createRunState } from '../src/runs/run-state.schema';
 
 describe('advance command output recovery', () => {
   it('stops at a host handoff without dispatching an agent process', async () => {
@@ -72,17 +75,38 @@ describe('advance command output recovery', () => {
   });
 
   it('passes failed provider output to durable run-state recovery', async () => {
-    const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-failure-'));
-    const markFailed = vi.fn();
+    const home = mkdtempSync(join(tmpdir(), 'impresairio-advance-failure-'));
+    const stateStore = new FileStateStore(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }));
+    const expectedOutput = {
+      id: 'implementation', targetRoot: home, directory: join(home, 'runs', 'run-1', 'artifacts'),
+      path: join(home, 'runs', 'run-1', 'artifacts', 'implement.md'), format: 'markdown' as const,
+    };
+    const state = createRunState({
+      id: 'run-1', workflowId: 'quick-fix', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: home, defaultFormat: 'markdown' },
+        featurePath: 'Features/{{ feature.id }}',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'ADV-1', slug: 'advance' }, run: { id: 'run-1' } },
+      },
+      steps: [{ id: 'implement', kind: 'agent', actor: 'implementer', action: 'implementation', output: { id: 'implementation', filename: 'Implementation.md', storage: 'internal' } }],
+      now: '2026-07-23T12:00:00.000Z',
+    });
+    stateStore.create({
+      ...state,
+      currentStepId: 'implement',
+      steps: state.steps.map((step) => step.kind === 'agent'
+        ? { ...step, status: 'in_progress' as const, expectedOutput, attempts: [{ number: 1, startedAt: state.createdAt, inputArtifactHashes: {} }] }
+        : step),
+    });
     const command = new AdvanceCommand(
       { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
       { prepare: () => ({
         actor: 'agent', profile: 'codex', provider: 'codex',
-        expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') },
+        expectedOutput,
         invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("partial output"); process.exit(1)'], input: 'work' },
       }) } as never,
       {} as never,
-      { runDirectory: () => runDirectory, findState: () => ({ execution: { agentTimeoutSeconds: 1 } }), markFailed } as never,
+      stateStore,
       {} as never,
       { acquireReentrant: () => () => undefined } as never,
       { append: () => undefined } as never,
@@ -91,9 +115,12 @@ describe('advance command output recovery', () => {
 
     try {
       await expect(command.run(['run-1'])).rejects.toThrow('exited with status 1');
-      expect(markFailed).toHaveBeenCalledWith('run-1', 'implement', expect.stringContaining('exited with status 1'), 'partial output');
+      const failed = stateStore.findState('run-1')?.steps[0];
+      if (!failed || failed.kind !== 'agent' || !failed.failedAgentOutput) throw new Error('missing failed output');
+      expect(failed.failedAgentOutput.diagnostic).toContain('exited with status 1');
+      expect(readFileSync(failed.failedAgentOutput.artifactPath, 'utf8')).toBe('partial output');
     } finally {
-      rmSync(runDirectory, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
   });
 
