@@ -256,6 +256,12 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     const artifactPath = join(directory, `${stepHash}-${retryNumber}.md`);
     this.fileOperations.mkdirSync(directory, { recursive: true });
     this.fileOperations.writeFileSync(artifactPath, content, 'utf8');
+    const preservedContent = this.fileOperations.readFileSync(artifactPath, 'utf8');
+    const preservedSha256 = createHash('sha256').update(preservedContent).digest('hex');
+    if (preservedSha256 !== actualSha256) {
+      this.fileOperations.rmSync(artifactPath, { force: true });
+      throw new RunStateError(`Preserved retry feedback for step ${policyStepId} changed while it was being saved`);
+    }
     return { sourceStepId: policyStepId, artifactPath, artifactSha256: actualSha256 };
   }
 

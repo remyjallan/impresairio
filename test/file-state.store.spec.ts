@@ -240,6 +240,26 @@ describe('FileStateStore', () => {
     expect(() => store.preserveRetryFeedback('run-retry-integrity', 'review', { path: reviewerPath, sha256: 'b'.repeat(64) })).toThrow('changed before retry feedback was preserved');
   });
 
+  it('rejects retry feedback that changes while its durable copy is being saved', () => {
+    const content = 'VERDICT: CHANGES_REQUESTED\n';
+    const sha = createHash('sha256').update(content).digest('hex');
+    const { home, store } = createStore({
+      readFileSync: ((path: Parameters<typeof readFileSync>[0], options: Parameters<typeof readFileSync>[1]) => (
+        String(path).includes('retry-feedback') ? 'tampered feedback\n' : readFileSync(path, options)
+      )) as typeof readFileSync,
+    });
+    const reviewerPath = join(home, 'review.md');
+    store.create(createRunState({
+      id: 'run-retry-copy-integrity', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'review', kind: 'agent', actor: 'adversary', action: 'verification', output: { id: 'review', filename: 'Review.md' } }],
+      now: '2026-07-21T10:00:00.000Z',
+    }));
+    writeFileSync(reviewerPath, content, 'utf8');
+
+    expect(() => store.preserveRetryFeedback('run-retry-copy-integrity', 'review', { path: reviewerPath, sha256: sha }))
+      .toThrow('Preserved retry feedback for step review changed while it was being saved');
+  });
+
   it.each(['../outside', '/tmp/outside', 'run/child', 'run\\child', '..'])(
     'rejects unsafe run id %s before resolving a run path',
     (runId) => {
