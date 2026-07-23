@@ -175,7 +175,7 @@ describe('configurable capabilities and actors (integration)', () => {
       roles: { 'product-author': 'codex', skeptic: 'codex' },
       feature: { id: 'THR-2', slug: 'threat' },
       request: 'Assess the risk of the new endpoint.',
-    })).toThrow(/has no method for capability "threat-review"/);
+    })).toThrow(/actor "skeptic" \(profile "codex"\) has no method for capability "threat-review"/);
   });
 
   it('loads and runs a frozen V0 run whose step uses a legacy action method', () => {

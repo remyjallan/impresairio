@@ -62,14 +62,18 @@ export interface ExpandedGateStep extends ExpandedStepMetadata {
   readonly artifact: string;
 }
 
-export interface ExpandedHostHandoffStep extends ExpandedStepMetadata {
+interface ExpandedHostHandoffStepBase extends ExpandedStepMetadata {
   readonly id: string;
   readonly type: 'host-handoff';
-  readonly promptFile: string;
   readonly inputs: readonly string[];
   readonly output: WorkflowOutput;
   readonly sideEffects: 'none';
 }
+
+export type ExpandedHostHandoffStep = ExpandedHostHandoffStepBase & (
+  | { readonly promptFile: string }
+  | { readonly actor: string; readonly capability: string; readonly interaction: 'user-dialog' }
+);
 
 export type ExpandedWorkflowStep = ExpandedAgentStep | ExpandedHostHandoffStep | ExpandedGateStep;
 
@@ -268,15 +272,22 @@ export class WorkflowExpanderService {
       }
 
       if (step.type === 'host-handoff') {
-        return [{
+        const common = {
           ...metadata,
           id: namespace(step.id),
           type: 'host-handoff',
-          promptFile: step.promptFile,
           inputs: step.inputs.map(namespace),
           output: { ...step.output, id: namespace(step.output.id) },
           sideEffects: step.sideEffects,
-        }];
+        } as const;
+        return ['capability' in step
+          ? {
+              ...common,
+              actor: mapRole(step.actor),
+              capability: step.capability,
+              interaction: step.interaction,
+            }
+          : { ...common, promptFile: step.promptFile }];
       }
 
       const common = {
@@ -473,5 +484,6 @@ function operandType(
 function rolesForStep(step: Exclude<WorkflowStep, { readonly uses: string }>): readonly string[] {
   if (step.type === 'agent') return [step.actor];
   if (step.type === 'review-cycle') return [step.actor, step.reviewer];
+  if (step.type === 'host-handoff' && 'actor' in step) return [step.actor];
   return [];
 }

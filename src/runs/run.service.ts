@@ -35,6 +35,20 @@ export interface StartRunRequest {
 
 export const RUN_CLOCK = Symbol('RUN_CLOCK');
 
+export function workflowActors(steps: readonly ExpandedWorkflowStep[]): string[] {
+  return [...new Set(steps.flatMap((step) => {
+    const needsActor = step.type === 'agent'
+      || (step.type === 'host-handoff' && 'capability' in step);
+    if (!needsActor) {
+      return [];
+    }
+    if (!step.actor) {
+      throw new RunStateError(`Workflow step ${step.id} requires an actor`);
+    }
+    return [step.actor];
+  }))];
+}
+
 @Injectable()
 export class RunService {
   constructor(
@@ -84,9 +98,7 @@ export class RunService {
       },
     };
     this.validateArtifactDestinations(id, steps, documentation);
-    const actors = [...new Set(steps.flatMap((step) => (
-      step.type === 'agent' ? [step.actor] : []
-    )))];
+    const actors = workflowActors(steps);
     const resolvedActors = this.agentProfiles.resolveForActors(
       request.roles,
       actors,
@@ -112,11 +124,10 @@ export class RunService {
               actor: step.actor,
               ...('capability' in step
                 ? {
-                    method: this.capabilities.resolve(
+                    method: this.resolveCapabilityForActor(
                       step.capability,
                       step.actor,
-                      request.roles[step.actor] ?? '(unbound)',
-                      resolvedActors[step.actor],
+                      resolvedActors,
                     ),
                   }
                 : {
@@ -135,13 +146,26 @@ export class RunService {
               ...(step.patch ? { patch: step.patch } : {}),
             }
           : step.type === 'host-handoff'
-            ? {
-                promptFile: step.promptFile,
-                prompt: this.workflowRegistry.readPromptFile(step.definition, step.promptFile),
-                inputs: step.inputs,
-                output: step.output,
-                sideEffects: step.sideEffects,
-              }
+            ? ('capability' in step
+              ? {
+                  actor: step.actor,
+                  method: this.resolveCapabilityForActor(
+                    step.capability,
+                    step.actor,
+                    resolvedActors,
+                  ),
+                  interaction: step.interaction,
+                  inputs: step.inputs,
+                  output: step.output,
+                  sideEffects: step.sideEffects,
+                }
+              : {
+                  promptFile: step.promptFile,
+                  prompt: this.workflowRegistry.readPromptFile(step.definition, step.promptFile),
+                  inputs: step.inputs,
+                  output: step.output,
+                  sideEffects: step.sideEffects,
+                })
             : { artifact: step.artifact }),
       })),
     });
@@ -173,6 +197,20 @@ export class RunService {
       throw new RunStateError(`Run not found: ${runId}`);
     }
     return state;
+  }
+
+  private resolveCapabilityForActor(
+    capability: string,
+    actor: string,
+    resolvedActors: RunState['resolvedActors'],
+  ) {
+    const frozenActor = resolvedActors[actor];
+    if (!frozenActor) {
+      throw new RunStateError(`Agent profile is not frozen for actor ${actor}`);
+    }
+    // AgentProfileService freezes the exact role binding in `profile`; resolve
+    // from that immutable run snapshot rather than the mutable start request.
+    return this.capabilities.resolve(capability, actor, frozenActor);
   }
 
   private validateFeature(feature: StartRunRequest['feature']): void {

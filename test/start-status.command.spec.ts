@@ -10,7 +10,7 @@ import { ConfigService } from '../src/config/config.service';
 import { EventLogService } from '../src/runs/event-log.service';
 import { FileStateStore } from '../src/runs/file-state.store';
 import { RunLockService } from '../src/runs/run-lock.service';
-import { RunService } from '../src/runs/run.service';
+import { RunService, workflowActors } from '../src/runs/run.service';
 import { WorkflowRegistryService } from '../src/workflows/workflow-registry.service';
 import { WorkflowExpanderService } from '../src/workflows/workflow-expander.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
@@ -55,7 +55,7 @@ documentation:
   return repository;
 }
 
-function createRunService() {
+function createRunService(agentProfiles: AgentProfileService = new AgentProfileService()) {
   const home = mkdtempSync(join(tmpdir(), 'impresairio-run-'));
   temporaryDirectories.push(home);
   const resolver = new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home });
@@ -86,7 +86,7 @@ function createRunService() {
       workflows,
       new WorkflowExpanderService(workflows),
       new ConfigService(resolver),
-      new AgentProfileService(),
+      agentProfiles,
       new CapabilityResolverService(resolver),
       artifactService,
       () => new Date('2026-07-20T10:00:00.000Z'),
@@ -372,6 +372,30 @@ steps:
     })).toThrow('Work request must not exceed 20000 characters');
   });
 
+  it('fails descriptively if profile resolution does not freeze a workflow actor', () => {
+    const agentProfiles = {
+      resolveForActors: () => ({}),
+    } as unknown as AgentProfileService;
+    const { home, service } = createRunService(agentProfiles);
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+
+    expect(() => service.start({
+      workflowId: 'quick-fix',
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'IMP-58', slug: 'missing-resolved-actor' },
+      request: 'Exercise the defensive actor snapshot check.',
+      repositoryDirectory: repository,
+    })).toThrow('Agent profile is not frozen for actor launcher');
+  });
+
+  it('rejects an empty expanded actor before resolving profiles', () => {
+    expect(() => workflowActors([{
+      id: 'brainstorm', type: 'host-handoff', actor: '', capability: 'feature-design', interaction: 'user-dialog',
+    }] as never)).toThrow('Workflow step brainstorm requires an actor');
+  });
+
   it('lists resumable runs newest first', async () => {
     const { home, store, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
@@ -579,6 +603,47 @@ steps:
       kind: 'host-handoff', promptFile: 'prompts/review.md', prompt: 'Review the draft.\n',
       inputArtifactIds: ['draft'], declaredOutput: { id: 'review', filename: '02 - Review.md' },
       sideEffects: 'none',
+    });
+  });
+
+  it('freezes an interactive host capability and allows its artifact at a gate', () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    const workflows = join(repository, '.impresairio', 'workflows');
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, 'interactive-host.yaml'), `id: interactive-host
+name: Interactive host
+steps:
+  - id: brainstorm
+    type: host-handoff
+    actor: launcher
+    capability: feature-design
+    interaction: user-dialog
+    inputs: []
+    output:
+      id: brainstorm
+      filename: "01 - Brainstorm.md"
+    sideEffects: none
+  - id: approve-brainstorm
+    type: gate
+    artifact: brainstorm
+`);
+
+    service.start({
+      id: 'run-interactive-host', workflowId: 'interactive-host', roles: { launcher: 'claude' },
+      request: 'Clarify the user request before drafting.',
+      feature: { id: 'IMP-57', slug: 'interactive-host' }, repositoryDirectory: repository,
+    });
+
+    const steps = store.findState('run-interactive-host')?.steps;
+    expect(steps?.find((step) => step.id === 'brainstorm')).toMatchObject({
+      kind: 'host-handoff', actor: 'launcher', interaction: 'user-dialog',
+      method: { capability: 'feature-design', promptSource: 'package' },
+    });
+    expect(steps?.find((step) => step.id === 'approve-brainstorm')).toMatchObject({
+      kind: 'gate', artifact: 'brainstorm',
     });
   });
 });

@@ -86,6 +86,13 @@ export interface CompletionPolicy {
   evaluate(runId: string, stepId: string, output: CompletedDocumentationOutput): CompletionPolicyResult;
 }
 
+/** A durable copy of a verdict artifact retained as context for a bounded retry. */
+export interface RetryFeedback {
+  readonly sourceStepId: string;
+  readonly artifactPath: string;
+  readonly artifactSha256: string;
+}
+
 export type CompletionEvent =
   | { readonly type: 'step.completed'; readonly stepId: string; readonly at: string; readonly outputSha256: string }
   | { readonly type: 'step.result.recorded'; readonly stepId: string; readonly fields: readonly string[]; readonly outputSha256: string; readonly at: string }
@@ -101,7 +108,9 @@ export interface CompletionRunStore {
   recordCompletion(runId: string, completion: CompletionRecord): void;
   appendEvent(runId: string, event: CompletionEvent): void;
   markFailed?(runId: string, stepId: string, detail: string): void;
-  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string): void;
+  preserveRetryFeedback?(runId: string, policyStepId: string, output: CompletedDocumentationOutput): RetryFeedback;
+  discardRetryFeedback?(runId: string, retryFeedback: RetryFeedback): void;
+  applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string, retryFeedback: RetryFeedback): void;
 }
 
 export interface OutputVerifier {
@@ -178,6 +187,11 @@ export class CompletionService {
       let policyResult: CompletionPolicyResult;
       let result: CompletionRecord['result'];
       let patchApplication: PatchApplication | undefined;
+      let retryOperation: {
+        readonly feedback: RetryFeedback;
+        readonly discard: (runId: string, feedback: RetryFeedback) => void;
+        readonly apply: (runId: string, policyStepId: string, targetStepId: string, feedback: RetryFeedback) => void;
+      } | undefined;
       try {
         output = this.outputVerifier.completeExpectedOutput(run, step);
         const content = step.declaredResult || step.patch
@@ -197,6 +211,15 @@ export class CompletionService {
           patchApplication = this.patches.apply(run, step, content, this.now().toISOString());
         }
         policyResult = this.policy.evaluate(runId, stepId, output);
+        if (policyResult.source === 'policy' && policyResult.transition?.kind === 'retry-from') {
+          const preserve = this.store.preserveRetryFeedback?.bind(this.store);
+          const discard = this.store.discardRetryFeedback?.bind(this.store);
+          const apply = this.store.applyVerdictRetry?.bind(this.store);
+          if (!preserve || !discard || !apply) {
+            throw new CompletionError('Verdict retries require durable retry-feedback support from the run store');
+          }
+          retryOperation = { feedback: preserve(runId, stepId, output), discard, apply };
+        }
         this.store.recordCompletion(runId, {
           stepId,
           output,
@@ -209,6 +232,13 @@ export class CompletionService {
           } : {}),
         });
       } catch (error) {
+        if (retryOperation) {
+          try {
+            retryOperation.discard(runId, retryOperation.feedback);
+          } catch {
+            // Preserve the original completion failure; cleanup is best effort.
+          }
+        }
         if (!(error instanceof StructuredResultError)) {
           this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
         }
@@ -241,6 +271,10 @@ export class CompletionService {
       if (policyResult.source === 'policy' && policyResult.reviewOutcome) {
         const transition = policyResult.transition;
         if (transition?.kind === 'retry-from') {
+          const preparedRetry = retryOperation;
+          if (!preparedRetry) {
+            throw new CompletionError('Verdict retry was not prepared with durable feedback');
+          }
           const invalidatedIds = downstreamStepIds(run, transition.targetStepId);
           for (const retryTarget of run.steps) {
             if (retryTarget.kind === 'agent'
@@ -250,7 +284,7 @@ export class CompletionService {
               this.outputVerifier.discardExpectedOutput?.(retryTarget);
             }
           }
-          this.store.applyVerdictRetry?.(runId, stepId, transition.targetStepId);
+          preparedRetry.apply(runId, stepId, transition.targetStepId, preparedRetry.feedback);
           this.store.appendEvent(runId, {
             type: 'verdict.changes_requested',
             stepId,

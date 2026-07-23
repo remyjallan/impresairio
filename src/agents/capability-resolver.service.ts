@@ -15,6 +15,8 @@ export type ResolvedCapabilityMethod =
   | { readonly capability: string; readonly skill: string }
   | { readonly capability: string; readonly promptSource: 'global' | 'package'; readonly content: string };
 
+export type CapabilityProfile = ResolvedAgentProfile & { readonly profile: string };
+
 export interface CapabilityResolverRuntime {
   readonly packagePromptsDirectory: string;
 }
@@ -36,7 +38,7 @@ export class CapabilityResolverService {
     this.runtime = { ...nativeRuntime, ...runtime };
   }
 
-  resolve(capability: string, actor: string, profileName: string, profile: ResolvedAgentProfile & { readonly profile?: string }): ResolvedCapabilityMethod {
+  resolve(capability: string, actor: string, profile: CapabilityProfile): ResolvedCapabilityMethod {
     const skill = profile.skills?.[capability];
     if (skill) return { capability, skill };
     const globalPrompt = this.readPrompt(join(this.homeDirectoryResolver.resolve(), 'prompts', `${capability}.md`));
@@ -44,7 +46,7 @@ export class CapabilityResolverService {
     const packagePrompt = this.readPrompt(join(this.runtime.packagePromptsDirectory, `${capability}.md`));
     if (packagePrompt !== undefined) return { capability, promptSource: 'package', content: packagePrompt };
     throw new CapabilityResolutionError(
-      `actor "${actor}" (profile "${profileName}") has no method for capability "${capability}"; ` +
+      `actor "${actor}" (profile "${profile.profile}") has no method for capability "${capability}"; ` +
       `declare a skill in the profile or provide prompts/${capability}.md`,
     );
   }

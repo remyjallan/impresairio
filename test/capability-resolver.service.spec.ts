@@ -7,7 +7,7 @@ import {
   CapabilityResolutionError,
   CapabilityResolverService,
 } from '../src/agents/capability-resolver.service';
-import type { ResolvedAgentProfile } from '../src/config/config.service';
+import type { CapabilityProfile } from '../src/agents/capability-resolver.service';
 
 const temporaryDirectories: string[] = [];
 
@@ -34,7 +34,7 @@ function writePackagePrompt(packagePromptsDirectory: string, capability: string,
   writeFileSync(join(packagePromptsDirectory, `${capability}.md`), content);
 }
 
-const claudeProfile: ResolvedAgentProfile & { readonly profile?: string } = {
+const claudeProfile: CapabilityProfile = {
   provider: 'claude-code',
   profile: 'claude',
 };
@@ -52,7 +52,7 @@ describe('CapabilityResolverService', () => {
     writeGlobalPrompt(home, 'threat-review', 'Challenge it (global).');
     const resolver = createResolver(home, packageDirectory);
 
-    const method = resolver.resolve('threat-review', 'skeptic', 'claude', {
+    const method = resolver.resolve('threat-review', 'skeptic', {
       ...claudeProfile,
       skills: { 'threat-review': 'local:review-skill' },
     });
@@ -67,7 +67,7 @@ describe('CapabilityResolverService', () => {
     writePackagePrompt(packageDirectory, 'threat-model', 'Model the threat (package).');
     const resolver = createResolver(home, packageDirectory);
 
-    const method = resolver.resolve('threat-model', 'product-author', 'claude', claudeProfile);
+    const method = resolver.resolve('threat-model', 'product-author', claudeProfile);
 
     expect(method).toEqual({
       capability: 'threat-model',
@@ -82,7 +82,7 @@ describe('CapabilityResolverService', () => {
     writePackagePrompt(packageDirectory, 'implement', 'Implement the correction (package).');
     const resolver = createResolver(home, packageDirectory);
 
-    const method = resolver.resolve('implement', 'implementer', 'claude', claudeProfile);
+    const method = resolver.resolve('implement', 'implementer', claudeProfile);
 
     expect(method).toEqual({
       capability: 'implement',
@@ -97,7 +97,7 @@ describe('CapabilityResolverService', () => {
     writeGlobalPrompt(home, 'threat-model', '   \n  ');
     const resolver = createResolver(home, packageDirectory);
 
-    expect(() => resolver.resolve('threat-model', 'product-author', 'claude', claudeProfile))
+    expect(() => resolver.resolve('threat-model', 'product-author', claudeProfile))
       .toThrow(CapabilityResolutionError);
   });
 
@@ -106,7 +106,7 @@ describe('CapabilityResolverService', () => {
     const packageDirectory = temporaryDirectory('impresairio-capability-package-');
     const resolver = createResolver(home, packageDirectory);
 
-    expect(() => resolver.resolve('unknown-capability', 'product-author', 'claude', claudeProfile))
+    expect(() => resolver.resolve('unknown-capability', 'product-author', claudeProfile))
       .toThrow(/actor "product-author" \(profile "claude"\) has no method for capability "unknown-capability"/);
   });
 });

@@ -27,14 +27,16 @@ export function invalidateFrom(
     if (step.status === 'complete' || step.status === 'in_progress') {
       return step.kind === 'gate'
         ? { ...step, status: 'stale' as const, approval: undefined }
-        : {
+        : step.kind === 'agent'
+          ? {
             ...step,
             status: 'stale' as const,
             approval: undefined,
             reviewOutcome: undefined,
             result: undefined,
             conditionDecision: undefined,
-          };
+          }
+          : { ...step, status: 'stale' as const, handoffPreparedAt: undefined };
     }
     if (step.status === 'skipped' && step.kind === 'agent') {
       return {

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
@@ -151,11 +152,17 @@ export class AgentDispatchService {
       : { kind: 'fallback-prompt', content: fallbackPromptFor(method.action) };
   }
 
-  private reviewerFeedbackFor(retryContext: { readonly sourceStepId: string; readonly artifactPath: string }): string {
+  private reviewerFeedbackFor(retryContext: { readonly sourceStepId: string; readonly artifactPath: string; readonly artifactSha256: string }): string {
     try {
-      return readFileSync(retryContext.artifactPath, 'utf8');
-    } catch {
-      return `The verdict from step ${retryContext.sourceStepId} requested changes, but its artifact could not be read; inspect the run events before retrying.`;
+      const content = readFileSync(retryContext.artifactPath, 'utf8');
+      const sha256 = createHash('sha256').update(content).digest('hex');
+      if (sha256 !== retryContext.artifactSha256) {
+        throw new RunStateError(`Reviewer feedback from step ${retryContext.sourceStepId} changed after it was preserved`);
+      }
+      return content;
+    } catch (error) {
+      if (error instanceof RunStateError) throw error;
+      throw new RunStateError(`Reviewer feedback from step ${retryContext.sourceStepId} is unavailable; retry the reviewer step to produce it again`);
     }
   }
 
@@ -163,7 +170,7 @@ export class AgentDispatchService {
     const index = state.steps.findIndex((step) => step.id === stepId);
     const artifacts = new Map<string, string>();
     for (const step of state.steps.slice(0, index)) {
-      if (step.kind !== 'agent' || step.status !== 'complete' || !step.output) continue;
+      if ((step.kind !== 'agent' && step.kind !== 'host-handoff') || step.status !== 'complete' || !step.output) continue;
       try { artifacts.set(step.declaredOutput.id, readFileSync(step.output.path, 'utf8')); } catch { /* completion will surface missing inputs */ }
     }
     return [...artifacts.entries()].map(([id, content]) => `## ${id}\n${content}`).join('\n\n');
