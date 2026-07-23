@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import { readHostHandoffOutput } from '../agents/host-handoff.service';
 import { ArtifactService } from '../documentation/artifact.service';
 import { CompletionService } from './completion.service';
@@ -82,6 +82,5 @@ export class AgentRecoverySubmissionService {
 }
 
 function isWithin(path: string, directory: string): boolean {
-  const pathFromDirectory = relative(directory, path);
-  return pathFromDirectory === '' || (!pathFromDirectory.startsWith('..') && !isAbsolute(pathFromDirectory));
+  return path === directory || path.startsWith(`${directory}${sep}`);
 }
