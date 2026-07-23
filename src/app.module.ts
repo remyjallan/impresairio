@@ -4,7 +4,7 @@ import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
 import { SubmitHostOutputCommand } from './commands/submit-host-output.command';
 import { AbandonCommand } from './commands/abandon.command';
-import { PrepareExternalAgentOutputCommand, EXTERNAL_AGENT_RECOVERY_WRITER } from './commands/prepare-external-agent-output.command';
+import { PrepareExternalAgentOutputCommand } from './commands/prepare-external-agent-output.command';
 import { SubmitAgentOutputCommand } from './commands/submit-agent-output.command';
 import { ImpresairioRootCommand } from './commands/root.command';
 import { RequestChangesCommand } from './commands/request-changes.command';
