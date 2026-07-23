@@ -144,11 +144,14 @@ export class RunReportService {
 }
 
 export function formatRunReport(report: RunReport): string {
+  const abandonment = report.run.abandonment
+    ? formatAbandonment(report.run.abandonment)
+    : [];
   return [
     `Run: ${report.run.id} (${report.run.workflow})`,
     `Status: ${report.run.status}`,
     `Duration: ${formatDuration(report.run.durationMs)}`,
-    ...(report.run.abandonment ? [`Abandoned: ${report.run.abandonment.at}; ${report.run.abandonment.reason}${report.run.abandonment.externalReference ? `; ${report.run.abandonment.externalReference}` : ''}`] : []),
+    ...abandonment,
     '',
     'Agent steps',
     ...(report.agentSteps.length === 0 ? ['- none'] : report.agentSteps.map((step) => {
@@ -174,6 +177,10 @@ export function formatRunReport(report: RunReport): string {
     ...(report.availability.length > 0 ? ['', 'Availability', ...report.availability.map((item) => `- ${item}`)] : []),
     '',
   ].join('\n');
+}
+
+function formatAbandonment(abandonment: NonNullable<RunReport['run']['abandonment']>): string[] {
+  return [`Abandoned: ${abandonment.at}; ${abandonment.reason}${abandonment.externalReference ? `; ${abandonment.externalReference}` : ''}`];
 }
 
 function attemptReport(
