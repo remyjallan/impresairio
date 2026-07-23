@@ -186,7 +186,9 @@ function interactiveInstruction(
   if ('skill' in method) {
     return {
       source: `capability:${method.capability}`,
-      content: request ? `Work request:\n${request}` : '',
+      content: request
+        ? `Work request:\n${request}`
+        : 'No work request was recorded for this run. Ask the operator for the goal and required constraints before continuing.',
       skill: method.skill,
     };
   }

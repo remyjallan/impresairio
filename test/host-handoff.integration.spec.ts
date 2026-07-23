@@ -316,7 +316,11 @@ describe('host handoff', () => {
       now: '2026-07-23T12:00:00.000Z',
     }));
     expect(handoffs.prepare('run-host-skill-no-request', runner.next('run-host-skill-no-request'))?.instruction)
-      .toEqual({ source: 'capability:feature-design', content: '', skill: 'superpowers:brainstorming' });
+      .toEqual({
+        source: 'capability:feature-design',
+        content: 'No work request was recorded for this run. Ask the operator for the goal and required constraints before continuing.',
+        skill: 'superpowers:brainstorming',
+      });
 
     store.create(createRunState({
       id: 'run-host-unfrozen', workflowId: 'interactive-host', workflowSha256: 'f'.repeat(64),
