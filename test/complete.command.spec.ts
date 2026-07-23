@@ -293,6 +293,33 @@ describe('CompleteCommand', () => {
     expect(discarded).toEqual([]);
   });
 
+  it('rejects a retry transition that was not prepared with durable feedback', () => {
+    const policyResult = {
+      skipStepIds: [], source: 'policy' as const,
+      reviewOutcome: { verdict: 'CHANGES_REQUESTED' as const, exhausted: false },
+      transition: { kind: 'continue' as const },
+    };
+    const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
+    const service = new CompletionService(
+      {
+        ...store,
+        recordCompletion: () => {
+          Object.assign(policyResult, { transition: { kind: 'retry-from' as const, targetStepId: 'implement' } });
+        },
+      },
+      {
+        completeExpectedOutput: () => ({
+          id: 'verification', path: '/run/artifacts/review.md', format: 'markdown' as const, sha256: 'a'.repeat(64),
+        }),
+      },
+      undefined,
+      undefined,
+      { evaluate: () => policyResult },
+    );
+
+    expect(() => service.complete('run-42', 'verify')).toThrow('Verdict retry was not prepared with durable feedback');
+  });
+
   it('preserves retry feedback before discarding reusable internal artifacts', () => {
     const order: string[] = [];
     const store = {

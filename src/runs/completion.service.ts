@@ -271,6 +271,10 @@ export class CompletionService {
       if (policyResult.source === 'policy' && policyResult.reviewOutcome) {
         const transition = policyResult.transition;
         if (transition?.kind === 'retry-from') {
+          const preparedRetry = retryOperation;
+          if (!preparedRetry) {
+            throw new CompletionError('Verdict retry was not prepared with durable feedback');
+          }
           const invalidatedIds = downstreamStepIds(run, transition.targetStepId);
           for (const retryTarget of run.steps) {
             if (retryTarget.kind === 'agent'
@@ -280,7 +284,7 @@ export class CompletionService {
               this.outputVerifier.discardExpectedOutput?.(retryTarget);
             }
           }
-          retryOperation!.apply(runId, stepId, transition.targetStepId, retryOperation!.feedback);
+          preparedRetry.apply(runId, stepId, transition.targetStepId, preparedRetry.feedback);
           this.store.appendEvent(runId, {
             type: 'verdict.changes_requested',
             stepId,
