@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { readHostHandoffOutput } from '../agents/host-handoff.service';
 import { ArtifactService } from '../documentation/artifact.service';
 import { CompletionService } from './completion.service';
@@ -60,7 +60,10 @@ export class AgentRecoverySubmissionService {
       try {
         appliedPatch = this.completion.complete(runId, stepId);
       } catch (error) {
-        this.artifacts.discardOutput(step.expectedOutput);
+        const latestStep = this.stateStore.findState(runId)?.steps.find((candidate) => candidate.id === stepId);
+        if (latestStep?.status === 'in_progress') {
+          this.artifacts.discardOutput(step.expectedOutput);
+        }
         throw error;
       }
       if (!appliedPatch) {
@@ -78,5 +81,5 @@ export class AgentRecoverySubmissionService {
 
 function isWithin(path: string, directory: string): boolean {
   const pathFromDirectory = relative(directory, path);
-  return pathFromDirectory === '' || (!pathFromDirectory.startsWith('..') && !pathFromDirectory.startsWith('/'));
+  return pathFromDirectory === '' || (!pathFromDirectory.startsWith('..') && !isAbsolute(pathFromDirectory));
 }
