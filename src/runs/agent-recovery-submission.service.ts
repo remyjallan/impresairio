@@ -1,8 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { realpathSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
-import { readHostHandoffOutput } from '../agents/host-handoff.service';
 import { ArtifactService } from '../documentation/artifact.service';
 import { CompletionService } from './completion.service';
 import { EventLogService } from './event-log.service';
@@ -42,26 +41,25 @@ export class AgentRecoverySubmissionService {
         throw new RunStateError('Agent output source must not be the Impresairio-managed destination');
       }
       let source: string;
-      let sourceStats: ReturnType<typeof statSync>;
       try {
         source = realpathSync(sourcePathResolved);
-        sourceStats = statSync(source);
-      } catch {
+        if (!statSync(source).isFile()) {
+          throw new RunStateError('Agent output source must be a file');
+        }
+      } catch (error) {
+        if (error instanceof RunStateError) throw error;
         throw new RunStateError(`Agent output source is not a readable file: ${sourcePathResolved}`);
       }
-      if (!sourceStats.isFile()) {
-        throw new RunStateError('Agent output source must be a file');
+      if (!state.repositoryDirectory) {
+        throw new RunStateError('External recovery requires a frozen repository directory');
       }
-      if (state.repositoryDirectory && isWithin(source, realpathSync(state.repositoryDirectory))) {
+      if (isWithin(source, realpathSync(state.repositoryDirectory))) {
         throw new RunStateError('Agent output source must be outside the repository');
       }
       if (isWithin(source, dirname(dirname(step.expectedOutput.directory)))) {
         throw new RunStateError('Agent output source must be outside the Impresairio run directories');
       }
-      if (sourceStats.size > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
-        throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);
-      }
-      const content = readHostHandoffOutput(source);
+      const content = readExternalRecoveryOutput(source);
       this.patches.validate(content);
       const artifact = content.endsWith('\n') ? content : `${content}\n`;
       const artifactSha256 = createHash('sha256').update(artifact, 'utf8').digest('hex');
@@ -90,4 +88,30 @@ export class AgentRecoverySubmissionService {
 
 function isWithin(path: string, directory: string): boolean {
   return path === directory || path.startsWith(`${directory}${sep}`);
+}
+
+function readExternalRecoveryOutput(path: string): string {
+  let descriptor: number;
+  try {
+    descriptor = openSync(path, 'r');
+  } catch {
+    throw new RunStateError(`Agent output source is not a readable file: ${path}`);
+  }
+  try {
+    const stats = fstatSync(descriptor);
+    if (!stats.isFile()) throw new RunStateError('Agent output source must be a file');
+    if (stats.size > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
+      throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);
+    }
+    const buffer = Buffer.alloc(MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES + 1);
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytesRead > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
+      throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);
+    }
+    const content = buffer.subarray(0, bytesRead).toString('utf8');
+    if (!content.trim()) throw new RunStateError('Agent output must not be empty');
+    return content;
+  } finally {
+    closeSync(descriptor);
+  }
 }

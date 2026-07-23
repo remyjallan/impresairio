@@ -230,6 +230,10 @@ describe('ExternalAgentRecoveryService', () => {
     const prepared = store.findState('run-external');
     if (!prepared) throw new Error('missing prepared state');
     store.save({ ...prepared, repositoryDirectory: undefined });
+    expect(() => submission.submit('run-external', 'implement', repositorySource)).toThrow('requires a frozen repository directory');
+    const isolatedRepository = join(home, 'repository');
+    mkdirSync(isolatedRepository);
+    store.save({ ...prepared, repositoryDirectory: isolatedRepository });
     const runSource = join(home, 'runs', 'run-external', 'response.md');
     writeFileSync(runSource, '# Response\n', 'utf8');
     expect(() => submission.submit('run-external', 'implement', runSource)).toThrow('outside the Impresairio run directories');
