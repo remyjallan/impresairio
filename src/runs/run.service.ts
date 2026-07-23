@@ -114,11 +114,10 @@ export class RunService {
               actor: step.actor,
               ...('capability' in step
                 ? {
-                    method: this.capabilities.resolve(
+                    method: this.resolveCapabilityForActor(
                       step.capability,
                       step.actor,
-                      request.roles[step.actor]!,
-                      resolvedActors[step.actor],
+                      resolvedActors,
                     ),
                   }
                 : {
@@ -140,11 +139,10 @@ export class RunService {
             ? ('capability' in step
               ? {
                   actor: step.actor,
-                  method: this.capabilities.resolve(
+                  method: this.resolveCapabilityForActor(
                     step.capability,
                     step.actor,
-                    request.roles[step.actor]!,
-                    resolvedActors[step.actor],
+                    resolvedActors,
                   ),
                   interaction: step.interaction,
                   inputs: step.inputs,
@@ -189,6 +187,18 @@ export class RunService {
       throw new RunStateError(`Run not found: ${runId}`);
     }
     return state;
+  }
+
+  private resolveCapabilityForActor(
+    capability: string,
+    actor: string,
+    resolvedActors: RunState['resolvedActors'],
+  ) {
+    const profile = resolvedActors[actor];
+    if (!profile) {
+      throw new RunStateError(`Agent profile is not frozen for actor ${actor}`);
+    }
+    return this.capabilities.resolve(capability, actor, profile.profile, profile);
   }
 
   private validateFeature(feature: StartRunRequest['feature']): void {

@@ -55,7 +55,7 @@ documentation:
   return repository;
 }
 
-function createRunService() {
+function createRunService(agentProfiles: AgentProfileService = new AgentProfileService()) {
   const home = mkdtempSync(join(tmpdir(), 'impresairio-run-'));
   temporaryDirectories.push(home);
   const resolver = new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home });
@@ -86,7 +86,7 @@ function createRunService() {
       workflows,
       new WorkflowExpanderService(workflows),
       new ConfigService(resolver),
-      new AgentProfileService(),
+      agentProfiles,
       new CapabilityResolverService(resolver),
       artifactService,
       () => new Date('2026-07-20T10:00:00.000Z'),
@@ -370,6 +370,24 @@ steps:
       feature: { id: 'IMP-42', slug: 'oversized-request' },
       request: 'x'.repeat(20_001),
     })).toThrow('Work request must not exceed 20000 characters');
+  });
+
+  it('fails descriptively if profile resolution does not freeze a workflow actor', () => {
+    const agentProfiles = {
+      resolveForActors: () => ({}),
+    } as unknown as AgentProfileService;
+    const { home, service } = createRunService(agentProfiles);
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+
+    expect(() => service.start({
+      workflowId: 'quick-fix',
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'IMP-58', slug: 'missing-resolved-actor' },
+      request: 'Exercise the defensive actor snapshot check.',
+      repositoryDirectory: repository,
+    })).toThrow('Agent profile is not frozen for actor launcher');
   });
 
   it('lists resumable runs newest first', async () => {
