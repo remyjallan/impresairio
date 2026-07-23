@@ -56,7 +56,8 @@ export class AgentRecoverySubmissionService {
       if (isWithin(source, realpathSync(state.repositoryDirectory))) {
         throw new RunStateError('Agent output source must be outside the repository');
       }
-      if (isWithin(source, dirname(this.stateStore.runDirectory(runId)))) {
+      const runsDirectory = dirname(this.stateStore.runDirectory(runId));
+      if (isWithin(source, runsDirectory)) {
         throw new RunStateError('Agent output source must be outside the Impresairio run directories');
       }
       const content = readExternalRecoveryOutput(source);

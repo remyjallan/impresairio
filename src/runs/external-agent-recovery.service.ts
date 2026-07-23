@@ -26,7 +26,7 @@ export class ExternalAgentRecoveryService {
   ) {}
 
   prepare(runId: string, stepId: string, reason: string): ExternalAgentRecoveryHandoff {
-    const release = this.locks.acquire(runId, 'prepare-external-agent-output');
+    const release = this.locks.acquireReentrant(runId, 'prepare-external-agent-output');
     try {
       const state = this.requiredState(runId);
       const step = state.steps.find((candidate) => candidate.id === stepId);
@@ -69,7 +69,7 @@ export class ExternalAgentRecoveryService {
 
   handoff(runId: string, result: NextStepResult): ExternalAgentRecoveryHandoff | undefined {
     if (result.kind !== 'external-agent-output') return undefined;
-    const release = this.locks.acquire(runId, 'external-agent-output');
+    const release = this.locks.acquireReentrant(runId, 'external-agent-output');
     try {
       return this.handoffFor(this.requiredState(runId), result.stepId);
     } finally {

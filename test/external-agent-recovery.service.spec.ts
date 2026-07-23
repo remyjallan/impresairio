@@ -74,6 +74,18 @@ describe('ExternalAgentRecoveryService', () => {
     expect(events.read('run-external')).toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.prepared', stepId: 'implement' }));
   });
 
+  it('supports preparation and handoff while a composite run lock is held', () => {
+    const { locks, recovery } = harness();
+    const release = locks.acquireReentrant('run-external', 'composite-command');
+
+    try {
+      expect(recovery.prepare('run-external', 'implement', 'Taking over the failed patch.')).toMatchObject({ kind: 'external-agent-output' });
+      expect(recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })).toMatchObject({ stepId: 'implement' });
+    } finally {
+      release();
+    }
+  });
+
   it('rejects invalid or unprepared external recovery transitions', () => {
     const { store, recovery } = harness();
     expect(() => recovery.prepare('run-external', 'missing', 'Manual recovery.')).toThrow('not a patch-producing agent step');
