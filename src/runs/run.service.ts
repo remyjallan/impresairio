@@ -35,6 +35,18 @@ export interface StartRunRequest {
 
 export const RUN_CLOCK = Symbol('RUN_CLOCK');
 
+export function workflowActors(steps: readonly ExpandedWorkflowStep[]): string[] {
+  return [...new Set(steps.flatMap((step) => {
+    if (step.type !== 'agent' && (step.type !== 'host-handoff' || !('actor' in step))) {
+      return [];
+    }
+    if (!step.actor) {
+      throw new RunStateError(`Workflow step ${step.id} requires an actor`);
+    }
+    return [step.actor];
+  }))];
+}
+
 @Injectable()
 export class RunService {
   constructor(
@@ -84,11 +96,7 @@ export class RunService {
       },
     };
     this.validateArtifactDestinations(id, steps, documentation);
-    const actors = [...new Set(steps.flatMap((step) => {
-      if (step.type === 'agent') return [step.actor];
-      if (step.type === 'host-handoff' && 'actor' in step) return [step.actor];
-      return [];
-    }))];
+    const actors = workflowActors(steps);
     const resolvedActors = this.agentProfiles.resolveForActors(
       request.roles,
       actors,

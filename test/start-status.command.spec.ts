@@ -10,7 +10,7 @@ import { ConfigService } from '../src/config/config.service';
 import { EventLogService } from '../src/runs/event-log.service';
 import { FileStateStore } from '../src/runs/file-state.store';
 import { RunLockService } from '../src/runs/run-lock.service';
-import { RunService } from '../src/runs/run.service';
+import { RunService, workflowActors } from '../src/runs/run.service';
 import { WorkflowRegistryService } from '../src/workflows/workflow-registry.service';
 import { WorkflowExpanderService } from '../src/workflows/workflow-expander.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
@@ -388,6 +388,12 @@ steps:
       request: 'Exercise the defensive actor snapshot check.',
       repositoryDirectory: repository,
     })).toThrow('Agent profile is not frozen for actor launcher');
+  });
+
+  it('rejects a malformed expanded actor before resolving profiles', () => {
+    expect(() => workflowActors([{
+      id: 'brainstorm', type: 'host-handoff', actor: '', capability: 'feature-design', interaction: 'user-dialog',
+    }] as never)).toThrow('Workflow step brainstorm requires an actor');
   });
 
   it('lists resumable runs newest first', async () => {
