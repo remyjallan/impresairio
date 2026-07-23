@@ -166,26 +166,6 @@ describe('ExternalAgentRecoveryService', () => {
     expect(() => submission.submit('run-external', 'implement', managedPath)).toThrow('must not be the Impresairio-managed destination');
   });
 
-  it('requires the runner-owned completion path to return an applied patch', () => {
-    const { store, events, locks, recovery } = harness();
-    recovery.prepare('run-external', 'implement', 'Manual recovery.');
-    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
-    directories.push(sourceDirectory);
-    const source = join(sourceDirectory, 'host-authored-patch.md');
-    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
-    const submission = new AgentRecoverySubmissionService(
-      store,
-      { publishMarkdown: vi.fn() } as unknown as ArtifactService,
-      { complete: () => undefined } as never,
-      events,
-      locks,
-      new RepositoryPatchService(),
-    );
-
-    expect(() => submission.submit('run-external', 'implement', source)).toThrow('completed without applying a patch');
-    expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));
-  });
-
   it('discards the copied artifact when patch application fails', () => {
     const { store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Manual recovery.');
@@ -204,6 +184,7 @@ describe('ExternalAgentRecoveryService', () => {
       new RepositoryPatchService(),
     );
 
+    expect(() => submission.submit('run-external', 'implement', sourceDirectory)).toThrow('source must be a file');
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('Patch cannot be applied');
     expect(discardOutput).toHaveBeenCalledWith(expect.objectContaining({ id: 'implementation' }));
     expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));

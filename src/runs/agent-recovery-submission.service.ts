@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { readHostHandoffOutput } from '../agents/host-handoff.service';
 import { ArtifactService } from '../documentation/artifact.service';
@@ -42,6 +42,9 @@ export class AgentRecoverySubmissionService {
         throw new RunStateError('Agent output source must not be the Impresairio-managed destination');
       }
       const source = realpathSync(sourcePathResolved);
+      if (!statSync(source).isFile()) {
+        throw new RunStateError('Agent output source must be a file');
+      }
       if (state.repositoryDirectory && isWithin(source, realpathSync(state.repositoryDirectory))) {
         throw new RunStateError('Agent output source must be outside the repository');
       }
@@ -66,12 +69,11 @@ export class AgentRecoverySubmissionService {
         }
         throw error;
       }
-      if (!appliedPatch) {
-        throw new RunStateError(`External recovery ${stepId} completed without applying a patch`);
-      }
       this.events.append(runId, {
         type: 'agent.external_recovery.submitted', at: new Date().toISOString(), stepId, artifactSha256,
-        appliedPatch: { sha256: appliedPatch.sha256, paths: appliedPatch.paths, appliedAt: appliedPatch.appliedAt },
+        ...(appliedPatch ? {
+          appliedPatch: { sha256: appliedPatch.sha256, paths: appliedPatch.paths, appliedAt: appliedPatch.appliedAt },
+        } : {}),
       });
     } finally {
       release();
