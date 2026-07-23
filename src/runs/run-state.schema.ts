@@ -84,6 +84,14 @@ const retryContextSchema = z.object({
   at: timestampSchema,
 }).strict();
 
+const failedAgentOutputSchema = z.object({
+  artifactPath: nonEmptyString,
+  artifactSha256: sha256Schema,
+  at: timestampSchema,
+  diagnostic: z.string().trim().min(1).max(1_000),
+  truncated: z.boolean(),
+}).strict();
+
 const frozenAgentProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
@@ -221,6 +229,7 @@ const runAgentStepSchema = z
     }).strict().optional(),
     verdictRetries: z.number().int().nonnegative().optional(),
     retryContext: retryContextSchema.optional(),
+    failedAgentOutput: failedAgentOutputSchema.optional(),
     acknowledgment: z.object({
       at: timestampSchema,
       comment: z.string().min(1),

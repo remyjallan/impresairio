@@ -48,6 +48,9 @@ export class StatusCommand extends CommandRunner {
       `current-step: ${run.currentStepId ?? 'not-started'}`,
       `steps: ${run.steps.length}`,
       ...run.steps.map((step) => `${step.id}: ${step.status}${step.kind === 'agent' && step.conditionDecision ? ' (condition false)' : ''}${step.kind === 'agent' && step.agentOverride ? ` (fallback: ${step.agentOverride.profile})` : ''}`),
+      ...run.steps.flatMap((step) => step.kind === 'agent' && step.failedAgentOutput
+        ? [`failed-output: ${step.id}: ${step.failedAgentOutput.artifactPath}${step.failedAgentOutput.truncated ? ' (truncated)' : ''}`]
+        : []),
       ...verdictWarnings(run).map((warning) => `warning: ${warning}`),
       '',
     ].join('\n'));

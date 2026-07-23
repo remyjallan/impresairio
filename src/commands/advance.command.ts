@@ -69,6 +69,7 @@ export class AdvanceCommand extends CommandRunner {
     const release = this.locks.acquireReentrant(runId, 'advance');
     let activeStepId: string | undefined;
     let activeHandoff: ReturnType<AgentDispatchService['prepare']> | undefined;
+    let failedAgentOutput: string | undefined;
     try {
       for (;;) {
         const result = this.workflow.next(runId);
@@ -119,6 +120,7 @@ export class AdvanceCommand extends CommandRunner {
           timeoutMs: currentRun.execution.agentTimeoutSeconds * 1_000,
           onHeartbeat: (elapsedMs) => this.writeProgress(`${formatAgentProgress('running', result.stepId, handoff, elapsedMs)}\n`),
         });
+        failedAgentOutput = child.stdout || child.stderr || undefined;
         if (child.spawnError) throw createProviderExecutionError(invocation.command, result.stepId, child);
         // Claude can finish generating a structured answer then fail only
         // because it attempted an unnecessary Write tool call. Preserve that
@@ -144,6 +146,7 @@ export class AdvanceCommand extends CommandRunner {
           : recoveredContent ?? (openCodeOutput
             ? (openCodeOutput.kind === 'text' ? openCodeOutput.content : '')
             : extractContent(child.stdout));
+        failedAgentOutput = content || failedAgentOutput;
         if (!content.trim()) throw createProviderExecutionError(
           invocation.command,
           result.stepId,
@@ -163,7 +166,12 @@ export class AdvanceCommand extends CommandRunner {
       }
     } catch (error) {
       if (activeStepId && !(error instanceof StructuredResultError)) {
-        this.stateStore.markFailed(runId, activeStepId, error instanceof Error ? error.message : String(error));
+        this.stateStore.markFailed(
+          runId,
+          activeStepId,
+          error instanceof Error ? error.message : String(error),
+          failedAgentOutput,
+        );
       }
       if (activeStepId && error instanceof ProviderExecutionError) {
         this.events.append(runId, {

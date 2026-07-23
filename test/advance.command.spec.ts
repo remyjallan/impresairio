@@ -71,6 +71,32 @@ describe('advance command output recovery', () => {
     }
   });
 
+  it('passes failed provider output to durable run-state recovery', async () => {
+    const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-failure-'));
+    const markFailed = vi.fn();
+    const command = new AdvanceCommand(
+      { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex',
+        expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') },
+        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("partial output"); process.exit(1)'], input: 'work' },
+      }) } as never,
+      {} as never,
+      { runDirectory: () => runDirectory, findState: () => ({ execution: { agentTimeoutSeconds: 1 } }), markFailed } as never,
+      {} as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await expect(command.run(['run-1'])).rejects.toThrow('exited with status 1');
+      expect(markFailed).toHaveBeenCalledWith('run-1', 'implement', expect.stringContaining('exited with status 1'), 'partial output');
+    } finally {
+      rmSync(runDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('limits Codex writable access to the staging directory', () => {
     expect(prepareExecutionInvocation({
       command: 'codex',

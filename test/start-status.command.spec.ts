@@ -210,6 +210,36 @@ describe('start and status commands', () => {
     expect(output.join('')).not.toContain('external-reference:');
   });
 
+  it('shows the preserved failed-agent output path', async () => {
+    const { home, store, service } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    await new StartCommand(service, () => undefined).run(['quick-fix'], {
+      launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm', runId: 'run-failed-output',
+      repository, featureId: 'IMP-42', featureSlug: 'workflow-test', request: 'Investigate the failure.',
+    });
+    const state = store.findState('run-failed-output');
+    if (!state) throw new Error('missing run state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'investigate' && step.kind === 'agent'
+        ? {
+            ...step, status: 'failed' as const,
+            failedAgentOutput: {
+              artifactPath: '/tmp/failed-agent-output.md', artifactSha256: 'a'.repeat(64),
+              at: '2026-07-23T12:00:00.000Z', diagnostic: 'Provider returned an invalid patch.', truncated: true,
+            },
+          }
+        : step),
+    });
+    const output: string[] = [];
+
+    await new StatusCommand(store, (line) => output.push(line)).run(['run-failed-output']);
+
+    expect(output.join('')).toContain('failed-output: investigate: /tmp/failed-agent-output.md (truncated)');
+  });
+
   it('freezes a declared verdictPolicy into the run state', () => {
     const { home, store, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
