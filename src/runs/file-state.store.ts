@@ -204,6 +204,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
         ? {
             ...completed,
             retryContext: undefined,
+            externalRecovery: undefined,
             ...(completion.reviewOutcome ? { reviewOutcome: completion.reviewOutcome } : {}),
             ...(completion.result ? { result: completion.result } : {}),
             ...(completion.appliedPatch ? { appliedPatch: completion.appliedPatch } : {}),

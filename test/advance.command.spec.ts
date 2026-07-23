@@ -69,6 +69,25 @@ describe('advance command output recovery', () => {
     }
   });
 
+  it('stops at an external agent-output handoff without dispatching an agent process', async () => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const dispatch = { prepare: vi.fn() };
+    try {
+      const command = new AdvanceCommand(
+        { next: () => ({ kind: 'external-agent-output', stepId: 'implement' }) } as never,
+        dispatch as never,
+        {} as never, {} as never, {} as never,
+        { acquireReentrant: () => () => undefined } as never,
+        {} as never, () => undefined,
+      );
+      await command.run(['run-1']);
+      expect(dispatch.prepare).not.toHaveBeenCalled();
+      expect(write).toHaveBeenCalledWith('external-agent-output: implement\n');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it('stages an agent invocation before publishing its output', async () => {
     const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-'));
     const expectedOutputPath = join(runDirectory, 'artifacts', 'implement.md');
