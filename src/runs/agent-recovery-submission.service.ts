@@ -56,9 +56,13 @@ export class AgentRecoverySubmissionService {
       const artifact = content.endsWith('\n') ? content : `${content}\n`;
       const artifactSha256 = createHash('sha256').update(artifact, 'utf8').digest('hex');
       this.artifacts.publishMarkdown(step.expectedOutput, artifact);
-      this.completion.complete(runId, stepId);
+      const appliedPatch = this.completion.complete(runId, stepId);
+      if (!appliedPatch) {
+        throw new RunStateError(`External recovery ${stepId} completed without applying a patch`);
+      }
       this.events.append(runId, {
         type: 'agent.external_recovery.submitted', at: new Date().toISOString(), stepId, artifactSha256,
+        appliedPatch: { sha256: appliedPatch.sha256, paths: appliedPatch.paths, appliedAt: appliedPatch.appliedAt },
       });
     } finally {
       release();

@@ -126,7 +126,8 @@ describe('ExternalAgentRecoveryService', () => {
     const source = join(sourceDirectory, 'host-authored-patch.md');
     writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
     const publishMarkdown = vi.fn();
-    const complete = vi.fn();
+    const appliedPatch = { sha256: 'a'.repeat(64), paths: ['a.ts'], appliedAt: '2026-07-23T12:01:00.000Z' };
+    const complete = vi.fn(() => appliedPatch);
     const submission = new AgentRecoverySubmissionService(
       store,
       { publishMarkdown } as unknown as ArtifactService,
@@ -141,7 +142,7 @@ describe('ExternalAgentRecoveryService', () => {
     expect(publishMarkdown).toHaveBeenCalledWith(expect.objectContaining({ id: 'implementation' }), expect.stringContaining('impresairio-patch'));
     expect(complete).toHaveBeenCalledWith('run-external', 'implement');
     expect(events.read('run-external')).toContainEqual(expect.objectContaining({
-      type: 'agent.external_recovery.submitted', stepId: 'implement', artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      type: 'agent.external_recovery.submitted', stepId: 'implement', artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/), appliedPatch,
     }));
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('was already submitted');
     expect(publishMarkdown).toHaveBeenCalledTimes(1);
@@ -163,6 +164,26 @@ describe('ExternalAgentRecoveryService', () => {
     if (!step || step.kind !== 'agent' || !step.expectedOutput) throw new Error('missing output');
     const managedPath = step.expectedOutput.path;
     expect(() => submission.submit('run-external', 'implement', managedPath)).toThrow('must not be the Impresairio-managed destination');
+  });
+
+  it('requires the runner-owned completion path to return an applied patch', () => {
+    const { store, events, locks, recovery } = harness();
+    recovery.prepare('run-external', 'implement', 'Manual recovery.');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    const submission = new AgentRecoverySubmissionService(
+      store,
+      { publishMarkdown: vi.fn() } as unknown as ArtifactService,
+      { complete: () => undefined } as never,
+      events,
+      locks,
+      new RepositoryPatchService(),
+    );
+
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('completed without applying a patch');
+    expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));
   });
 
   it('rejects a repository source, a run-directory source, malformed Markdown, and oversized output before publishing', () => {

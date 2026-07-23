@@ -157,7 +157,7 @@ export class CompletionService {
     private readonly patches: PatchApplier = { apply: () => { throw new CompletionError('No patch applier is configured'); } },
   ) {}
 
-  complete(runId: string, stepId: string): void {
+  complete(runId: string, stepId: string): AppliedPatch | undefined {
     const release = this.lock.acquire(runId, 'complete');
     try {
       const run = this.store.find(runId);
@@ -311,9 +311,10 @@ export class CompletionService {
             : {
                 type: 'cycle.exhausted', stepId, cycleId: cycle.id,
                 iteration: cycle.iteration, verdict: 'CHANGES_REQUESTED', at: this.now().toISOString(),
-              });
+          });
         }
       }
+      return patchApplication?.patch;
     } finally {
       release();
     }
