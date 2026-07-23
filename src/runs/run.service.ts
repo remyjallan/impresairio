@@ -37,7 +37,9 @@ export const RUN_CLOCK = Symbol('RUN_CLOCK');
 
 export function workflowActors(steps: readonly ExpandedWorkflowStep[]): string[] {
   return [...new Set(steps.flatMap((step) => {
-    if (step.type !== 'agent' && (step.type !== 'host-handoff' || !('actor' in step))) {
+    const needsActor = step.type === 'agent'
+      || (step.type === 'host-handoff' && 'capability' in step);
+    if (!needsActor) {
       return [];
     }
     if (!step.actor) {

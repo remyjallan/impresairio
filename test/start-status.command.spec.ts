@@ -390,7 +390,7 @@ steps:
     })).toThrow('Agent profile is not frozen for actor launcher');
   });
 
-  it('rejects a malformed expanded actor before resolving profiles', () => {
+  it('rejects an empty expanded actor before resolving profiles', () => {
     expect(() => workflowActors([{
       id: 'brainstorm', type: 'host-handoff', actor: '', capability: 'feature-design', interaction: 'user-dialog',
     }] as never)).toThrow('Workflow step brainstorm requires an actor');
