@@ -104,7 +104,6 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
       provide: HomeDirectoryResolver,
       useFactory: () => new HomeDirectoryResolver(),
     },
-    { provide: EXTERNAL_AGENT_RECOVERY_WRITER, useValue: (line: string) => process.stdout.write(line) },
     ConfigService,
     PathRendererService,
     FilesystemDocumentationTarget,

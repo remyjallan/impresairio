@@ -62,6 +62,10 @@ describe('ExternalAgentRecoveryService', () => {
     expect(recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })).toMatchObject({
       kind: 'external-agent-output', stepId: 'implement', reason: 'The configured provider produced an unappliable patch.',
     });
+    const prepared = store.findState('run-external');
+    if (!prepared) throw new Error('missing prepared state');
+    store.save({ ...prepared, repositoryDirectory: undefined });
+    expect(recovery.handoff('run-external', { kind: 'external-agent-output', stepId: 'implement' })?.repositoryDirectory).toBe(process.cwd());
     expect(store.findState('run-external')?.steps[0]).toMatchObject({
       status: 'in_progress', externalRecovery: { reason: 'The configured provider produced an unappliable patch.' },
       attempts: [{ number: 1 }, { number: 2 }],
@@ -100,14 +104,17 @@ describe('ExternalAgentRecoveryService', () => {
 
   it('requires a reason before the CLI prepares a recovery envelope', async () => {
     const { recovery } = harness();
-    const output: string[] = [];
-    const command = new PrepareExternalAgentOutputCommand(recovery, (line) => output.push(line));
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const command = new PrepareExternalAgentOutputCommand(recovery);
 
-    expect(command.parseReason('Manual patch recovery.')).toBe('Manual patch recovery.');
-    await expect(command.run(['run-external', 'implement'], {})).rejects.toThrow('requires --reason');
-    await command.run(['run-external', 'implement'], { reason: 'Manual patch recovery.' });
-
-    expect(JSON.parse(output.join(''))).toMatchObject({ kind: 'external-agent-output', stepId: 'implement' });
+    try {
+      expect(command.parseReason('Manual patch recovery.')).toBe('Manual patch recovery.');
+      await expect(command.run(['run-external', 'implement'], {})).rejects.toThrow('requires --reason');
+      await command.run(['run-external', 'implement'], { reason: 'Manual patch recovery.' });
+      expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toMatchObject({ kind: 'external-agent-output', stepId: 'implement' });
+    } finally {
+      write.mockRestore();
+    }
   });
 
   it('submits external Markdown through the runner-owned completion path', async () => {
