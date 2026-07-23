@@ -4,6 +4,8 @@ import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
 import { SubmitHostOutputCommand } from './commands/submit-host-output.command';
 import { AbandonCommand } from './commands/abandon.command';
+import { PrepareExternalAgentOutputCommand } from './commands/prepare-external-agent-output.command';
+import { SubmitAgentOutputCommand } from './commands/submit-agent-output.command';
 import { ImpresairioRootCommand } from './commands/root.command';
 import { RequestChangesCommand } from './commands/request-changes.command';
 import { RetryCommand } from './commands/retry.command';
@@ -59,6 +61,8 @@ import { ReportCommand, REPORT_WRITER } from './commands/report.command';
 import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
 import { HostHandoffSubmissionService } from './runs/host-handoff-submission.service';
 import { RunAbandonService } from './runs/run-abandon.service';
+import { ExternalAgentRecoveryService } from './runs/external-agent-recovery.service';
+import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission.service';
 
 @Module({
   providers: [
@@ -79,10 +83,14 @@ import { RunAbandonService } from './runs/run-abandon.service';
     NextCommand,
     SubmitHostOutputCommand,
     AbandonCommand,
+    PrepareExternalAgentOutputCommand,
+    SubmitAgentOutputCommand,
     AgentProfileService,
     AgentDispatchService,
     HostHandoffService,
     HostHandoffSubmissionService,
+    ExternalAgentRecoveryService,
+    AgentRecoverySubmissionService,
     AgentFallbackService,
     RunReportService,
     RunAbandonService,

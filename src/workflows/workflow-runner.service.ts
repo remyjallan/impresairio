@@ -10,6 +10,7 @@ import { ConditionEvaluatorService } from './condition-evaluator.service';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
+  | { readonly kind: 'external-agent-output'; readonly stepId: string }
   | { readonly kind: 'host-handoff'; readonly stepId: string }
   | { readonly kind: 'gate'; readonly stepId: string; readonly warnings?: readonly string[] }
   | { readonly kind: 'blocked'; readonly stepId: string; readonly warnings: readonly string[] }
@@ -76,6 +77,9 @@ export class WorkflowRunnerService {
         return { kind: 'gate', stepId: step.id, ...(warnings.length > 0 ? { warnings } : {}) };
       }
       if (step.status === 'in_progress') {
+        if (step.kind === 'agent' && step.externalRecovery) {
+          return { kind: 'external-agent-output', stepId: step.id };
+        }
         return { kind: step.kind, stepId: step.id };
       }
 

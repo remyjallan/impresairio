@@ -89,6 +89,10 @@ export class AdvanceCommand extends CommandRunner {
           process.stdout.write(`${JSON.stringify(handoff)}\n`);
           return;
         }
+        if (result.kind === 'external-agent-output') {
+          process.stdout.write(`external-agent-output: ${result.stepId}\n`);
+          return;
+        }
         activeStepId = result.stepId;
         const handoff = this.dispatch.prepare(runId, result);
         activeHandoff = handoff;

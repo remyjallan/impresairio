@@ -3,6 +3,7 @@ import { Command, CommandRunner } from 'nest-commander';
 import { WorkflowRunnerService } from '../workflows/workflow-runner.service';
 import { AgentDispatchService } from '../agents/agent-dispatch.service';
 import { HostHandoffService } from '../agents/host-handoff.service';
+import { ExternalAgentRecoveryService } from '../runs/external-agent-recovery.service';
 
 export const NEXT_WRITER = Symbol('NEXT_WRITER');
 
@@ -22,6 +23,8 @@ export class NextCommand extends CommandRunner {
     private readonly write: (line: string) => void = (line) => process.stdout.write(line),
     @Optional() @Inject(HostHandoffService)
     private readonly hostHandoffs?: HostHandoffService,
+    @Optional() @Inject(ExternalAgentRecoveryService)
+    private readonly externalRecovery?: ExternalAgentRecoveryService,
   ) {
     super();
   }
@@ -36,6 +39,11 @@ export class NextCommand extends CommandRunner {
     const hostHandoff = this.hostHandoffs?.prepare(runId, result);
     if (hostHandoff) {
       this.write(`${JSON.stringify(hostHandoff)}\n`);
+      return;
+    }
+    const externalHandoff = this.externalRecovery?.handoff(runId, result);
+    if (externalHandoff) {
+      this.write(`${JSON.stringify(externalHandoff)}\n`);
       return;
     }
     if (result.kind === 'complete') {

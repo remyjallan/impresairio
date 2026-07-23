@@ -92,6 +92,11 @@ const failedAgentOutputSchema = z.object({
   truncated: z.boolean(),
 }).strict();
 
+const externalAgentRecoverySchema = z.object({
+  preparedAt: timestampSchema,
+  reason: z.string().trim().min(1).max(1_000),
+}).strict();
+
 const frozenAgentProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
@@ -230,6 +235,7 @@ const runAgentStepSchema = z
     verdictRetries: z.number().int().nonnegative().optional(),
     retryContext: retryContextSchema.optional(),
     failedAgentOutput: failedAgentOutputSchema.optional(),
+    externalRecovery: externalAgentRecoverySchema.optional(),
     acknowledgment: z.object({
       at: timestampSchema,
       comment: z.string().min(1),

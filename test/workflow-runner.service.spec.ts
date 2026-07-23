@@ -98,6 +98,21 @@ describe('WorkflowRunnerService', () => {
     expect(store.findState('run-workflow')?.steps[0]).toMatchObject({ status: 'pending' });
   });
 
+  it('returns an external agent-output handoff instead of dispatching a prepared recovery', () => {
+    const { runner, store } = createRunner([agent('design')]);
+    runner.next('run-workflow');
+    const state = store.findState('run-workflow');
+    if (!state) throw new Error('missing test state');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.kind === 'agent'
+        ? { ...step, externalRecovery: { preparedAt: '2026-07-20T10:01:00.000Z', reason: 'Manual patch recovery.' } }
+        : step),
+    });
+
+    expect(runner.next('run-workflow')).toEqual({ kind: 'external-agent-output', stepId: 'design' });
+  });
+
   it('starts only the first pending agent step in order', () => {
     const { runner, store } = createRunner([
       agent('design'),

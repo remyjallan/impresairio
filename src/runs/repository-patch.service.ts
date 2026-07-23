@@ -13,6 +13,10 @@ export class RepositoryPatchError extends Error {
 
 @Injectable()
 export class RepositoryPatchService implements PatchApplier {
+  validate(markdown: string): void {
+    parseUnifiedPatch(markdown);
+  }
+
   apply(
     run: CompletionRun,
     step: CompletionStep,
