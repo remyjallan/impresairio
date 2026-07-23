@@ -117,7 +117,7 @@ export class RunService {
                     method: this.capabilities.resolve(
                       step.capability,
                       step.actor,
-                      request.roles[step.actor] ?? '(unbound)',
+                      request.roles[step.actor]!,
                       resolvedActors[step.actor],
                     ),
                   }
@@ -143,7 +143,7 @@ export class RunService {
                   method: this.capabilities.resolve(
                     step.capability,
                     step.actor,
-                    request.roles[step.actor] ?? '(unbound)',
+                    request.roles[step.actor]!,
                     resolvedActors[step.actor],
                   ),
                   interaction: step.interaction,

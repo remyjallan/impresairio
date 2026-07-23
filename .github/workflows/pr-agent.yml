@@ -40,8 +40,11 @@ jobs:
         id: pragent
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENAI__KEY: ${{ secrets.PR_AGENT_NANOGPT_KEY }}
-          OPENAI__API_BASE: https://nano-gpt.com/api/v1legacy
+          # PR-Agent's GitHub Action reads the API key from the documented
+          # OPENAI_KEY environment variable. Its dotted settings configure the
+          # OpenAI-compatible NanoGPT endpoint.
+          OPENAI_KEY: ${{ secrets.PR_AGENT_NANOGPT_KEY }}
+          OPENAI.API_BASE: https://nano-gpt.com/api/v1legacy
           # LiteLLM strips the openai/ routing prefix before NanoGPT receives
           # the documented model ID: zai-org/glm-5.2.
           config.model: openai/zai-org/glm-5.2
@@ -63,7 +66,7 @@ jobs:
             match the provider's documented API; report them only with a
             concrete incompatibility or failure scenario.
             This workflow has been verified live with NanoGPT: the action
-            receives OPENAI__KEY and OPENAI__API_BASE from the step environment,
+            receives OPENAI_KEY and OPENAI.API_BASE from the step environment,
             actions/checkout runs before the review, and enable_output exposes
             the structured review through steps.pragent.outputs.review. Do not
             report hypothetical failures of these mechanisms without a concrete
