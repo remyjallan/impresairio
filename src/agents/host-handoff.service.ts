@@ -93,9 +93,6 @@ export class HostHandoffService {
         throw new RunStateError(`Host handoff inputs exceed the ${MAX_HOST_HANDOFF_INPUT_AGGREGATE_BYTES}-byte aggregate limit`);
       }
       const inputs = resolvedInputs.map(({ bytes: _bytes, ...input }) => input);
-      const retryFeedback = step.retryContext
-        ? this.retryFeedbackFor(step.retryContext)
-        : undefined;
       const interactive = step.interaction === 'user-dialog';
       const actor = interactive ? step.actor : undefined;
       const profile = actor ? state.resolvedActors[actor] : undefined;
@@ -103,6 +100,9 @@ export class HostHandoffService {
       if (interactive && (!actor || !profile || !method || !('capability' in method))) {
         throw new RunStateError(`Interactive host handoff ${step.id} has no frozen host actor or method`);
       }
+      const retryFeedback = step.retryContext
+        ? this.retryFeedbackFor(step.retryContext)
+        : undefined;
       const instruction = interactive
         ? interactiveInstruction(method as ResolvedCapabilityMethod, state.request)
         : promptInstructionForStep(step, state.request);
