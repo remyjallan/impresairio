@@ -27,6 +27,9 @@ export class AgentRecoverySubmissionService {
     try {
       const state = this.stateStore.findState(runId);
       if (!state) throw new RunStateError(`Run not found: ${runId}`);
+      if (this.events.read(runId).some((event) => event.type === 'agent.external_recovery.submitted' && event.stepId === stepId)) {
+        throw new RunStateError(`External recovery ${stepId} was already submitted`);
+      }
       const step = state.steps.find((candidate) => candidate.id === stepId);
       if (!step || step.kind !== 'agent' || !step.externalRecovery) {
         throw new RunStateError(`Step ${stepId} is not awaiting external agent output`);

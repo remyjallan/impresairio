@@ -11,6 +11,7 @@ import { AgentRecoverySubmissionService } from '../src/runs/agent-recovery-submi
 import { ExternalAgentRecoveryService } from '../src/runs/external-agent-recovery.service';
 import { EventLogService } from '../src/runs/event-log.service';
 import { FileStateStore } from '../src/runs/file-state.store';
+import { RepositoryPatchService } from '../src/runs/repository-patch.service';
 import { RunLockService } from '../src/runs/run-lock.service';
 import { createRunState } from '../src/runs/run-state.schema';
 
@@ -132,7 +133,7 @@ describe('ExternalAgentRecoveryService', () => {
       { complete } as never,
       events,
       locks,
-      { validate: vi.fn() } as never,
+      new RepositoryPatchService(),
     );
 
     await new SubmitAgentOutputCommand(submission).run(['run-external', 'implement', source]);
@@ -142,6 +143,8 @@ describe('ExternalAgentRecoveryService', () => {
     expect(events.read('run-external')).toContainEqual(expect.objectContaining({
       type: 'agent.external_recovery.submitted', stepId: 'implement', artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
     }));
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('was already submitted');
+    expect(publishMarkdown).toHaveBeenCalledTimes(1);
   });
 
   it('rejects unprepared, inactive, and managed-file submissions', () => {
@@ -166,14 +169,13 @@ describe('ExternalAgentRecoveryService', () => {
     const { home, store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Manual recovery.');
     const publishMarkdown = vi.fn();
-    const validate = vi.fn();
     const submission = new AgentRecoverySubmissionService(
       store,
       { publishMarkdown } as unknown as ArtifactService,
       { complete: vi.fn() } as never,
       events,
       locks,
-      { validate } as never,
+      new RepositoryPatchService(),
     );
     const repositorySource = join(home, 'repository-response.md');
     writeFileSync(repositorySource, '# Response\n', 'utf8');
@@ -188,7 +190,6 @@ describe('ExternalAgentRecoveryService', () => {
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
     writeFileSync(source, '# Missing patch\n', 'utf8');
-    validate.mockImplementation(() => { throw new Error('Expected exactly one impresairio-patch fenced block'); });
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('Expected exactly one impresairio-patch fenced block');
     expect(publishMarkdown).not.toHaveBeenCalled();
     writeFileSync(source, 'x'.repeat(1_048_577), 'utf8');
