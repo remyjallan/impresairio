@@ -225,6 +225,32 @@ describe('ExternalAgentRecoveryService', () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
+  it('keeps an artifact when completion already persisted the step', () => {
+    const { store, events, locks, recovery } = harness();
+    recovery.prepare('run-external', 'implement', 'Manual recovery.');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    const discardOutput = vi.fn();
+    const submission = new AgentRecoverySubmissionService(
+      store,
+      { publishMarkdown: vi.fn(), discardOutput } as unknown as ArtifactService,
+      { complete: () => {
+        const state = store.findState('run-external');
+        if (!state) throw new Error('missing run state');
+        store.save({ ...state, steps: state.steps.map((step) => step.id === 'implement' ? { ...step, status: 'complete' as const } : step) });
+        throw new Error('Completion event write failed');
+      } } as never,
+      events,
+      locks,
+      new RepositoryPatchService(),
+    );
+
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Completion event write failed');
+    expect(discardOutput).not.toHaveBeenCalled();
+  });
+
   it('records submission metadata when completion records patch application independently', () => {
     const { store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Manual recovery.');

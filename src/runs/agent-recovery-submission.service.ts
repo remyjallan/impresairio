@@ -76,7 +76,7 @@ export class AgentRecoverySubmissionService {
         appliedPatch = this.completion.complete(runId, stepId);
       } catch (error) {
         const latestStep = this.stateStore.findState(runId)?.steps.find((candidate) => candidate.id === stepId);
-        if (latestStep?.status === 'in_progress') {
+        if (latestStep?.status !== 'complete') {
           this.artifacts.discardOutput(step.expectedOutput);
         }
         throw error;
