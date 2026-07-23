@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import { RunLockService } from '../runs/run-lock.service';
-import type { RunState } from '../runs/run-state.schema';
+import { assertRunActive, type RunState } from '../runs/run-state.schema';
 import { ArtifactService } from '../documentation/artifact.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
 import { isVerdictHalted, verdictWarnings } from './verdict-completion.policy';
@@ -33,10 +33,9 @@ export class WorkflowRunnerService {
   next(runId: string): NextStepResult {
     const release = this.locks.acquire(runId, 'next');
     try {
-      let state = this.staleInvalidation.preflightApprovedArtifacts(
-        runId,
-        this.requiredState(runId),
-      );
+      const activeState = this.requiredState(runId);
+      assertRunActive(activeState);
+      let state = this.staleInvalidation.preflightApprovedArtifacts(runId, activeState);
       const halted = state.steps.find(isVerdictHalted);
       if (halted) {
         return { kind: 'blocked', stepId: halted.id, warnings: verdictWarnings(state) };

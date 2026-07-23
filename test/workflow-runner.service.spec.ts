@@ -84,6 +84,20 @@ afterEach(() => {
 });
 
 describe('WorkflowRunnerService', () => {
+  it('does not mutate or resume an abandoned run', () => {
+    const { runner, store } = createRunner([agent('design')]);
+    const state = store.findState('run-workflow');
+    if (!state) throw new Error('missing test state');
+    store.save({
+      ...state,
+      abandonment: { at: '2026-07-20T10:01:00.000Z', reason: 'Delivered manually.' },
+      currentStepId: undefined,
+    });
+
+    expect(() => runner.next('run-workflow')).toThrow('was abandoned');
+    expect(store.findState('run-workflow')?.steps[0]).toMatchObject({ status: 'pending' });
+  });
+
   it('starts only the first pending agent step in order', () => {
     const { runner, store } = createRunner([
       agent('design'),

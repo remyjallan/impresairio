@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Command, CommandRunner } from 'nest-commander';
 import { FileStateStore } from '../runs/file-state.store';
+import { getRunStatus } from '../runs/run-report.service';
 
 export const LIST_WRITER = Symbol('LIST_WRITER');
 
@@ -22,8 +23,8 @@ export class ListCommand extends CommandRunner {
       return;
     }
     this.write([
-      'RUN ID\tWORKFLOW\tCURRENT STEP\tUPDATED',
-      ...runs.map((run) => `${run.id}\t${run.workflow.id}\t${run.currentStepId ?? 'not-started'}\t${run.updatedAt}`),
+      'RUN ID\tWORKFLOW\tSTATUS\tCURRENT STEP\tUPDATED',
+      ...runs.map((run) => `${run.id}\t${run.workflow.id}\t${getRunStatus(run)}\t${run.currentStepId ?? 'not-started'}\t${run.updatedAt}`),
       '',
     ].join('\n'));
   }

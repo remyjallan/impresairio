@@ -13,10 +13,11 @@ export interface RunReport {
   readonly run: {
     readonly id: string;
     readonly workflow: string;
-    readonly status: 'complete' | 'in-progress' | 'failed' | 'blocked';
+    readonly status: 'complete' | 'in-progress' | 'failed' | 'blocked' | 'abandoned';
     readonly startedAt: string;
     readonly endedAt?: string;
     readonly durationMs: number;
+    readonly abandonment?: { readonly at: string; readonly reason: string; readonly externalReference?: string };
   };
   readonly agentSteps: readonly {
     readonly id: string;
@@ -64,7 +65,7 @@ export class RunReportService {
     if (!state) throw new RunStateError(`Run not found: ${runId}`);
     const events = this.events.read(runId);
     const startedAt = firstEventAt(events, 'run.started') ?? state.createdAt;
-    const runStatus = reportStatus(state);
+    const runStatus = getRunStatus(state);
     const endedAt = runStatus === 'in-progress' ? undefined : latestEventAt(events) ?? state.updatedAt;
     const reportEnd = endedAt ?? this.now().toISOString();
     const availability: string[] = [];
@@ -126,6 +127,7 @@ export class RunReportService {
         startedAt,
         ...(endedAt ? { endedAt } : {}),
         durationMs: durationBetween(startedAt, reportEnd),
+        ...(state.abandonment ? { abandonment: state.abandonment } : {}),
       },
       agentSteps,
       gates,
@@ -146,6 +148,7 @@ export function formatRunReport(report: RunReport): string {
     `Run: ${report.run.id} (${report.run.workflow})`,
     `Status: ${report.run.status}`,
     `Duration: ${formatDuration(report.run.durationMs)}`,
+    ...(report.run.abandonment ? [`Abandoned: ${report.run.abandonment.at}; ${report.run.abandonment.reason}${report.run.abandonment.externalReference ? `; ${report.run.abandonment.externalReference}` : ''}`] : []),
     '',
     'Agent steps',
     ...(report.agentSteps.length === 0 ? ['- none'] : report.agentSteps.map((step) => {
@@ -193,7 +196,8 @@ function attemptReport(
   return { number: attempt.number, outcome: 'unavailable' };
 }
 
-function reportStatus(state: RunState): RunReport['run']['status'] {
+export function getRunStatus(state: RunState): RunReport['run']['status'] {
+  if (state.abandonment) return 'abandoned';
   if (state.steps.some((step) => step.status === 'failed')) return 'failed';
   if (state.steps.some((step) => step.kind === 'agent'
     && step.reviewOutcome

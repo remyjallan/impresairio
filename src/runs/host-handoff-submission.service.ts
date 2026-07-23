@@ -6,6 +6,7 @@ import { CompletionService } from './completion.service';
 import { EventLogService } from './event-log.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
+import { assertRunActive } from './run-state.schema';
 
 @Injectable()
 export class HostHandoffSubmissionService {
@@ -22,6 +23,7 @@ export class HostHandoffSubmissionService {
     try {
       const state = this.stateStore.findState(runId);
       if (!state) throw new RunStateError(`Run not found: ${runId}`);
+      assertRunActive(state);
       const step = state.steps.find((candidate) => candidate.id === stepId);
       if (!step || step.kind !== 'host-handoff') throw new RunStateError(`Step ${stepId} is not a host handoff`);
       if (state.currentStepId !== stepId || step.status !== 'in_progress' || !step.expectedOutput) {

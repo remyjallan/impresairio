@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
 import { RunLockService } from '../runs/run-lock.service';
-import type { RunState } from '../runs/run-state.schema';
+import { assertRunActive, type RunState } from '../runs/run-state.schema';
 import { agentSettingsForEvent } from './agent-provider';
 
 type AgentStep = Extract<RunState['steps'][number], { readonly kind: 'agent' }>;
@@ -21,6 +21,7 @@ export class AgentFallbackService {
     try {
       const state = this.stateStore.findState(runId);
       if (!state) throw new RunStateError(`Run not found: ${runId}`);
+      assertRunActive(state);
       const step = state.steps.find((candidate) => candidate.id === stepId);
       if (!step || step.kind !== 'agent') {
         throw new RunStateError(`Step ${stepId} is not an agent step`);

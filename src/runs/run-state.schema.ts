@@ -156,6 +156,12 @@ const documentationContextSchema = z
   })
   .strict();
 
+const abandonmentSchema = z.object({
+  at: timestampSchema,
+  reason: z.string().trim().min(1).max(1_000),
+  externalReference: z.string().trim().min(1).max(2_000).optional(),
+}).strict();
+
 const runAgentStepSchema = z
   .object({
     id: nonEmptyString,
@@ -322,6 +328,7 @@ export const runStateSchema = z
     execution: z.object({
       agentTimeoutSeconds: z.number().int().min(1).max(86_400),
     }).strict().default({ agentTimeoutSeconds: 1_800 }),
+    abandonment: abandonmentSchema.optional(),
     currentStepId: nonEmptyString.optional(),
     steps: z.array(runStepSchema),
     createdAt: timestampSchema,
@@ -330,6 +337,13 @@ export const runStateSchema = z
   .strict();
 
 export type RunState = z.infer<typeof runStateSchema>;
+
+/** Rejects mutations after an operator has deliberately closed a run. */
+export function assertRunActive(state: Pick<RunState, 'id' | 'abandonment'>): void {
+  if (state.abandonment) {
+    throw new Error(`Run ${state.id} was abandoned at ${state.abandonment.at}: ${state.abandonment.reason}`);
+  }
+}
 
 export function createRunState(input: {
   readonly id: string;

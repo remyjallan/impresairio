@@ -4,6 +4,7 @@ import type { PreparedDocumentationOutput } from '../documentation/documentation
 import { readFileSync } from 'node:fs';
 import type { WorkflowPatch, WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
 import { parseStructuredResult, StructuredResultError } from '../workflows/structured-result';
+import { assertRunActive } from './run-state.schema';
 
 export type CompletionStepStatus =
   | 'pending'
@@ -26,6 +27,7 @@ export interface CompletionStep {
 
 export interface CompletionRun {
   readonly id: string;
+  readonly abandonment?: { readonly at: string; readonly reason: string; readonly externalReference?: string };
   readonly repositoryDirectory?: string;
   readonly repositoryPatch?: RepositoryPatchState;
   readonly currentStepId: string | undefined;
@@ -162,6 +164,7 @@ export class CompletionService {
       if (!run) {
         throw new CompletionError(`Run not found: ${runId}`);
       }
+      assertRunActive(run);
 
       const step = run.steps.find((candidate) => candidate.id === stepId);
       if (!step) {

@@ -171,4 +171,29 @@ describe('RunReportService', () => {
     expect(result.agentSteps[0]?.attempts).toEqual([{ number: 1, outcome: 'unavailable' }]);
     expect(result.availability).toContain('agent design: one or more attempt durations are unavailable');
   });
+
+  it('reports an abandoned run as a terminal audited outcome', () => {
+    const { store, events, report } = createHarness();
+    const state = store.findState('run-report');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      updatedAt: '2026-07-22T10:05:00.000Z',
+      currentStepId: undefined,
+      abandonment: {
+        at: '2026-07-22T10:05:00.000Z',
+        reason: 'Delivered outside the workflow.',
+        externalReference: 'abc123',
+      },
+    });
+    events.append('run-report', { type: 'run.abandoned', at: '2026-07-22T10:05:00.000Z', reason: 'Delivered outside the workflow.', externalReference: 'abc123' });
+
+    const result = report.create('run-report');
+
+    expect(result.run).toMatchObject({
+      status: 'abandoned', endedAt: '2026-07-22T10:05:00.000Z', durationMs: 300_000,
+      abandonment: { reason: 'Delivered outside the workflow.', externalReference: 'abc123' },
+    });
+    expect(formatRunReport(result)).toContain('Abandoned: 2026-07-22T10:05:00.000Z; Delivered outside the workflow.; abc123');
+  });
 });

@@ -38,6 +38,7 @@ export class StatusCommand extends CommandRunner {
     this.write([
       `run: ${run.id}`,
       `workflow: ${run.workflow.id}`,
+      ...(run.abandonment ? [`run-status: abandoned`, `abandoned-at: ${run.abandonment.at}`, `abandon-reason: ${run.abandonment.reason}`, ...(run.abandonment.externalReference ? [`external-reference: ${run.abandonment.externalReference}`] : [])] : []),
       ...(run.parameters && Object.keys(run.parameters).length > 0
         ? [`parameters: ${JSON.stringify(run.parameters)}`]
         : []),

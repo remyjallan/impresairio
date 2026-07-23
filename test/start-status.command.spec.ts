@@ -11,6 +11,7 @@ import { EventLogService } from '../src/runs/event-log.service';
 import { FileStateStore } from '../src/runs/file-state.store';
 import { RunLockService } from '../src/runs/run-lock.service';
 import { RunService, workflowActors } from '../src/runs/run.service';
+import { createRunState } from '../src/runs/run-state.schema';
 import { WorkflowRegistryService } from '../src/workflows/workflow-registry.service';
 import { WorkflowExpanderService } from '../src/workflows/workflow-expander.service';
 import { WorkflowRunnerService } from '../src/workflows/workflow-runner.service';
@@ -161,6 +162,32 @@ describe('start and status commands', () => {
       type: 'run.started',
       repositoryDirectory: repository,
     }));
+  });
+
+  it('renders the audit details for an abandoned run', async () => {
+    const { store } = createRunService();
+    const state = store.findState('run-quick-fix');
+    if (state) throw new Error('test run should not already exist');
+    const output: string[] = [];
+    const status = new StatusCommand(store, (line) => output.push(line));
+    const now = '2026-07-23T12:00:00.000Z';
+    const abandoned = createRunState({
+      id: 'run-quick-fix', workflowId: 'quick-fix', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: '/tmp', defaultFormat: 'markdown' },
+        featurePath: 'Features/{{ feature.id }}',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'IMP-1', slug: 'test' }, run: { id: 'run-quick-fix' } },
+      },
+      steps: [{ id: 'implement', kind: 'agent', actor: 'implementer', action: 'implementation', output: { id: 'report', filename: 'report.md' } }],
+      now,
+    });
+    store.create({ ...abandoned, abandonment: { at: now, reason: 'Delivered manually.', externalReference: 'abc123' } });
+
+    await status.run(['run-quick-fix']);
+
+    expect(output.join('')).toContain('run-status: abandoned');
+    expect(output.join('')).toContain('abandon-reason: Delivered manually.');
+    expect(output.join('')).toContain('external-reference: abc123');
   });
 
   it('freezes a declared verdictPolicy into the run state', () => {
@@ -414,9 +441,9 @@ steps:
     const output: string[] = [];
     await new ListCommand(store, (line) => output.push(line)).run();
 
-    expect(output.join('')).toContain('RUN ID\tWORKFLOW\tCURRENT STEP\tUPDATED');
-    expect(output.join('')).toContain('run-first\tquick-fix\tnot-started');
-    expect(output.join('')).toContain('run-second\tquick-fix\tnot-started');
+    expect(output.join('')).toContain('RUN ID\tWORKFLOW\tSTATUS\tCURRENT STEP\tUPDATED');
+    expect(output.join('')).toContain('run-first\tquick-fix\tin-progress\tnot-started');
+    expect(output.join('')).toContain('run-second\tquick-fix\tin-progress\tnot-started');
   });
 
   it('keeps the resolved step contract through start, next and completion', () => {
