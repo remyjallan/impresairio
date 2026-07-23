@@ -72,8 +72,41 @@ describe('FileStateStore', () => {
     store.create({ ...state, currentStepId: 'work', steps: state.steps.map((step) => step.kind === 'agent'
       ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
       : step) });
-    store.markFailed('run-agent-failure', 'work', 'failed');
-    expect(store.findState('run-agent-failure')?.steps[0]).toMatchObject({ status: 'failed' });
+    store.markFailed('run-agent-failure', 'work', 'failed', 'The provider returned an incomplete patch.');
+    const failed = store.findState('run-agent-failure')?.steps[0];
+    expect(failed).toMatchObject({ status: 'failed', failedAgentOutput: { diagnostic: 'failed', truncated: false } });
+    if (!failed || failed.kind !== 'agent' || !failed.failedAgentOutput) throw new Error('missing failed output');
+    expect(readFileSync(failed.failedAgentOutput.artifactPath, 'utf8')).toBe('The provider returned an incomplete patch.');
+    const retried = store.findState('run-agent-failure');
+    if (!retried) throw new Error('missing failed state');
+    store.save({
+      ...retried,
+      currentStepId: 'work',
+      steps: retried.steps.map((step) => step.kind === 'agent' ? { ...step, status: 'in_progress' as const } : step),
+    });
+    store.markFailed('run-agent-failure', 'work', 'x'.repeat(1_001), 'second response');
+    expect(store.findState('run-agent-failure')?.steps[0]).toMatchObject({
+      failedAgentOutput: { diagnostic: `${'x'.repeat(997)}...` },
+    });
+  });
+
+  it('truncates failed agent output on a UTF-8 boundary', () => {
+    const { store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const state = createRunState({ id: 'run-utf8-failure', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } }], now: at });
+    store.create({ ...state, currentStepId: 'work', steps: state.steps.map((step) => step.kind === 'agent'
+      ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
+      : step) });
+
+    store.markFailed('run-utf8-failure', 'work', 'failed', `${'a'.repeat((256 * 1024) - 1)}é`);
+
+    const failed = store.findState('run-utf8-failure')?.steps[0];
+    if (!failed || failed.kind !== 'agent' || !failed.failedAgentOutput) throw new Error('missing failed output');
+    const content = readFileSync(failed.failedAgentOutput.artifactPath, 'utf8');
+    expect(content).toBe('a'.repeat((256 * 1024) - 1));
+    expect(content).not.toContain('\uFFFD');
+    expect(failed.failedAgentOutput.artifactSha256).toBe(createHash('sha256').update(content).digest('hex'));
   });
 
   it('marks an in-progress host handoff failure without agent dispatch state', () => {

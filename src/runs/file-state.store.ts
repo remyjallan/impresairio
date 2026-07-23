@@ -48,6 +48,15 @@ const nativeFileOperations: StateFileOperations = {
 
 export const FILE_STATE_OPERATIONS = Symbol('FILE_STATE_OPERATIONS');
 
+/** Returns the largest valid UTF-8 prefix whose byte length does not exceed `limit`. */
+function utf8Boundary(bytes: Buffer, limit: number): number {
+  let boundary = Math.min(limit, bytes.length);
+  while (boundary > 0 && (bytes[boundary] ?? 0) >> 6 === 0b10) {
+    boundary -= 1;
+  }
+  return boundary;
+}
+
 export class RunStateError extends Error {
   constructor(message: string) {
     super(message);
@@ -217,14 +226,15 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     this.appendJsonLine(runId, { ...event });
   }
 
-  markFailed(runId: string, stepId: string, detail: string): void {
+  markFailed(runId: string, stepId: string, detail: string, rawOutput?: string): void {
     const state = this.requiredState(runId);
     const failedStep = state.steps.find((step) => step.id === stepId);
     if (!failedStep || (failedStep.kind !== 'agent' && failedStep.kind !== 'host-handoff') || failedStep.status !== 'in_progress') return;
     const timestamp = new Date().toISOString();
+    const failureOutput = this.failedOutputFor(runId, failedStep, rawOutput, detail, timestamp);
     const steps = state.steps.map((step) => step.id === stepId && (step.kind === 'agent' || step.kind === 'host-handoff') && step.status === 'in_progress'
       ? step.kind === 'agent'
-        ? { ...step, status: 'failed' as const, dispatchPreparedAt: undefined }
+        ? { ...step, status: 'failed' as const, dispatchPreparedAt: undefined, ...(failureOutput ? { failedAgentOutput: failureOutput } : {}) }
         : { ...step, status: 'failed' as const, handoffPreparedAt: undefined }
       : step);
     this.save({ ...state, steps, updatedAt: timestamp });
@@ -232,6 +242,48 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       type: 'step.failed', at: timestamp, stepId,
       detail: detail.length > 1000 ? `${detail.slice(0, 997)}...` : detail,
     });
+  }
+
+  private failedOutputFor(
+    runId: string,
+    step: Extract<RunState['steps'][number], { readonly kind: 'agent' | 'host-handoff' }>,
+    rawOutput: string | undefined,
+    detail: string,
+    timestamp: string,
+  ) {
+    if (step.kind !== 'agent' || !rawOutput?.trim()) return undefined;
+    return this.preserveFailedAgentOutput(runId, step.id, step.attempts.at(-1)?.number ?? 1, rawOutput, detail, timestamp);
+  }
+
+  private preserveFailedAgentOutput(
+    runId: string,
+    stepId: string,
+    attempt: number,
+    rawOutput: string,
+    diagnostic: string,
+    at: string,
+  ): { readonly artifactPath: string; readonly artifactSha256: string; readonly at: string; readonly diagnostic: string; readonly truncated: boolean } {
+    const maximumBytes = 256 * 1024;
+    const bytes = Buffer.from(rawOutput, 'utf8');
+    const truncated = bytes.length > maximumBytes;
+    const content = (truncated
+      ? bytes.subarray(0, utf8Boundary(bytes, maximumBytes)).toString('utf8')
+      : rawOutput).trimEnd();
+    const stepHash = createHash('sha256').update(stepId).digest('hex');
+    const directory = join(this.runDirectory(runId), 'failed-agent-output');
+    const artifactPath = join(directory, `${stepHash}-${attempt}.md`);
+    this.fileOperations.mkdirSync(directory, { recursive: true });
+    this.fileOperations.writeFileSync(artifactPath, content, 'utf8');
+    const boundedDiagnostic = diagnostic.length > 1_000
+      ? `${diagnostic.slice(0, 997)}...`
+      : diagnostic;
+    return {
+      artifactPath,
+      artifactSha256: createHash('sha256').update(content).digest('hex'),
+      at,
+      diagnostic: boundedDiagnostic,
+      truncated,
+    };
   }
 
   /**

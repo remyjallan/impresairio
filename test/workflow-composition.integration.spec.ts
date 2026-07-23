@@ -426,11 +426,11 @@ steps:
       repositoryDirectory: harness.repository,
       roles: { implementer: 'codex', adversary: 'codex' },
       feature: { id: 'COMP-7', slug: 'conditional-invalid-result' },
-      request: 'Reject an invalid result without failing the attempt.',
+      request: 'Reject an invalid result and preserve it as a failed attempt.',
     });
     expect(() => harness.completeWith('run-conditional-invalid-result', 'classify--classify', '# Missing result\n'))
       .toThrow('Expected exactly one impresairio-result block');
     expect(harness.store.findState('run-conditional-invalid-result')?.steps[0])
-      .toMatchObject({ status: 'in_progress' });
+      .toMatchObject({ status: 'failed' });
   });
 });

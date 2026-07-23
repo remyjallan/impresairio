@@ -3,7 +3,7 @@ import type { CompletedDocumentationOutput } from '../documentation/documentatio
 import type { PreparedDocumentationOutput } from '../documentation/documentation-target';
 import { readFileSync } from 'node:fs';
 import type { WorkflowPatch, WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
-import { parseStructuredResult, StructuredResultError } from '../workflows/structured-result';
+import { parseStructuredResult } from '../workflows/structured-result';
 import { assertRunActive } from './run-state.schema';
 
 export type CompletionStepStatus =
@@ -242,9 +242,7 @@ export class CompletionService {
             // Preserve the original completion failure; cleanup is best effort.
           }
         }
-        if (!(error instanceof StructuredResultError)) {
-          this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
-        }
+        this.store.markFailed?.(runId, stepId, error instanceof Error ? error.message : String(error));
         throw error;
       }
       this.store.appendEvent(runId, {

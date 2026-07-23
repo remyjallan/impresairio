@@ -10,10 +10,43 @@ import {
   prepareExecutionInvocation,
 } from '../src/commands/advance.command';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
+import { FileStateStore } from '../src/runs/file-state.store';
+import { createRunState } from '../src/runs/run-state.schema';
+import { StructuredResultError } from '../src/workflows/structured-result';
+
+function createInProgressAgentRun(home: string, runId: string): {
+  readonly stateStore: FileStateStore;
+  readonly expectedOutput: { readonly id: string; readonly targetRoot: string; readonly directory: string; readonly path: string; readonly format: 'markdown' };
+} {
+  const stateStore = new FileStateStore(new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home }));
+  const expectedOutput = {
+    id: 'implementation', targetRoot: home, directory: join(home, 'runs', runId, 'artifacts'),
+    path: join(home, 'runs', runId, 'artifacts', 'implement.md'), format: 'markdown' as const,
+  };
+  const state = createRunState({
+    id: runId, workflowId: 'quick-fix', workflowSha256: 'a'.repeat(64), roles: {},
+    documentation: {
+      target: { name: 'test', kind: 'filesystem', root: home, defaultFormat: 'markdown' },
+      featurePath: 'Features/{{ feature.id }}',
+      bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'ADV-1', slug: 'advance' }, run: { id: runId } },
+    },
+    steps: [{ id: 'implement', kind: 'agent', actor: 'implementer', action: 'implementation', output: { id: 'implementation', filename: 'Implementation.md', storage: 'internal' } }],
+    now: '2026-07-23T12:00:00.000Z',
+  });
+  stateStore.create({
+    ...state,
+    currentStepId: 'implement',
+    steps: state.steps.map((step) => step.kind === 'agent'
+      ? { ...step, status: 'in_progress' as const, expectedOutput, attempts: [{ number: 1, startedAt: state.createdAt, inputArtifactHashes: {} }] }
+      : step),
+  });
+  return { stateStore, expectedOutput };
+}
 
 describe('advance command output recovery', () => {
   it('stops at a host handoff without dispatching an agent process', async () => {
@@ -66,6 +99,94 @@ describe('advance command output recovery', () => {
 
     try {
       await command.run(['run-1']);
+    } finally {
+      rmSync(runDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('passes failed provider output to durable run-state recovery', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'impresairio-advance-failure-'));
+    const { stateStore, expectedOutput } = createInProgressAgentRun(home, 'run-1');
+    const command = new AdvanceCommand(
+      { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex',
+        expectedOutput,
+        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("partial output"); process.exit(1)'], input: 'work' },
+      }) } as never,
+      {} as never,
+      stateStore,
+      {} as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await expect(command.run(['run-1'])).rejects.toThrow('exited with status 1');
+      const failed = stateStore.findState('run-1')?.steps[0];
+      if (!failed || failed.kind !== 'agent' || !failed.failedAgentOutput) throw new Error('missing failed output');
+      expect(failed.failedAgentOutput.diagnostic).toContain('exited with status 1');
+      expect(readFileSync(failed.failedAgentOutput.artifactPath, 'utf8')).toBe('partial output');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['malformed structured output', '```impresairio-result\nnot JSON\n```', new StructuredResultError('Invalid impresairio-result JSON')],
+    ['malformed patch fence', '```impresairio-patch\ndiff --git a/a.ts b/a.ts', new Error('Expected exactly one impresairio-patch fenced block')],
+    ['non-applying patch', '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```', new Error('Patch cannot be applied')],
+  ])('persists failed %s as recovery context', async (_kind, rawOutput, completionError) => {
+    const home = mkdtempSync(join(tmpdir(), 'impresairio-advance-validation-'));
+    const runId = `run-${rawOutput.length}`;
+    const { stateStore, expectedOutput } = createInProgressAgentRun(home, runId);
+    const command = new AdvanceCommand(
+      { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex', expectedOutput,
+        invocation: { command: process.execPath, args: ['-e', `process.stdout.write(${JSON.stringify(rawOutput)})`], input: 'work' },
+      }) } as never,
+      { complete: () => { throw completionError; } } as never,
+      stateStore,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await expect(command.run([runId])).rejects.toThrow(completionError.message);
+      const failed = stateStore.findState(runId)?.steps[0];
+      if (!failed || failed.kind !== 'agent' || !failed.failedAgentOutput) throw new Error('missing failed output');
+      expect(failed.failedAgentOutput.diagnostic).toContain(completionError.message);
+      expect(readFileSync(failed.failedAgentOutput.artifactPath, 'utf8')).toBe(rawOutput);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('records a non-Error completion failure as a durable diagnostic', async () => {
+    const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-non-error-'));
+    const markFailed = vi.fn();
+    const command = new AdvanceCommand(
+      { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex',
+        expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') },
+        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("result")'], input: 'work' },
+      }) } as never,
+      { complete: () => { throw 'completion failed'; } } as never,
+      { runDirectory: () => runDirectory, findState: () => ({ execution: { agentTimeoutSeconds: 1 }, steps: [{ id: 'implement', kind: 'agent', expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') } }] }), markFailed } as never,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+
+    try {
+      await expect(command.run(['run-1'])).rejects.toBe('completion failed');
+      expect(markFailed).toHaveBeenCalledWith('run-1', 'implement', 'completion failed', 'result');
     } finally {
       rmSync(runDirectory, { recursive: true, force: true });
     }
