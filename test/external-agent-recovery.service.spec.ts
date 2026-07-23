@@ -202,6 +202,29 @@ describe('ExternalAgentRecoveryService', () => {
     expect(events.read('run-external')).not.toContainEqual(expect.objectContaining({ type: 'agent.external_recovery.submitted' }));
   });
 
+  it('discards a partial artifact when publication fails', () => {
+    const { store, events, locks, recovery } = harness();
+    recovery.prepare('run-external', 'implement', 'Manual recovery.');
+    const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
+    directories.push(sourceDirectory);
+    const source = join(sourceDirectory, 'host-authored-patch.md');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    const discardOutput = vi.fn();
+    const complete = vi.fn();
+    const submission = new AgentRecoverySubmissionService(
+      store,
+      { publishMarkdown: () => { throw new Error('Storage is unavailable'); }, discardOutput } as unknown as ArtifactService,
+      { complete } as never,
+      events,
+      locks,
+      new RepositoryPatchService(),
+    );
+
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('Storage is unavailable');
+    expect(discardOutput).toHaveBeenCalledWith(expect.objectContaining({ id: 'implementation' }));
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it('records submission metadata when completion records patch application independently', () => {
     const { store, events, locks, recovery } = harness();
     recovery.prepare('run-external', 'implement', 'Manual recovery.');
@@ -243,6 +266,8 @@ describe('ExternalAgentRecoveryService', () => {
     if (!prepared) throw new Error('missing prepared state');
     store.save({ ...prepared, repositoryDirectory: undefined });
     expect(() => submission.submit('run-external', 'implement', repositorySource)).toThrow('requires a frozen repository directory');
+    store.save({ ...prepared, repositoryDirectory: join(home, 'missing-repository') });
+    expect(() => submission.submit('run-external', 'implement', repositorySource)).toThrow('requires a readable frozen repository directory');
     const isolatedRepository = join(home, 'repository');
     mkdirSync(isolatedRepository);
     store.save({ ...prepared, repositoryDirectory: isolatedRepository });

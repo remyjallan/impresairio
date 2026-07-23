@@ -53,7 +53,13 @@ export class AgentRecoverySubmissionService {
       if (!state.repositoryDirectory) {
         throw new RunStateError('External recovery requires a frozen repository directory');
       }
-      if (isWithin(source, realpathSync(state.repositoryDirectory))) {
+      let repositoryDirectory: string;
+      try {
+        repositoryDirectory = realpathSync(state.repositoryDirectory);
+      } catch {
+        throw new RunStateError('External recovery requires a readable frozen repository directory');
+      }
+      if (isWithin(source, repositoryDirectory)) {
         throw new RunStateError('Agent output source must be outside the repository');
       }
       const runsDirectory = dirname(this.stateStore.runDirectory(runId));
@@ -64,9 +70,9 @@ export class AgentRecoverySubmissionService {
       this.patches.validate(content);
       const artifact = content.endsWith('\n') ? content : `${content}\n`;
       const artifactSha256 = createHash('sha256').update(artifact, 'utf8').digest('hex');
-      this.artifacts.publishMarkdown(step.expectedOutput, artifact);
       let appliedPatch: ReturnType<CompletionService['complete']>;
       try {
+        this.artifacts.publishMarkdown(step.expectedOutput, artifact);
         appliedPatch = this.completion.complete(runId, stepId);
       } catch (error) {
         const latestStep = this.stateStore.findState(runId)?.steps.find((candidate) => candidate.id === stepId);
