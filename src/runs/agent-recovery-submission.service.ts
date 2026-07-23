@@ -41,8 +41,15 @@ export class AgentRecoverySubmissionService {
       if (sourcePathResolved === resolve(step.expectedOutput.path)) {
         throw new RunStateError('Agent output source must not be the Impresairio-managed destination');
       }
-      const source = realpathSync(sourcePathResolved);
-      if (!statSync(source).isFile()) {
+      let source: string;
+      let sourceStats: ReturnType<typeof statSync>;
+      try {
+        source = realpathSync(sourcePathResolved);
+        sourceStats = statSync(source);
+      } catch {
+        throw new RunStateError(`Agent output source is not a readable file: ${sourcePathResolved}`);
+      }
+      if (!sourceStats.isFile()) {
         throw new RunStateError('Agent output source must be a file');
       }
       if (state.repositoryDirectory && isWithin(source, realpathSync(state.repositoryDirectory))) {
@@ -51,10 +58,10 @@ export class AgentRecoverySubmissionService {
       if (isWithin(source, dirname(step.expectedOutput.directory))) {
         throw new RunStateError('Agent output source must be outside the Impresairio run directory');
       }
-      const content = readHostHandoffOutput(source);
-      if (Buffer.byteLength(content, 'utf8') > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
+      if (sourceStats.size > MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES) {
         throw new RunStateError(`Agent output exceeds the ${MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES}-byte limit`);
       }
+      const content = readHostHandoffOutput(source);
       this.patches.validate(content);
       const artifact = content.endsWith('\n') ? content : `${content}\n`;
       const artifactSha256 = createHash('sha256').update(artifact, 'utf8').digest('hex');

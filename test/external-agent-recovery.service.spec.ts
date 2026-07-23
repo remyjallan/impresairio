@@ -236,6 +236,7 @@ describe('ExternalAgentRecoveryService', () => {
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
+    expect(() => submission.submit('run-external', 'implement', source)).toThrow('not a readable file');
     writeFileSync(source, '# Missing patch\n', 'utf8');
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('Expected exactly one impresairio-patch fenced block');
     expect(publishMarkdown).not.toHaveBeenCalled();
