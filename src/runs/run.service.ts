@@ -194,11 +194,13 @@ export class RunService {
     actor: string,
     resolvedActors: RunState['resolvedActors'],
   ) {
-    const profile = resolvedActors[actor];
-    if (!profile) {
+    const frozenActor = resolvedActors[actor];
+    if (!frozenActor) {
       throw new RunStateError(`Agent profile is not frozen for actor ${actor}`);
     }
-    return this.capabilities.resolve(capability, actor, profile.profile, profile);
+    // AgentProfileService freezes the exact role binding in `profile`; resolve
+    // from that immutable run snapshot rather than the mutable start request.
+    return this.capabilities.resolve(capability, actor, frozenActor.profile, frozenActor);
   }
 
   private validateFeature(feature: StartRunRequest['feature']): void {
