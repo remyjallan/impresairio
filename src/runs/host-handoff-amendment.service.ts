@@ -21,8 +21,9 @@ export class HostHandoffAmendmentService {
   amend(runId: string, stepId: string, reason: string): void {
     // RunLockService creates an exclusive, run-local filesystem lock. It is held
     // before state is read, so a second Impresairio CLI process cannot overwrite
-    // this amendment with a stale copy of the run state. A separately invoked
-    // amendment is rejected while an advance command owns the same run lock.
+    // this amendment with a stale copy of the run state. RunLockService permits
+    // a nested amendment within its owning composite command, while rejecting a
+    // separately invoked CLI process until that command releases the lock.
     const release = this.locks.acquire(runId, 'amend-host-handoff');
     try {
       const state = this.stateStore.findState(runId);

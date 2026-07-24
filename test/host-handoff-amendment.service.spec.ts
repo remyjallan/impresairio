@@ -203,6 +203,16 @@ describe('HostHandoffAmendmentService', () => {
     release();
   });
 
+  it('allows a nested amendment within the owning reentrant advance command', () => {
+    const { store, locks, amendments } = createHarness();
+    const release = locks.acquireReentrant('run-amend', 'advance');
+
+    amendments.amend('run-amend', 'brainstorm', 'Correct it from the active command.');
+
+    release();
+    expect(store.findState('run-amend')?.steps[0]).toMatchObject({ kind: 'host-handoff', status: 'pending' });
+  });
+
   it('returns a merely prepared downstream host handoff to pending', () => {
     const { store, amendments } = createHarness();
     const state = store.findState('run-amend');
