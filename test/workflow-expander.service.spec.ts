@@ -42,6 +42,33 @@ afterEach(() => {
 });
 
 describe('WorkflowExpanderService', () => {
+  it('freezes an agent execution authorization and defaults it to explicit', () => {
+    const harness = createHarness();
+    harness.writeRepository('authorization', `
+id: authorization
+name: Authorization
+steps:
+  - id: explicit
+    type: agent
+    actor: launcher
+    capability: feature-design
+    output: { id: explicit, filename: "Explicit.md" }
+  - id: preauthorized
+    type: agent
+    actor: adversary
+    capability: adversarial-review
+    execution: { authorization: pre-authorized }
+    output: { id: review, filename: "Review.md" }
+`);
+
+    const plan = harness.expander.expand(harness.registry.resolve('authorization', harness.repository), harness.repository);
+
+    expect(plan.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'explicit', executionAuthorization: 'explicit' }),
+      expect.objectContaining({ id: 'preauthorized', executionAuthorization: 'pre-authorized' }),
+    ]));
+  });
+
   it('expands a host handoff and namespaces its selected inputs', () => {
     const harness = createHarness();
     harness.writeRepository('host', `

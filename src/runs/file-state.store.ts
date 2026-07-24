@@ -318,6 +318,41 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     return { sourceStepId: policyStepId, artifactPath, artifactSha256: actualSha256 };
   }
 
+  /**
+   * Archives a completed host artifact before its output path is reopened for
+   * a corrected submission. The copy is intentionally run-local and its hash
+   * is verified before the amendment state can reference it.
+   */
+  preserveHostHandoffRevision(
+    runId: string,
+    stepId: string,
+    revision: number,
+    output: { readonly path: string; readonly sha256: string; readonly completedAt: string },
+  ): { readonly path: string; readonly sha256: string; readonly completedAt: string; readonly archivedPath: string } {
+    const state = this.requiredState(runId);
+    const step = state.steps.find((candidate) => candidate.id === stepId);
+    if (!step || step.kind !== 'host-handoff') {
+      throw new RunStateError(`Step ${stepId} is not a host handoff`);
+    }
+    const content = this.fileOperations.readFileSync(output.path, 'utf8');
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    if (sha256 !== output.sha256) {
+      throw new RunStateError(`Host handoff artifact for ${stepId} changed before it could be amended`);
+    }
+    const stepHash = createHash('sha256').update(stepId).digest('hex');
+    const directory = join(this.runDirectory(runId), 'host-handoff-revisions', stepHash);
+    const archivedPath = join(directory, `${revision}.md`);
+    this.fileOperations.mkdirSync(directory, { recursive: true });
+    this.fileOperations.writeFileSync(archivedPath, content, 'utf8');
+    const preserved = this.fileOperations.readFileSync(archivedPath, 'utf8');
+    const preservedHash = createHash('sha256').update(preserved).digest('hex');
+    if (preservedHash !== sha256) {
+      this.fileOperations.rmSync(archivedPath, { force: true });
+      throw new RunStateError(`Host handoff revision for ${stepId} changed while it was being archived`);
+    }
+    return { path: output.path, sha256, completedAt: output.completedAt, archivedPath };
+  }
+
   /** Removes an uncommitted retry-feedback copy after completion state could not be saved. */
   discardRetryFeedback(runId: string, retryFeedback: RetryFeedback): void {
     const state = this.requiredState(runId);

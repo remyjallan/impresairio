@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { Command, CommandRunner } from 'nest-commander';
+import { Command, CommandRunner, Option } from 'nest-commander';
 import { AgentDispatchService } from '../agents/agent-dispatch.service';
 import { HostHandoffService } from '../agents/host-handoff.service';
 import { agentSettingsForEvent, type PreparedAgentInvocation } from '../agents/agent-provider';
@@ -19,6 +19,10 @@ const MAX_DIAGNOSTIC_CHARS = 1_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 export const ADVANCE_PROGRESS_WRITER = Symbol('ADVANCE_PROGRESS_WRITER');
+
+interface AdvanceOptions {
+  readonly onlyPreAuthorized?: boolean;
+}
 
 export interface AgentExecution {
   readonly stdout: string;
@@ -64,7 +68,7 @@ export class AdvanceCommand extends CommandRunner {
     @Optional() @Inject(HostHandoffService) private readonly hostHandoffs?: HostHandoffService,
   ) { super(); }
 
-  async run([runId]: string[]): Promise<void> {
+  async run([runId]: string[], options: AdvanceOptions = {}): Promise<void> {
     const release = this.locks.acquireReentrant(runId, 'advance');
     let activeStepId: string | undefined;
     let activeHandoff: ReturnType<AgentDispatchService['prepare']> | undefined;
@@ -95,6 +99,11 @@ export class AdvanceCommand extends CommandRunner {
         }
         activeStepId = result.stepId;
         const handoff = this.dispatch.prepare(runId, result);
+        if (options.onlyPreAuthorized && handoff?.executionAuthorization !== 'pre-authorized') {
+          activeStepId = undefined;
+          process.stdout.write(`explicit-authorization-required: ${result.stepId}\n`);
+          return;
+        }
         activeHandoff = handoff;
         if (!handoff?.invocation) throw new Error(`No executable invocation for ${result.stepId}`);
         const runDirectory = this.stateStore.runDirectory(runId);
@@ -116,6 +125,7 @@ export class AdvanceCommand extends CommandRunner {
         this.events.append(runId, {
           type: 'agent.execution.started', at: new Date().toISOString(), stepId: result.stepId,
           actor: handoff.actor, profile: handoff.profile, provider: handoff.provider,
+          authorization: handoff.executionAuthorization,
           ...agentSettingsForEvent(handoff.invocation),
         });
         const child = await executeAgentProcess(invocation, {
@@ -194,6 +204,9 @@ export class AdvanceCommand extends CommandRunner {
       release();
     }
   }
+
+  @Option({ flags: '--only-pre-authorized', description: 'Execute only steps frozen with execution.authorization: pre-authorized; stop before explicit steps.' })
+  parseOnlyPreAuthorized(): boolean { return true; }
 
 }
 

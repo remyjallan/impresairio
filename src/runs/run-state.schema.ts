@@ -84,6 +84,18 @@ const retryContextSchema = z.object({
   at: timestampSchema,
 }).strict();
 
+const hostHandoffAmendmentSchema = z.object({
+  revision: z.number().int().positive(),
+  amendedAt: timestampSchema,
+  reason: z.string().trim().min(1).max(1_000),
+  priorOutput: z.object({
+    path: nonEmptyString,
+    sha256: sha256Schema,
+    completedAt: timestampSchema,
+    archivedPath: nonEmptyString,
+  }).strict(),
+}).strict();
+
 const failedAgentOutputSchema = z.object({
   artifactPath: nonEmptyString,
   artifactSha256: sha256Schema,
@@ -181,6 +193,7 @@ const runAgentStepSchema = z
     kind: z.literal('agent'),
     status: stepStatusSchema,
     actor: nonEmptyString,
+    executionAuthorization: z.enum(['explicit', 'pre-authorized']).optional(),
     method: agentMethodSchema,
     declaredOutput: declaredWorkflowOutputSchema,
     agentOverride: frozenAgentProfileSchema.optional(),
@@ -299,6 +312,7 @@ const runHostHandoffStepSchema = z.object({
   attempts: z.array(attemptSchema),
   handoffPreparedAt: timestampSchema.optional(),
   retryContext: retryContextSchema.optional(),
+  amendments: z.array(hostHandoffAmendmentSchema).max(20).optional(),
 }).strict().superRefine((step, context) => {
   const isInteractive = step.interaction === 'user-dialog';
   const hasPrompt = step.promptFile !== undefined && step.prompt !== undefined;
@@ -376,6 +390,7 @@ export function createRunState(input: {
     readonly id: string;
     readonly kind: 'agent' | 'host-handoff' | 'gate';
     readonly actor?: string;
+    readonly executionAuthorization?: 'explicit' | 'pre-authorized';
     readonly method?: z.input<typeof agentMethodSchema>;
     readonly action?: string;
     readonly interaction?: 'user-dialog';
@@ -483,6 +498,7 @@ export function createRunState(input: {
         kind: 'agent' as const,
         status: 'pending' as const,
         actor: step.actor,
+        executionAuthorization: step.executionAuthorization ?? 'explicit',
         method,
         declaredOutput: step.output,
         ...(step.effectiveParameters ? { effectiveParameters: step.effectiveParameters } : {}),

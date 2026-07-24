@@ -138,6 +138,7 @@ export class RunService {
                     ),
               }),
               output: step.output,
+              executionAuthorization: step.executionAuthorization,
               effectiveParameters: step.effectiveParameters,
               ...(step.result ? { result: step.result } : {}),
               ...(step.when ? { when: step.when } : {}),

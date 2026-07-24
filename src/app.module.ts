@@ -3,6 +3,7 @@ import { CompleteCommand, COMPLETE_WRITER } from './commands/complete.command';
 import { ApproveCommand } from './commands/approve.command';
 import { NextCommand, NEXT_WRITER } from './commands/next.command';
 import { SubmitHostOutputCommand } from './commands/submit-host-output.command';
+import { AmendHostHandoffCommand } from './commands/amend-host-handoff.command';
 import { AbandonCommand } from './commands/abandon.command';
 import { PrepareExternalAgentOutputCommand } from './commands/prepare-external-agent-output.command';
 import { SubmitAgentOutputCommand } from './commands/submit-agent-output.command';
@@ -60,6 +61,7 @@ import { FallbackCommand } from './commands/fallback.command';
 import { ReportCommand, REPORT_WRITER } from './commands/report.command';
 import { REPORT_CLOCK, RunReportService } from './runs/run-report.service';
 import { HostHandoffSubmissionService } from './runs/host-handoff-submission.service';
+import { HOST_HANDOFF_AMENDMENT_CLOCK, HostHandoffAmendmentService } from './runs/host-handoff-amendment.service';
 import { RunAbandonService } from './runs/run-abandon.service';
 import { ExternalAgentRecoveryService } from './runs/external-agent-recovery.service';
 import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission.service';
@@ -82,6 +84,7 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     ReportCommand,
     NextCommand,
     SubmitHostOutputCommand,
+    AmendHostHandoffCommand,
     AbandonCommand,
     PrepareExternalAgentOutputCommand,
     SubmitAgentOutputCommand,
@@ -89,6 +92,7 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     AgentDispatchService,
     HostHandoffService,
     HostHandoffSubmissionService,
+    HostHandoffAmendmentService,
     ExternalAgentRecoveryService,
     AgentRecoverySubmissionService,
     AgentFallbackService,
@@ -143,6 +147,10 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     },
     {
       provide: WORKFLOW_CLOCK,
+      useValue: () => new Date(),
+    },
+    {
+      provide: HOST_HANDOFF_AMENDMENT_CLOCK,
       useValue: () => new Date(),
     },
     {
