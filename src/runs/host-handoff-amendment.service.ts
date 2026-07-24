@@ -132,6 +132,11 @@ function successorsOf(state: RunState, sourceStepId: string): Set<string> {
   const successors = new Set<string>();
   // This frozen graph is produced from the fully expanded V0 linear workflow
   // plan at run start. It is the authority for invalidation boundaries.
+  for (const step of state.steps) {
+    if (!Object.hasOwn(state.workflow.successors, step.id)) {
+      throw new RunStateError(`Cannot amend: workflow successor graph is missing step ${step.id}`);
+    }
+  }
   const visit = (stepId: string): void => {
     for (const successor of state.workflow.successors[stepId] ?? []) {
       if (successors.has(successor)) continue;

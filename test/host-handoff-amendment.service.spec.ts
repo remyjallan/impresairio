@@ -167,6 +167,17 @@ describe('HostHandoffAmendmentService', () => {
       .toThrow('dependent step review already published an artifact');
   });
 
+  it('refuses an incomplete persisted successor graph before changing the run', () => {
+    const { store, amendments } = createHarness();
+    const state = store.findState('run-amend');
+    if (!state) throw new Error('missing run');
+    store.save({ ...state, workflow: { ...state.workflow, successors: { brainstorm: [] } } });
+
+    expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.'))
+      .toThrow('workflow successor graph is missing step review');
+    expect(store.findState('run-amend')?.steps[0]).toMatchObject({ status: 'complete' });
+  });
+
   it('returns a merely prepared downstream host handoff to pending', () => {
     const { store, amendments } = createHarness();
     const state = store.findState('run-amend');
