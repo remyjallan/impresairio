@@ -216,6 +216,13 @@ export type WorkflowVerdictPolicy = z.infer<typeof verdictPolicySchema>;
 export const workflowPatchSchema = z.literal('apply-unified-diff');
 export type WorkflowPatch = z.infer<typeof workflowPatchSchema>;
 
+export const workflowExecutionAuthorizationSchema = z.enum(['explicit', 'pre-authorized']);
+export type WorkflowExecutionAuthorization = z.infer<typeof workflowExecutionAuthorizationSchema>;
+
+const executionAuthorizationSchema = z.object({
+  authorization: workflowExecutionAuthorizationSchema.default('explicit'),
+}).strict().default({ authorization: 'explicit' });
+
 const agentBaseSchema = z
   .object({
     id: identifier,
@@ -226,6 +233,7 @@ const agentBaseSchema = z
     result: workflowResultSchema.optional(),
     when: workflowConditionSchema.optional(),
     patch: workflowPatchSchema.optional(),
+    execution: executionAuthorizationSchema,
   })
   .strict();
 

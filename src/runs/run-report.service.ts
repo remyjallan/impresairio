@@ -22,6 +22,7 @@ export interface RunReport {
   readonly agentSteps: readonly {
     readonly id: string;
     readonly status: string;
+    readonly executionAuthorization: 'explicit' | 'pre-authorized';
     readonly provider: string;
     readonly profile: string;
     readonly model?: string;
@@ -89,6 +90,7 @@ export class RunReportService {
       return [{
         id: step.id,
         status: step.status,
+        executionAuthorization: step.executionAuthorization ?? 'explicit',
         provider: actor.provider,
         profile: actor.profile,
         ...(actor.model ? { model: actor.model } : {}),
@@ -157,7 +159,7 @@ export function formatRunReport(report: RunReport): string {
     ...(report.agentSteps.length === 0 ? ['- none'] : report.agentSteps.map((step) => {
       const agent = `${step.profile} / ${step.provider}${step.model ? ` / ${step.model}` : ''}${step.reasoningEffort ? ` / effort=${step.reasoningEffort}` : ''}`;
       const duration = step.durationMs === undefined ? 'unavailable' : formatDuration(step.durationMs);
-      return `- ${step.id}: ${agent}; ${duration}; ${step.status}; attempts: ${step.attempts.length}`;
+      return `- ${step.id}: ${agent}; authorization: ${step.executionAuthorization}; ${duration}; ${step.status}; attempts: ${step.attempts.length}`;
     })),
     '',
     'Human gates',

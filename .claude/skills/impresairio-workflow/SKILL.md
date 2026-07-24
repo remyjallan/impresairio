@@ -17,7 +17,8 @@ CLI and YAML contracts.
 - Keep shared workflow YAML provider-neutral. Do not add personal profiles,
   secrets, local paths, or provider-specific syntax to it.
 - Do not approve a gate, retry, choose a fallback profile, or run a cost-bearing
-  `advance` command without the user's explicit decision.
+  `advance` command without the user's explicit decision, except for an agent
+  handoff frozen with `executionAuthorization: pre-authorized`.
 - Inspect `impresairio status <run-id>` before recovery. Use `report` when an
   audited summary is helpful.
 
@@ -76,8 +77,7 @@ because its workflow ID or name appears in the request. Those names are runtime
 implementation details of a selected workflow, not alternate slash commands.
 
 Only after the user explicitly confirms a workflow may you collect the remaining
-start inputs or prepare the `impresairio start` command. Keep the existing rule:
-do not execute a cost-bearing `advance` command without explicit approval.
+start inputs or prepare the `impresairio start` command.
 
 ## Default the host launcher
 
@@ -118,14 +118,20 @@ command. Start the run only when the user has explicitly asked to start it.
    request, and any declared parameters. Record the returned run ID.
 2. Use `impresairio next <run-id>` to prepare exactly one manual step. It either
    prints a JSON handoff, reports a gate or blocked state, or reports completion.
-3. Use `impresairio advance <run-id>` only when the user has explicitly approved
-   configured provider execution. It stops at gates, failures, completion, and
-   host handoffs.
+3. An agent handoff includes `executionAuthorization`. For `explicit`, ask for
+   the user's approval before `impresairio advance <run-id>`. For
+   `pre-authorized`, run `impresairio advance <run-id> --only-pre-authorized`
+   without another prompt. That mode stops with
+   `explicit-authorization-required:` before an explicit agent step; it never
+   bypasses a gate, host handoff, fallback decision, or recovery decision.
 4. At a gate, show the relevant artifact and request the user's explicit approval
    or change request. Preserve their comment with `approve` or `request-changes`.
 5. For a failed or stale step, inspect status and events, explain the bounded
    recovery choices, and use `retry`, `fallback`, or `acknowledge` only after the
-   user chooses the action.
+   user chooses the action. If a completed host-handoff artifact needs a
+   correction before any dependent provider execution, use
+   `amend-host-handoff <run-id> <step-id> --reason <text>`; it preserves the
+   prior revision and returns the handoff to pending.
 
 ## Complete a read-only host handoff
 

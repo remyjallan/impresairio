@@ -6,6 +6,7 @@ import type {
   WorkflowPrimitiveValue,
   WorkflowResult,
   WorkflowPatch,
+  WorkflowExecutionAuthorization,
   WorkflowStep,
   WorkflowVerdictPolicy,
 } from './workflow.schema';
@@ -44,6 +45,7 @@ interface ExpandedAgentStepBase extends ExpandedStepMetadata {
   readonly when?: WorkflowCondition;
   readonly verdictPolicy?: WorkflowVerdictPolicy;
   readonly patch?: WorkflowPatch;
+  readonly executionAuthorization: WorkflowExecutionAuthorization;
   readonly cycle?: {
     readonly id: string;
     readonly role: 'review' | 'consolidate';
@@ -316,6 +318,7 @@ export class WorkflowExpanderService {
             }
           : {}),
         ...(step.patch ? { patch: step.patch } : {}),
+        executionAuthorization: step.execution.authorization,
       };
       return ['capability' in step
         ? { ...common, capability: step.capability }
@@ -332,6 +335,7 @@ export class WorkflowExpanderService {
       actor: step.actor,
       capability: step.capability,
       output: step.output,
+      executionAuthorization: 'explicit',
       effectiveParameters: step.effectiveParameters,
       parameterDefinitions: step.parameterDefinitions,
       definition: step.definition,
@@ -349,6 +353,7 @@ export class WorkflowExpanderService {
           filename: `.review-${step.id}-${iteration}.md`,
           storage: 'internal',
         },
+        executionAuthorization: 'explicit',
         effectiveParameters: step.effectiveParameters,
         parameterDefinitions: step.parameterDefinitions,
         cycle: { id: step.id, role: 'review', iteration },
@@ -365,6 +370,7 @@ export class WorkflowExpanderService {
           actor: step.actor,
           capability: step.capability,
           output: step.output,
+          executionAuthorization: 'explicit',
           effectiveParameters: step.effectiveParameters,
           parameterDefinitions: step.parameterDefinitions,
           cycle: { id: step.id, role: 'consolidate', iteration },

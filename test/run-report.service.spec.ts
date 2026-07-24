@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -46,7 +46,12 @@ function createHarness() {
     now: '2026-07-22T10:00:00.000Z',
   });
   store.create(state);
-  return { store, events, report: new RunReportService(store, events, () => new Date('2026-07-22T10:10:00.000Z')) };
+  return {
+    home,
+    store,
+    events,
+    report: new RunReportService(store, events, () => new Date('2026-07-22T10:10:00.000Z')),
+  };
 }
 
 afterEach(() => {
@@ -138,6 +143,18 @@ describe('RunReportService', () => {
       provider: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'xhigh',
     });
     expect(formatRunReport(result)).toContain('codex-sol / codex / gpt-5.6-sol / effort=xhigh');
+  });
+
+  it('defaults legacy persisted agent steps to explicit authorization', () => {
+    const { home, report } = createHarness();
+    const statePath = join(home, 'runs', 'run-report', 'state.json');
+    const persisted = JSON.parse(readFileSync(statePath, 'utf8')) as {
+      steps: Array<{ kind: string; executionAuthorization?: string }>;
+    };
+    delete persisted.steps.find((step) => step.kind === 'agent')?.executionAuthorization;
+    writeFileSync(statePath, JSON.stringify(persisted), 'utf8');
+
+    expect(report.create('run-report').agentSteps[0]?.executionAuthorization).toBe('explicit');
   });
 
   it('reports unavailable gate timing for runs created before gate.reached existed', () => {

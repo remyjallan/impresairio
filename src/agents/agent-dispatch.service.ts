@@ -21,6 +21,7 @@ export interface AgentHandoff {
   readonly actor: string;
   readonly profile: string;
   readonly provider: string;
+  readonly executionAuthorization: 'explicit' | 'pre-authorized';
   readonly mode: 'prepared-non-interactive';
   readonly instruction: PreparedInstruction;
   readonly expectedOutput: {
@@ -105,6 +106,7 @@ export class AgentDispatchService {
       actor: step.actor,
       profile: agent.profile,
       provider: agent.provider,
+      executionAuthorization: step.executionAuthorization ?? 'explicit',
       mode: 'prepared-non-interactive',
       instruction,
       expectedOutput,

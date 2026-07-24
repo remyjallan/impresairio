@@ -49,6 +49,28 @@ function createInProgressAgentRun(home: string, runId: string): {
 }
 
 describe('advance command output recovery', () => {
+  it('stops before an explicitly authorized step in pre-authorized mode', async () => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const dispatch = { prepare: vi.fn(() => ({
+      actor: 'agent', profile: 'codex', provider: 'codex', executionAuthorization: 'explicit',
+      expectedOutput: { path: '/tmp/unused.md' }, invocation: { command: 'unused', args: [], input: '' },
+    })) };
+    try {
+      const command = new AdvanceCommand(
+        { next: () => ({ kind: 'agent', stepId: 'review' }) } as never,
+        dispatch as never,
+        {} as never, {} as never, {} as never,
+        { acquireReentrant: () => () => undefined } as never,
+        {} as never, () => undefined,
+      );
+      await command.run(['run-1'], { onlyPreAuthorized: true });
+      expect(write).toHaveBeenCalledWith('explicit-authorization-required: review\n');
+      expect(command.parseOnlyPreAuthorized()).toBe(true);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it('stops at a host handoff without dispatching an agent process', async () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const dispatch = { prepare: vi.fn() };
@@ -97,7 +119,7 @@ describe('advance command output recovery', () => {
         ? { kind: 'agent', stepId: 'implement' }
         : { kind: 'complete' } } as never,
       { prepare: () => ({
-        actor: 'agent', profile: 'codex', provider: 'codex',
+        actor: 'agent', profile: 'codex', provider: 'codex', executionAuthorization: 'pre-authorized',
         expectedOutput: { path: expectedOutputPath },
         invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("# Result")'], input: expectedOutputPath },
       }) } as never,
@@ -117,7 +139,7 @@ describe('advance command output recovery', () => {
     );
 
     try {
-      await command.run(['run-1']);
+      await command.run(['run-1'], { onlyPreAuthorized: true });
     } finally {
       rmSync(runDirectory, { recursive: true, force: true });
     }
