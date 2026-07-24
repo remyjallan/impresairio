@@ -130,10 +130,8 @@ export class HostHandoffAmendmentService {
 
 function successorsOf(state: RunState, sourceStepId: string): Set<string> {
   const successors = new Set<string>();
-  const sourceIndex = state.steps.findIndex((step) => step.id === sourceStepId);
-  // Expanded runs are ordered. Treat all later steps as downstream as a
-  // conservative compatibility fallback when an old persisted graph is incomplete.
-  for (const step of state.steps.slice(sourceIndex + 1)) successors.add(step.id);
+  // This frozen graph is produced from the fully expanded V0 linear workflow
+  // plan at run start. It is the authority for invalidation boundaries.
   const visit = (stepId: string): void => {
     for (const successor of state.workflow.successors[stepId] ?? []) {
       if (successors.has(successor)) continue;
