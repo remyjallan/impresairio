@@ -24,7 +24,7 @@ export class HostHandoffAmendmentService {
     // this amendment with a stale copy of the run state. RunLockService permits
     // a nested amendment within its owning composite command, while rejecting a
     // separately invoked CLI process until that command releases the lock.
-    const release = this.locks.acquire(runId, 'amend-host-handoff');
+    const release = this.locks.acquireReentrant(runId, 'amend-host-handoff');
     try {
       const state = this.stateStore.findState(runId);
       if (!state) throw new RunStateError(`Run not found: ${runId}`);
@@ -33,7 +33,8 @@ export class HostHandoffAmendmentService {
       if (!step || step.kind !== 'host-handoff') {
         throw new RunStateError(`Step ${stepId} is not a host handoff`);
       }
-      if (step.status !== 'complete' || !step.output || !step.expectedOutput) {
+      const output = step.output;
+      if (step.status !== 'complete' || !output || !output.path || !output.sha256 || !output.completedAt || !step.expectedOutput) {
         throw new RunStateError(`Host handoff ${stepId} must be complete before it can be amended`);
       }
       const normalizedReason = reason.trim();
@@ -45,7 +46,7 @@ export class HostHandoffAmendmentService {
       const dependentIds = successorsOf(state, stepId);
       this.assertDependenciesNotExecuted(state, dependentIds);
       const revision = (step.amendments?.length ?? 0) + 1;
-      const priorOutput = this.stateStore.preserveHostHandoffRevision(runId, stepId, revision, step.output);
+      const priorOutput = this.stateStore.preserveHostHandoffRevision(runId, stepId, revision, output);
       const timestamp = this.now().toISOString();
       this.artifacts.discardOutput(step.expectedOutput);
 

@@ -127,6 +127,16 @@ describe('HostHandoffAmendmentService', () => {
       ? { ...step, status: 'pending' as const }
       : step) });
     expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.')).toThrow('must be complete');
+
+    const pending = store.findState('run-amend');
+    if (!pending) throw new Error('missing pending run');
+    store.save({
+      ...pending,
+      steps: pending.steps.map((step) => step.id === 'brainstorm' && step.kind === 'host-handoff'
+        ? { ...step, status: 'complete' as const, output: undefined }
+        : step),
+    });
+    expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.')).toThrow('must be complete');
   });
 
   it('refuses a completed downstream artifact and an applied downstream patch', () => {
