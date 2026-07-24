@@ -305,6 +305,47 @@ describe('FileStateStore', () => {
       .toThrow('Preserved retry feedback for step review changed while it was being saved');
   });
 
+  it('rejects invalid or changed host-handoff artifacts while preserving revisions', () => {
+    const at = '2026-07-22T10:00:00.000Z';
+    const content = '# Revised design\n';
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const { home, store } = createStore();
+    const outputPath = join(home, 'host.md');
+    store.create(createRunState({
+      id: 'run-host-revision', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [
+        { id: 'host', kind: 'host-handoff', promptFile: 'host.md', prompt: 'Review.', inputs: [], sideEffects: 'none', output: { id: 'review', filename: 'review.md' } },
+        { id: 'agent', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'implementation', filename: 'implementation.md' } },
+      ], now: at,
+    }));
+    writeFileSync(outputPath, content, 'utf8');
+
+    expect(() => store.preserveHostHandoffRevision('run-host-revision', 'agent', 1, { path: outputPath, sha256, completedAt: at }))
+      .toThrow('Step agent is not a host handoff');
+    expect(() => store.preserveHostHandoffRevision('run-host-revision', 'host', 1, { path: outputPath, sha256: 'b'.repeat(64), completedAt: at }))
+      .toThrow('Host handoff artifact for host changed before it could be amended');
+  });
+
+  it('removes a host-handoff revision whose saved copy changes', () => {
+    const at = '2026-07-22T10:00:00.000Z';
+    const content = '# Revised design\n';
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const { home, store } = createStore({
+      readFileSync: ((path: Parameters<typeof readFileSync>[0], options: Parameters<typeof readFileSync>[1]) => (
+        String(path).includes('host-handoff-revisions') ? 'tampered revision\n' : readFileSync(path, options)
+      )) as typeof readFileSync,
+    });
+    const outputPath = join(home, 'host.md');
+    store.create(createRunState({
+      id: 'run-host-copy-integrity', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'host', kind: 'host-handoff', promptFile: 'host.md', prompt: 'Review.', inputs: [], sideEffects: 'none', output: { id: 'review', filename: 'review.md' } }], now: at,
+    }));
+    writeFileSync(outputPath, content, 'utf8');
+
+    expect(() => store.preserveHostHandoffRevision('run-host-copy-integrity', 'host', 1, { path: outputPath, sha256, completedAt: at }))
+      .toThrow('Host handoff revision for host changed while it was being archived');
+  });
+
   it.each(['../outside', '/tmp/outside', 'run/child', 'run\\child', '..'])(
     'rejects unsafe run id %s before resolving a run path',
     (runId) => {

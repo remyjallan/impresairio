@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -83,7 +83,7 @@ function setup(actor: 'launcher' | 'implementer') {
     processRunner,
     locks,
   );
-  return { store, events, runner, processRunner, dispatch };
+  return { home, store, events, runner, processRunner, dispatch };
 }
 
 afterEach(() => {
@@ -105,6 +105,20 @@ describe('AgentDispatchService', () => {
     expect(handoff?.invocation?.input).toContain('Work request:\nAdd a safe greeting command.');
     expect(handoff?.invocation?.input).toContain('Separate observed evidence (including file paths) from assumptions or open questions.');
     expect(processRunner.calls).toHaveLength(1);
+  });
+
+  it('defaults a legacy persisted agent step to explicit authorization', () => {
+    const { home, runner, dispatch } = setup('launcher');
+    const statePath = join(home, 'runs', 'run-agent', 'state.json');
+    const persisted = JSON.parse(readFileSync(statePath, 'utf8')) as {
+      steps: Array<{ kind: string; executionAuthorization?: string }>;
+    };
+    delete persisted.steps.find((step) => step.kind === 'agent')?.executionAuthorization;
+    writeFileSync(statePath, JSON.stringify(persisted), 'utf8');
+
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+
+    expect(handoff?.executionAuthorization).toBe('explicit');
   });
 
   it('renders the launcher result from next as structured handoff JSON', async () => {
