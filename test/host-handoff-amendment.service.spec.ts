@@ -76,7 +76,7 @@ function createHarness() {
   const amendments = new HostHandoffAmendmentService(
     store, artifacts, events, locks, () => new Date('2026-07-24T09:03:00.000Z'),
   );
-  return { store, events, amendments, expectedOutput };
+  return { store, events, locks, artifacts, amendments, expectedOutput };
 }
 
 afterEach(() => {
@@ -176,6 +176,31 @@ describe('HostHandoffAmendmentService', () => {
     expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.'))
       .toThrow('workflow successor graph is missing step review');
     expect(store.findState('run-amend')?.steps[0]).toMatchObject({ status: 'complete' });
+  });
+
+  it('refuses an amendment when the frozen graph omits its source step', () => {
+    const { store, amendments } = createHarness();
+    const state = store.findState('run-amend');
+    if (!state) throw new Error('missing run');
+    store.save({ ...state, workflow: { ...state.workflow, successors: { review: [], approve: [] } } });
+
+    expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.'))
+      .toThrow('workflow successor graph is missing source step brainstorm');
+  });
+
+  it('refuses a separately invoked amendment while advance holds the run lock', () => {
+    const { store, events, locks, artifacts } = createHarness();
+    const release = locks.acquireReentrant('run-amend', 'advance');
+    const separateProcessLocks = new RunLockService(store, events, {
+      hostname: 'local', pid: 9999, isPidActive: () => true,
+    });
+    const amendments = new HostHandoffAmendmentService(
+      store, artifacts, events, separateProcessLocks, () => new Date('2026-07-24T09:03:00.000Z'),
+    );
+
+    expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.')).toThrow('run busy: run-amend');
+
+    release();
   });
 
   it('returns a merely prepared downstream host handoff to pending', () => {

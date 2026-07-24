@@ -21,7 +21,8 @@ export class HostHandoffAmendmentService {
   amend(runId: string, stepId: string, reason: string): void {
     // RunLockService creates an exclusive, run-local filesystem lock. It is held
     // before state is read, so a second Impresairio CLI process cannot overwrite
-    // this amendment with a stale copy of the run state.
+    // this amendment with a stale copy of the run state. A separately invoked
+    // amendment is rejected while an advance command owns the same run lock.
     const release = this.locks.acquire(runId, 'amend-host-handoff');
     try {
       const state = this.stateStore.findState(runId);
@@ -132,6 +133,9 @@ function successorsOf(state: RunState, sourceStepId: string): Set<string> {
   const successors = new Set<string>();
   // This frozen graph is produced from the fully expanded V0 linear workflow
   // plan at run start. It is the authority for invalidation boundaries.
+  if (!Object.hasOwn(state.workflow.successors, sourceStepId)) {
+    throw new RunStateError(`Cannot amend: workflow successor graph is missing source step ${sourceStepId}`);
+  }
   for (const step of state.steps) {
     if (!Object.hasOwn(state.workflow.successors, step.id)) {
       throw new RunStateError(`Cannot amend: workflow successor graph is missing step ${step.id}`);
