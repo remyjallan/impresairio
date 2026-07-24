@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readdirSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 function copyAssets(source, destination, extension) {
@@ -12,3 +12,4 @@ function copyAssets(source, destination, extension) {
 
 copyAssets(join('src', 'workflows', 'builtins'), join('dist', 'workflows', 'builtins'), '.yaml');
 copyAssets(join('src', 'prompts', 'builtins'), join('dist', 'prompts', 'builtins'), '.md');
+chmodSync(join('dist', 'main.js'), 0o755);
