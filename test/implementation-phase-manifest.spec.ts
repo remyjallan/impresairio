@@ -51,6 +51,18 @@ describe('implementation phase manifest parser', () => {
       }],
     })))).toThrow('preceding phase ID');
     expect(() => parseImplementationPhaseManifest(manifest(JSON.stringify({
+      phases: [
+        {
+          id: 'storage', objective: 'Add storage.', scope: ['state'], dependsOn: [],
+          verification: ['Run storage tests.'], retryBudget: 0,
+        },
+        {
+          id: 'storage', objective: 'Add another storage step.', scope: ['migration'], dependsOn: [],
+          verification: ['Run migration tests.'], retryBudget: 0,
+        },
+      ],
+    })))).toThrow('duplicate phase ID');
+    expect(() => parseImplementationPhaseManifest(manifest(JSON.stringify({
       phases: Array.from({ length: 7 }, (_value, index) => ({
         id: `phase-${index}`, objective: 'Bounded phase.', scope: ['scope'], dependsOn: [],
         verification: ['Check it.'], retryBudget: 0,
