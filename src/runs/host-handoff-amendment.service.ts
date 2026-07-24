@@ -108,6 +108,10 @@ export class HostHandoffAmendmentService {
   }
 
   private assertDependenciesNotExecuted(state: RunState, dependentIds: ReadonlySet<string>): void {
+    // An in-progress host handoff only means its prompt was prepared for the
+    // host. It has no provider execution state and remains safely invalidatable
+    // until the runner records its completed output. Applied patches exist only
+    // on agent steps in the persisted run schema.
     const executionStarted = new Set(
       this.events.read(state.id)
         .filter((event) => event.type === 'agent.execution.started' && typeof event.stepId === 'string')

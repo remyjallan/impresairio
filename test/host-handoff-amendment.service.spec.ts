@@ -223,7 +223,7 @@ describe('HostHandoffAmendmentService', () => {
     expect(store.findState('run-amend')?.steps[0]).toMatchObject({ kind: 'host-handoff', status: 'pending' });
   });
 
-  it('returns a merely prepared downstream host handoff to pending', () => {
+  it('treats a prepared in-progress host handoff as unexecuted and returns it to pending', () => {
     const { store, amendments } = createHarness();
     const state = store.findState('run-amend');
     if (!state) throw new Error('missing run');
