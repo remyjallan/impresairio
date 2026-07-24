@@ -167,6 +167,26 @@ describe('HostHandoffAmendmentService', () => {
       .toThrow('dependent step review already published an artifact');
   });
 
+  it('refuses an approved artifact-dependent gate even when legacy successors omit its edge', () => {
+    const { store, amendments } = createHarness();
+    const state = store.findState('run-amend');
+    if (!state) throw new Error('missing run');
+    store.save({
+      ...state,
+      workflow: { ...state.workflow, successors: { brainstorm: [], review: [], approve: [] } },
+      steps: state.steps.map((step) => step.id === 'approve' && step.kind === 'gate'
+        ? {
+            ...step,
+            status: 'complete' as const,
+            approval: { approvedArtifactHash: 'c'.repeat(64), approvedAt: '2026-07-24T09:02:30.000Z' },
+          }
+        : step),
+    });
+
+    expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.'))
+      .toThrow('dependent step approve already completed');
+  });
+
   it('returns a merely prepared downstream host handoff to pending', () => {
     const { store, amendments } = createHarness();
     const state = store.findState('run-amend');
