@@ -146,6 +146,27 @@ describe('HostHandoffAmendmentService', () => {
     expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.')).toThrow('already applied a patch');
   });
 
+  it('refuses an inconsistent downstream state that has already published an artifact', () => {
+    const { store, amendments } = createHarness();
+    const state = store.findState('run-amend');
+    if (!state) throw new Error('missing run');
+    store.save({
+      ...state,
+      steps: state.steps.map((step) => step.id === 'review' && step.kind === 'agent'
+        ? {
+            ...step,
+            output: {
+              id: 'review', path: '/tmp/review.md', format: 'markdown' as const,
+              sha256: 'b'.repeat(64), completedAt: '2026-07-24T09:02:30.000Z',
+            },
+          }
+        : step),
+    });
+
+    expect(() => amendments.amend('run-amend', 'brainstorm', 'Correct it.'))
+      .toThrow('dependent step review already published an artifact');
+  });
+
   it('returns a merely prepared downstream host handoff to pending', () => {
     const { store, amendments } = createHarness();
     const state = store.findState('run-amend');

@@ -19,6 +19,9 @@ export class HostHandoffAmendmentService {
   ) {}
 
   amend(runId: string, stepId: string, reason: string): void {
+    // RunLockService creates an exclusive, run-local filesystem lock. It is held
+    // before state is read, so a second Impresairio CLI process cannot overwrite
+    // this amendment with a stale copy of the run state.
     const release = this.locks.acquire(runId, 'amend-host-handoff');
     try {
       const state = this.stateStore.findState(runId);
@@ -109,6 +112,9 @@ export class HostHandoffAmendmentService {
     );
     for (const step of state.steps) {
       if (!dependentIds.has(step.id)) continue;
+      if (step.kind !== 'gate' && step.output) {
+        throw new RunStateError(`Cannot amend: dependent step ${step.id} already published an artifact`);
+      }
       if (step.status === 'complete') {
         throw new RunStateError(`Cannot amend: dependent step ${step.id} already completed`);
       }
