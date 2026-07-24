@@ -129,29 +129,13 @@ export class HostHandoffAmendmentService {
 }
 
 function successorsOf(state: RunState, sourceStepId: string): Set<string> {
-  const adjacency = new Map<string, Set<string>>(
-    Object.entries(state.workflow.successors).map(([stepId, successors]) => [stepId, new Set(successors)]),
-  );
-  const producerByArtifact = new Map(
-    state.steps
-      .filter((step) => step.kind !== 'gate')
-      .map((step) => [step.declaredOutput.id, step.id] as const),
-  );
-  for (const step of state.steps) {
-    const inputArtifacts = step.kind === 'gate'
-      ? [step.artifact]
-      : step.kind === 'host-handoff' ? step.inputArtifactIds : [];
-    for (const artifactId of inputArtifacts) {
-      const producerId = producerByArtifact.get(artifactId);
-      if (!producerId || producerId === step.id) continue;
-      const successors = adjacency.get(producerId) ?? new Set<string>();
-      successors.add(step.id);
-      adjacency.set(producerId, successors);
-    }
-  }
   const successors = new Set<string>();
+  const sourceIndex = state.steps.findIndex((step) => step.id === sourceStepId);
+  // Expanded runs are ordered. Treat all later steps as downstream as a
+  // conservative compatibility fallback when an old persisted graph is incomplete.
+  for (const step of state.steps.slice(sourceIndex + 1)) successors.add(step.id);
   const visit = (stepId: string): void => {
-    for (const successor of adjacency.get(stepId) ?? []) {
+    for (const successor of state.workflow.successors[stepId] ?? []) {
       if (successors.has(successor)) continue;
       successors.add(successor);
       visit(successor);

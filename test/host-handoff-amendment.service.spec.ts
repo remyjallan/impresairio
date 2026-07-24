@@ -167,7 +167,7 @@ describe('HostHandoffAmendmentService', () => {
       .toThrow('dependent step review already published an artifact');
   });
 
-  it('refuses an approved artifact-dependent gate even when legacy successors omit its edge', () => {
+  it('refuses a later approved gate even when legacy successors omit its edge', () => {
     const { store, amendments } = createHarness();
     const state = store.findState('run-amend');
     if (!state) throw new Error('missing run');
