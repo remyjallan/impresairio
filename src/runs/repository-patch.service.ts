@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { Injectable } from '@nestjs/common';
 import type { CompletionRun, CompletionStep, PatchApplication, PatchApplier } from './completion.service';
+import { RepositoryBaselineService } from './repository-baseline.service';
 
 export class RepositoryPatchError extends Error {
   constructor(message: string) {
@@ -13,6 +14,8 @@ export class RepositoryPatchError extends Error {
 
 @Injectable()
 export class RepositoryPatchService implements PatchApplier {
+  constructor(private readonly baselines: RepositoryBaselineService = new RepositoryBaselineService()) {}
+
   validate(markdown: string): void {
     parseUnifiedPatch(markdown);
   }
@@ -34,6 +37,9 @@ export class RepositoryPatchService implements PatchApplier {
     const topLevel = this.git(repository, ['rev-parse', '--show-toplevel']).stdout.trim();
     if (!topLevel || realpathSync(topLevel) !== repository) {
       throw new RepositoryPatchError(`Run repository is not the Git worktree root: ${repository}`);
+    }
+    if (run.repositoryBaseline) {
+      this.baselines.assertCurrent(repository, run.repositoryBaseline);
     }
 
     const patch = parseUnifiedPatch(markdown);

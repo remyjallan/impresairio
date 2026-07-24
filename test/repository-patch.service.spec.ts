@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CompletionRun, CompletionStep } from '../src/runs/completion.service';
 import { RepositoryPatchService } from '../src/runs/repository-patch.service';
+import { RepositoryBaselineService } from '../src/runs/repository-baseline.service';
 
 const temporaryDirectories: string[] = [];
 
@@ -158,5 +159,28 @@ describe('RepositoryPatchService', () => {
 
     expect(() => service.apply({ ...run(directory), repositoryPatch: first.repositoryPatch }, step(), markdown(patch), '2026-07-21T12:01:00.000Z'))
       .toThrow('Repository changed outside this run');
+  });
+
+  it('rejects a patch after the captured Git revision drifts', () => {
+    const directory = repository();
+    const baseline = new RepositoryBaselineService().capture(directory);
+    const patch = [
+      'diff --git a/greet.ts b/greet.ts',
+      '--- a/greet.ts',
+      '+++ b/greet.ts',
+      '@@ -1 +1 @@',
+      '-export const greet = (name: string) => `Hello, ${name}`;',
+      '+export const greet = (name: string) => `Hello, ${name}!`;',
+    ].join('\n');
+    writeFileSync(join(directory, 'greet.ts'), "export const greet = (name: string) => `Hi, ${name}`;\n");
+    git(directory, ['add', 'greet.ts']);
+    git(directory, ['commit', '-m', 'external drift']);
+
+    expect(() => new RepositoryPatchService().apply(
+      { ...run(directory), repositoryBaseline: baseline },
+      step(),
+      markdown(patch),
+      '2026-07-21T12:00:00.000Z',
+    )).toThrow('Repository revision changed outside this run');
   });
 });

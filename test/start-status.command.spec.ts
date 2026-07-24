@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,7 +54,17 @@ documentation:
   featurePath: "Specs/{{ feature.id }} - {{ feature.slug }}"
   format: markdown
 `);
+  git(repository, ['init']);
+  git(repository, ['config', 'user.email', 'test@example.com']);
+  git(repository, ['config', 'user.name', 'Test User']);
+  git(repository, ['add', '.impresairio.yaml']);
+  git(repository, ['commit', '-m', 'initial']);
   return repository;
+}
+
+function git(directory: string, args: readonly string[]): void {
+  const result = spawnSync('git', ['-C', directory, ...args], { encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
 }
 
 function createRunService(agentProfiles: AgentProfileService = new AgentProfileService()) {
@@ -138,6 +149,10 @@ describe('start and status commands', () => {
       workflow: expect.objectContaining({ id: 'quick-fix' }),
       request: 'Investigate and correct the sample workflow behavior.',
       repositoryDirectory: repository,
+      repositoryBaseline: expect.objectContaining({
+        head: expect.stringMatching(/^[a-f0-9]{40}$/),
+        tree: expect.stringMatching(/^[a-f0-9]{40}$/),
+      }),
       execution: { agentTimeoutSeconds: 1_800 },
       roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
       documentation: expect.objectContaining({
@@ -161,6 +176,15 @@ describe('start and status commands', () => {
     expect(events.read('run-quick-fix')).toContainEqual(expect.objectContaining({
       type: 'run.started',
       repositoryDirectory: repository,
+      repositoryBaseline: expect.objectContaining({
+        head: expect.stringMatching(/^[a-f0-9]{40}$/),
+        tree: expect.stringMatching(/^[a-f0-9]{40}$/),
+      }),
+    }));
+    expect(events.read('run-quick-fix')).toContainEqual(expect.objectContaining({
+      type: 'repository.baseline.captured',
+      head: expect.stringMatching(/^[a-f0-9]{40}$/),
+      tree: expect.stringMatching(/^[a-f0-9]{40}$/),
     }));
   });
 
@@ -188,6 +212,25 @@ describe('start and status commands', () => {
     expect(output.join('')).toContain('run-status: abandoned');
     expect(output.join('')).toContain('abandon-reason: Delivered manually.');
     expect(output.join('')).toContain('external-reference: abc123');
+  });
+
+  it('refuses a repository-patch workflow with uncommitted operator work', () => {
+    const { home, events, service, store } = createRunService();
+    const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
+    temporaryDirectories.push(documentationRoot);
+    const repository = configureRepository(home, documentationRoot);
+    writeFileSync(
+      join(repository, '.impresairio.yaml'),
+      `${readFileSync(join(repository, '.impresairio.yaml'), 'utf8')}# changed outside the run\n`,
+    );
+
+    expect(() => service.start({
+      id: 'run-dirty-worktree', workflowId: 'quick-fix', repositoryDirectory: repository,
+      roles: { launcher: 'claude', adversary: 'codex', implementer: 'opencode-glm' },
+      feature: { id: 'IMP-43', slug: 'dirty-worktree' }, request: 'Reject operator changes.',
+    })).toThrow('tracked changes; start from a clean worktree');
+    expect(store.findState('run-dirty-worktree')).toBeUndefined();
+    expect(events.read('run-dirty-worktree')).toEqual([]);
   });
 
   it('renders an abandoned run without an external reference', async () => {

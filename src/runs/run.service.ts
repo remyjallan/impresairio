@@ -19,6 +19,7 @@ import {
   WorkflowExpanderService,
 } from '../workflows/workflow-expander.service';
 import { resolveRootParameters } from '../workflows/workflow-parameters';
+import { RepositoryBaselineService } from './repository-baseline.service';
 
 export interface StartRunRequest {
   readonly id?: string;
@@ -72,6 +73,7 @@ export class RunService {
     private readonly artifacts: ArtifactService,
     @Inject(RUN_CLOCK)
     private readonly now: () => Date = () => new Date(),
+    private readonly baselines: RepositoryBaselineService = new RepositoryBaselineService(),
   ) {}
 
   start(request: StartRunRequest): RunState {
@@ -88,6 +90,9 @@ export class RunService {
     const parameters = resolveRootParameters(resolvedWorkflow.workflow.parameters, request.parameters ?? {});
     const expanded = this.workflowExpander.expand(resolvedWorkflow, repositoryDirectory, parameters);
     const steps = expanded.steps;
+    const repositoryBaseline = steps.some((step) => step.type === 'agent' && step.patch === 'apply-unified-diff')
+      ? this.baselines.capture(repositoryDirectory)
+      : undefined;
     const documentation: RunState['documentation'] = {
       target: configuration.documentation.target,
       featurePath: configuration.documentation.featurePath,
@@ -108,6 +113,7 @@ export class RunService {
       ...request,
       request: workRequest,
       repositoryDirectory,
+      ...(repositoryBaseline ? { repositoryBaseline } : {}),
       id,
       now: timestamp,
       documentation,
@@ -182,10 +188,19 @@ export class RunService {
         workflowSource: resolvedWorkflow.source,
         documentationTarget: state.documentation.target.name,
         repositoryDirectory: state.repositoryDirectory,
+        ...(state.repositoryBaseline ? { repositoryBaseline: state.repositoryBaseline } : {}),
         roles: state.roles,
         parameters: state.parameters,
         resolvedActors: state.resolvedActors,
       });
+      if (state.repositoryBaseline) {
+        this.eventLog.append(id, {
+          type: 'repository.baseline.captured',
+          at: timestamp,
+          head: state.repositoryBaseline.head,
+          tree: state.repositoryBaseline.tree,
+        });
+      }
     } finally {
       release();
     }

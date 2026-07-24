@@ -1,15 +1,15 @@
 # Safe execution isolation and baselines
 
-Status: discovery decision for issue #19. This document defines the next safety
-boundary; it does not add a user-facing YAML setting, command, worktree, hook,
-or autonomous execution mode.
+Status: discovery decision from issue #19, with the Git-baseline increment
+implemented by #74. It adds no user-facing YAML setting, worktree, hook, or
+autonomous execution mode.
 
 ## Observed boundary
 
-Runs freeze the repository directory at start, and patch application currently
-requires the Git worktree to be clean before the first runner-applied patch. It
-then records a hash of the runner-owned working-tree diff and rejects a later
-patch when that diff changes outside the run.
+Before #74, runs froze the repository directory at start, and patch application
+required the Git worktree to be clean before the first runner-applied patch. It
+then recorded a hash of the runner-owned working-tree diff and rejected a later
+patch when that diff changed outside the run.
 
 That protects patch application, but it does not preserve a Git revision at run
 start. A commit, reset, branch switch, or pre-existing test failure cannot be
@@ -18,11 +18,11 @@ The runner also has no safe ownership, cleanup, resume, or merge contract for
 Git worktrees. Steps execute serially under a per-run lock; there is no parallel
 scheduler or hook executor.
 
-## Decision
+## Implemented boundary
 
-The first runtime increment will add a clean Git baseline only for workflows
-that contain a repository-patch step. It will run before the durable run is
-created, without changing the repository. The start command will:
+The first runtime increment adds a clean Git baseline only for workflows that
+contain a repository-patch step. It runs before the durable run is created,
+without changing the repository. The start command:
 
 1. Resolve the frozen repository directory to the Git worktree root.
 2. Require both the index and working tree to be clean. It will never stash,
@@ -31,7 +31,7 @@ created, without changing the repository. The start command will:
    repository state in immutable run state.
 4. Append a baseline-captured event containing only audit-safe identifiers.
 
-Before every patch application, the runner will require the current repository
+Before every patch application, the runner requires the current repository
 revision to match the captured baseline and continue to verify the
 runner-owned diff hash after each successful patch. A drift is a safe failure:
 no patch is attempted and the operator must reconcile the repository outside
@@ -77,8 +77,8 @@ proposal must define typed, allowlisted operations, bounded arguments, explicit
 side-effect approval, durable audit events, and recovery semantics. That work
 belongs with the external-effect and permission contracts tracked by #21.
 
-## Next increment
+## Deferred increments
 
-Implement the Git-baseline preflight as a focused follow-up. It must cover
-clean and dirty index/worktree states, non-root repositories, revision drift,
-durable state/event persistence, and compatibility for artifact-only runs.
+Worktree isolation, typed verification baselines, parallel execution, and typed
+hooks remain separate follow-ups. They require demonstrated use cases and their
+own recovery, audit, and permission contracts.

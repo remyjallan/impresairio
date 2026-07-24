@@ -57,6 +57,13 @@ const repositoryPatchStateSchema = z.object({
   currentSha256: sha256Schema,
 }).strict();
 
+const gitRevisionSchema = z.string().regex(/^[a-f0-9]{40,64}$/);
+
+const repositoryBaselineSchema = z.object({
+  head: gitRevisionSchema,
+  tree: gitRevisionSchema,
+}).strict();
+
 const workflowDefinitionSchema = z
   .object({
     instanceId: nonEmptyString,
@@ -342,6 +349,7 @@ export const runStateSchema = z
     request: z.string().trim().min(1).max(20_000).optional(),
     parameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
     repositoryDirectory: nonEmptyString.optional(),
+    repositoryBaseline: repositoryBaselineSchema.optional(),
     repositoryPatch: repositoryPatchStateSchema.optional(),
     workflow: z
       .object({
@@ -379,6 +387,7 @@ export function createRunState(input: {
   readonly workflowId: string;
   readonly request?: string;
   readonly repositoryDirectory?: string;
+  readonly repositoryBaseline?: z.input<typeof repositoryBaselineSchema>;
   readonly workflowSha256: string;
   readonly workflowDefinitions?: readonly z.input<typeof workflowDefinitionSchema>[];
   readonly roles: Readonly<Record<string, string>>;
@@ -431,6 +440,7 @@ export function createRunState(input: {
     id: input.id,
     ...(input.request ? { request: input.request } : {}),
     ...(input.repositoryDirectory ? { repositoryDirectory: input.repositoryDirectory } : {}),
+    ...(input.repositoryBaseline ? { repositoryBaseline: input.repositoryBaseline } : {}),
     ...(input.parameters ? { parameters: input.parameters } : {}),
     workflow: {
       id: input.workflowId,

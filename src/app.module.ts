@@ -56,6 +56,7 @@ import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
 import { WorkflowExpanderService } from './workflows/workflow-expander.service';
 import { ConditionEvaluatorService } from './workflows/condition-evaluator.service';
 import { RepositoryPatchService } from './runs/repository-patch.service';
+import { RepositoryBaselineService } from './runs/repository-baseline.service';
 import { AgentFallbackService } from './agents/agent-fallback.service';
 import { FallbackCommand } from './commands/fallback.command';
 import { ReportCommand, REPORT_WRITER } from './commands/report.command';
@@ -113,6 +114,7 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     FilesystemDocumentationTarget,
     ArtifactService,
     CompletionService,
+    RepositoryBaselineService,
     RepositoryPatchService,
     FileStateStore,
     EventLogService,

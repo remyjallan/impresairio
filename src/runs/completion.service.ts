@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import type { WorkflowPatch, WorkflowPrimitiveValue, WorkflowResult } from '../workflows/workflow.schema';
 import { parseStructuredResult } from '../workflows/structured-result';
 import { assertRunActive } from './run-state.schema';
+import type { RepositoryBaseline } from './repository-baseline.service';
 
 export type CompletionStepStatus =
   | 'pending'
@@ -29,6 +30,7 @@ export interface CompletionRun {
   readonly id: string;
   readonly abandonment?: { readonly at: string; readonly reason: string; readonly externalReference?: string };
   readonly repositoryDirectory?: string;
+  readonly repositoryBaseline?: RepositoryBaseline;
   readonly repositoryPatch?: RepositoryPatchState;
   readonly currentStepId: string | undefined;
   readonly steps: readonly CompletionStep[];

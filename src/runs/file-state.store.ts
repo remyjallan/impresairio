@@ -151,6 +151,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     return {
       id: state.id,
       ...(state.repositoryDirectory ? { repositoryDirectory: state.repositoryDirectory } : {}),
+      ...(state.repositoryBaseline ? { repositoryBaseline: state.repositoryBaseline } : {}),
       ...(state.repositoryPatch ? { repositoryPatch: state.repositoryPatch } : {}),
       currentStepId: state.currentStepId,
       successors: state.workflow.successors,
