@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { ArtifactService } from '../documentation/artifact.service';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
@@ -211,12 +211,28 @@ function interactiveInstruction(
 }
 
 export function readHostHandoffOutput(path: string): string {
-  const stats = statSync(path);
-  if (!stats.isFile()) throw new RunStateError(`Host output source is not a file: ${path}`);
-  if (stats.size > MAX_HOST_HANDOFF_OUTPUT_BYTES) {
-    throw new RunStateError(`Host output exceeds the ${MAX_HOST_HANDOFF_OUTPUT_BYTES}-byte limit`);
+  // Read through a single file descriptor (open + fstat + read on the same
+  // inode) so the is-file/size check cannot race the read, matching the
+  // external-recovery source read.
+  let descriptor: number;
+  try {
+    descriptor = openSync(path, 'r');
+  } catch {
+    throw new RunStateError(`Host output source is not a readable file: ${path}`);
   }
-  const content = readFileSync(path, 'utf8');
-  if (!content.trim()) throw new RunStateError('Host output must not be empty');
-  return content;
+  try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new RunStateError(`Host output source is not a file: ${path}`);
+    }
+    const buffer = Buffer.alloc(MAX_HOST_HANDOFF_OUTPUT_BYTES + 1);
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytesRead > MAX_HOST_HANDOFF_OUTPUT_BYTES) {
+      throw new RunStateError(`Host output exceeds the ${MAX_HOST_HANDOFF_OUTPUT_BYTES}-byte limit`);
+    }
+    const content = buffer.subarray(0, bytesRead).toString('utf8');
+    if (!content.trim()) throw new RunStateError('Host output must not be empty');
+    return content;
+  } finally {
+    closeSync(descriptor);
+  }
 }

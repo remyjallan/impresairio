@@ -3,6 +3,10 @@ import { z } from 'zod';
 
 const nonEmptyString = z.string().trim().min(1);
 const claudeReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+const modelIdSchema = nonEmptyString.refine(
+  (value) => /^[A-Za-z0-9][A-Za-z0-9._/:-]*$/.test(value),
+  'must be a provider model identifier (letters, digits, . _ - / :) that does not start with a hyphen',
+);
 const codexReasoningEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 
 const fallbackProfilesSchema = z.array(nonEmptyString).max(5).superRefine((profiles, context) => {
@@ -27,7 +31,7 @@ const filesystemDocumentationTargetSchema = z
 const claudeCodeProfileSchema = z
   .object({
     provider: z.literal('claude-code'),
-    model: nonEmptyString.optional(),
+    model: modelIdSchema.optional(),
     reasoningEffort: claudeReasoningEffortSchema.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
     fallbackProfiles: fallbackProfilesSchema.default([]),
@@ -37,7 +41,7 @@ const claudeCodeProfileSchema = z
 const codexProfileSchema = z
   .object({
     provider: z.literal('codex'),
-    model: nonEmptyString.optional(),
+    model: modelIdSchema.optional(),
     reasoningEffort: codexReasoningEffortSchema.optional(),
     skills: z.record(nonEmptyString, nonEmptyString).default({}),
     fallbackProfiles: fallbackProfilesSchema.default([]),
@@ -67,7 +71,7 @@ export const globalConfigSchema = z
         openCodeProfileSchema,
       ]),
     ),
-    models: z.record(nonEmptyString, nonEmptyString).default({}),
+    models: z.record(nonEmptyString, modelIdSchema).default({}),
     execution: z.object({
       agentTimeoutSeconds: z.number().int().min(1).max(86_400).default(1_800),
     }).strict().default({ agentTimeoutSeconds: 1_800 }),
