@@ -102,25 +102,46 @@ function parseUnifiedPatch(markdown: string): { readonly content: string; readon
   if (/^(?:new file mode|deleted file mode|rename from |rename to |--- \/dev\/null|\+\+\+ \/dev\/null)$/m.test(content)) {
     throw new RepositoryPatchError('Patch may modify existing tracked files only; additions, deletions and renames are not allowed');
   }
-  const pairs = gitPathPairs(content);
-  if (pairs.length === 0) {
+  const paths = unifiedDiffPaths(content);
+  return { content: content.endsWith('\n') ? content : `${content}\n`, paths: [...new Set(paths)] };
+}
+
+/**
+ * Returns the files `git apply` will actually modify. The authoritative source
+ * is the `--- a/… / +++ b/…` body pair, because that is what git patches; the
+ * optional `diff --git a/X b/Y` header is only advisory. Validating the header
+ * alone let a patch declare one file while writing another (path confusion),
+ * so the body pair is validated and, when a header is present, it must match
+ * the body exactly.
+ */
+function unifiedDiffPaths(content: string): readonly string[] {
+  const bodyPairs = [...content.matchAll(/^--- a\/([^\t\s]+)(?:\t.*)?\r?\n\+\+\+ b\/([^\t\s]+)(?:\t.*)?$/gm)]
+    .map((match) => [match[1], match[2]] as const);
+  if (bodyPairs.length === 0) {
     throw new RepositoryPatchError('Patch must contain at least one unified diff file pair');
   }
-  const paths = pairs.map(([before, after]) => {
+  const paths = bodyPairs.map(([before, after]) => {
     if (before !== after || !isSafeTrackedPath(before)) {
       throw new RepositoryPatchError(`Patch may only modify safe existing paths, received ${before} -> ${after}`);
     }
     return before;
   });
-  return { content: content.endsWith('\n') ? content : `${content}\n`, paths: [...new Set(paths)] };
-}
 
-function gitPathPairs(content: string): Array<readonly [string, string]> {
-  const gitHeaders = [...content.matchAll(/^diff --git a\/([^\s]+) b\/([^\s]+)$/gm)];
-  if (gitHeaders.length > 0) return gitHeaders.map((header) => [header[1], header[2]] as const);
-
-  return [...content.matchAll(/^--- a\/([^\t\s]+)(?:\t.*)?\r?\n\+\+\+ b\/([^\t\s]+)(?:\t.*)?$/gm)]
-    .map((header) => [header[1], header[2]] as const);
+  const gitHeaders = [...content.matchAll(/^diff --git a\/([^\s]+) b\/([^\s]+)$/gm)]
+    .map((match) => [match[1], match[2]] as const);
+  if (gitHeaders.length > 0) {
+    if (gitHeaders.length !== paths.length) {
+      throw new RepositoryPatchError('Each diff --git header must have a matching ---/+++ file pair');
+    }
+    gitHeaders.forEach(([headerBefore, headerAfter], index) => {
+      if (headerBefore !== headerAfter || headerBefore !== paths[index]) {
+        throw new RepositoryPatchError(
+          `Patch header and body target different files: ${headerBefore} vs ${paths[index]}`,
+        );
+      }
+    });
+  }
+  return paths;
 }
 
 function isSafeTrackedPath(path: string): boolean {

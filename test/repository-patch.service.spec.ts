@@ -16,7 +16,8 @@ function repository(): string {
   git(directory, ['config', 'user.email', 'test@example.com']);
   git(directory, ['config', 'user.name', 'Test User']);
   writeFileSync(join(directory, 'greet.ts'), "export const greet = (name: string) => `Hello, ${name}`;\n");
-  git(directory, ['add', 'greet.ts']);
+  writeFileSync(join(directory, 'secret.ts'), 'export const secret = 1;\n');
+  git(directory, ['add', 'greet.ts', 'secret.ts']);
   git(directory, ['commit', '-m', 'initial']);
   return directory;
 }
@@ -140,6 +141,40 @@ describe('RepositoryPatchService', () => {
     expect(() => new RepositoryPatchService().apply(run(directory), step(), markdown(patch), '2026-07-21T12:00:00.000Z'))
       .toThrow('additions, deletions and renames are not allowed');
     expect(readFileSync(join(directory, 'greet.ts'), 'utf8')).toContain('Hello, ${name}`;');
+  });
+
+  it('rejects a patch whose diff --git header names a different file than its body writes', () => {
+    const directory = repository();
+    const patch = [
+      'diff --git a/greet.ts b/greet.ts',
+      '--- a/secret.ts',
+      '+++ b/secret.ts',
+      '@@ -1 +1 @@',
+      '-export const secret = 1;',
+      '+export const secret = 999;',
+    ].join('\n');
+
+    expect(() => new RepositoryPatchService().apply(run(directory), step(), markdown(patch), '2026-07-21T12:00:00.000Z'))
+      .toThrow('Patch header and body target different files');
+    expect(readFileSync(join(directory, 'secret.ts'), 'utf8')).toContain('export const secret = 1;');
+    expect(readFileSync(join(directory, 'greet.ts'), 'utf8')).toContain('Hello, ${name}`;');
+  });
+
+  it('records the body target, not the header, in the audit paths', () => {
+    const directory = repository();
+    const patch = [
+      'diff --git a/secret.ts b/secret.ts',
+      '--- a/secret.ts',
+      '+++ b/secret.ts',
+      '@@ -1 +1 @@',
+      '-export const secret = 1;',
+      '+export const secret = 999;',
+    ].join('\n');
+
+    const result = new RepositoryPatchService().apply(run(directory), step(), markdown(patch), '2026-07-21T12:00:00.000Z');
+
+    expect(result.patch.paths).toEqual(['secret.ts']);
+    expect(readFileSync(join(directory, 'secret.ts'), 'utf8')).toContain('export const secret = 999;');
   });
 
   it('rejects external tracked changes after a previous run patch', () => {
