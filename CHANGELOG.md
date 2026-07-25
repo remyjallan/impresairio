@@ -6,7 +6,21 @@ The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 ## [Unreleased]
 
+### Added
+
+- `abandon` command: audited, terminal abandonment of a run that can no longer proceed.
+- `amend-host-handoff` command: reopen a completed host-handoff step (up to 20 times) before its dependents execute, archiving each prior revision.
+- Manual/interactive host-handoff steps with `submit-host-output` for host-authored artifacts.
+- External patch recovery: `prepare-external-agent-output` and `submit-agent-output` let a host author a runner-validated, runner-applied unified-diff patch when an agent patch step fails.
+- Per-profile pinned model and reasoning effort for Claude Code and Codex profiles.
+- Declared workflow execution authorization, surfaced through `advance --only-pre-authorized`.
+
 ### Fixed
+
+- Controlled patch application validates the unified-diff `---/+++` body paths (the files Git actually writes) and requires any `diff --git` header to match, closing a header/body path-confusion that could modify or audit-misreport a different file.
+- External agent recovery refuses to prepare against an abandoned run, and its double-submit guard is keyed on the current recovery so a legitimately re-armed recovery is no longer wedged.
+- Amend, request-changes and retry persist the reopened run state before discarding a live internal artifact, so a save failure cannot orphan a completed step against a deleted file.
+- Host output sources are read through a single file descriptor (no is-file/size read race), and pinned model identifiers are charset-validated and may not start with a hyphen.
 
 - OpenCode now uses its JSON event output so progress is never published as a
   Markdown artifact; empty and permission-only responses fail with actionable,

@@ -8,7 +8,7 @@ interface AmendHostHandoffOptions { readonly reason?: string; }
 @Command({
   name: 'amend-host-handoff',
   arguments: '<run-id> <step-id>',
-  description: 'Reopen a completed host handoff before dependent work executes, preserving its prior revision.',
+  description: 'Reopen a completed host handoff before dependent work executes (up to 20 times), preserving each prior revision.',
 })
 export class AmendHostHandoffCommand extends CommandRunner {
   constructor(private readonly amendments: HostHandoffAmendmentService) { super(); }
