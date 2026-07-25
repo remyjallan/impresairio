@@ -26,12 +26,18 @@ export class AgentRecoverySubmissionService {
     try {
       const state = this.stateStore.findState(runId);
       if (!state) throw new RunStateError(`Run not found: ${runId}`);
-      if (this.events.read(runId).some((event) => event.type === 'agent.external_recovery.submitted' && event.stepId === stepId)) {
-        throw new RunStateError(`External recovery ${stepId} was already submitted`);
-      }
       const step = state.steps.find((candidate) => candidate.id === stepId);
       if (!step || step.kind !== 'agent' || !step.externalRecovery) {
         throw new RunStateError(`Step ${stepId} is not awaiting external agent output`);
+      }
+      // Idempotency is keyed on the current recovery (its preparedAt), not on
+      // the step, so re-submitting the same recovery is refused while a
+      // legitimately re-armed recovery (a fresh prepare after the step failed
+      // again, carrying a new preparedAt) is allowed to proceed.
+      const preparedAt = step.externalRecovery.preparedAt;
+      if (this.events.read(runId).some((event) => event.type === 'agent.external_recovery.submitted'
+        && event.stepId === stepId && event.preparedAt === preparedAt)) {
+        throw new RunStateError(`External recovery ${stepId} was already submitted`);
       }
       if (state.currentStepId !== stepId || step.status !== 'in_progress' || !step.expectedOutput) {
         throw new RunStateError(`External recovery ${stepId} is not awaiting output`);
@@ -79,7 +85,7 @@ export class AgentRecoverySubmissionService {
         throw error;
       }
       this.events.append(runId, {
-        type: 'agent.external_recovery.submitted', at: new Date().toISOString(), stepId, artifactSha256,
+        type: 'agent.external_recovery.submitted', at: new Date().toISOString(), stepId, preparedAt, artifactSha256,
         ...(appliedPatch ? {
           appliedPatch: { sha256: appliedPatch.sha256, paths: appliedPatch.paths, appliedAt: appliedPatch.appliedAt },
         } : {}),

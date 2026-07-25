@@ -138,7 +138,7 @@ describe('ExternalAgentRecoveryService', () => {
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
-    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-x\n+y\n```\n', 'utf8');
     const publishMarkdown = vi.fn();
     const appliedPatch = { sha256: 'a'.repeat(64), paths: ['a.ts'], appliedAt: '2026-07-23T12:01:00.000Z' };
     const complete = vi.fn(() => appliedPatch);
@@ -160,6 +160,38 @@ describe('ExternalAgentRecoveryService', () => {
     }));
     expect(() => submission.submit('run-external', 'implement', source)).toThrow('was already submitted');
     expect(publishMarkdown).toHaveBeenCalledTimes(1);
+
+    // A legitimately re-armed recovery (fresh prepare after the step failed
+    // again) carries a new preparedAt and must not be blocked by the previous
+    // submission — regression guard for the double-submit wedge. In a real run
+    // the step returns to `failed` via a downstream retry; simulate that here
+    // since completion is mocked above.
+    const midState = store.findState('run-external');
+    if (!midState) throw new Error('missing state');
+    store.save({
+      ...midState,
+      steps: midState.steps.map((candidate) => candidate.id === 'implement' && candidate.kind === 'agent'
+        ? { ...candidate, status: 'failed' as const, externalRecovery: undefined }
+        : candidate),
+    });
+    recovery.prepare('run-external', 'implement', 'Second failure, taking over again.');
+    submission.submit('run-external', 'implement', source);
+    expect(publishMarkdown).toHaveBeenCalledTimes(2);
+    expect(events.read('run-external').filter((event) => event.type === 'agent.external_recovery.submitted')).toHaveLength(2);
+  });
+
+  it('rejects preparing an external recovery for an abandoned run', () => {
+    const { store, recovery } = harness();
+    const state = store.findState('run-external');
+    if (!state) throw new Error('missing state');
+    store.save({
+      ...state,
+      currentStepId: undefined,
+      abandonment: { reason: 'operator abandoned the run', at: '2026-07-23T12:05:00.000Z' },
+    });
+
+    expect(() => recovery.prepare('run-external', 'implement', 'Trying to resurrect.'))
+      .toThrow(/abandoned/i);
   });
 
   it('rejects unprepared, inactive, and managed-file submissions', () => {
@@ -186,7 +218,7 @@ describe('ExternalAgentRecoveryService', () => {
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
-    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-x\n+y\n```\n', 'utf8');
     const publishMarkdown = vi.fn();
     const discardOutput = vi.fn();
     const submission = new AgentRecoverySubmissionService(
@@ -210,7 +242,7 @@ describe('ExternalAgentRecoveryService', () => {
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
-    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-x\n+y\n```\n', 'utf8');
     const discardOutput = vi.fn();
     const complete = vi.fn();
     const submission = new AgentRecoverySubmissionService(
@@ -233,7 +265,7 @@ describe('ExternalAgentRecoveryService', () => {
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
-    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-x\n+y\n```\n', 'utf8');
     const discardOutput = vi.fn();
     const submission = new AgentRecoverySubmissionService(
       store,
@@ -259,7 +291,7 @@ describe('ExternalAgentRecoveryService', () => {
     const sourceDirectory = mkdtempSync(join(tmpdir(), 'impresairio-host-output-'));
     directories.push(sourceDirectory);
     const source = join(sourceDirectory, 'host-authored-patch.md');
-    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n```\n', 'utf8');
+    writeFileSync(source, '```impresairio-patch\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-x\n+y\n```\n', 'utf8');
     const submission = new AgentRecoverySubmissionService(
       store,
       { publishMarkdown: vi.fn() } as unknown as ArtifactService,

@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs';
 import { EventLogService } from './event-log.service';
 import { FileStateStore, RunStateError } from './file-state.store';
 import { RunLockService } from './run-lock.service';
+import { assertRunActive } from './run-state.schema';
 import type { NextStepResult } from '../workflows/workflow-runner.service';
 
 export const MAX_EXTERNAL_AGENT_RECOVERY_OUTPUT_BYTES = 1_000_000;
@@ -30,6 +31,7 @@ export class ExternalAgentRecoveryService {
     const release = this.locks.acquireReentrant(runId, 'prepare-external-agent-output');
     try {
       const state = this.requiredState(runId);
+      assertRunActive(state);
       const step = state.steps.find((candidate) => candidate.id === stepId);
       if (!step || step.kind !== 'agent' || step.patch !== 'apply-unified-diff') {
         throw new RunStateError(`Step ${stepId} is not a patch-producing agent step`);
