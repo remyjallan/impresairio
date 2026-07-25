@@ -48,7 +48,6 @@ export class HostHandoffAmendmentService {
       const revision = (step.amendments?.length ?? 0) + 1;
       const priorOutput = this.stateStore.preserveHostHandoffRevision(runId, stepId, revision, output);
       const timestamp = this.now().toISOString();
-      this.artifacts.discardOutput(step.expectedOutput);
 
       const steps = state.steps.map((candidate) => {
         if (candidate.id === stepId && candidate.kind === 'host-handoff') {
@@ -95,7 +94,12 @@ export class HostHandoffAmendmentService {
           handoffPreparedAt: undefined,
         };
       });
+      // Persist the reopened state before deleting the live artifact: if the
+      // discard were to run first and the save then failed, the step would stay
+      // `complete` pointing at a now-missing file. The content is already safe
+      // in the archived revision, so discarding after the save is recoverable.
       this.stateStore.save({ ...state, currentStepId: undefined, steps, updatedAt: timestamp });
+      this.artifacts.discardOutput(step.expectedOutput);
       this.events.append(runId, {
         type: 'host.handoff.amended', at: timestamp, stepId, revision,
         reason: normalizedReason, priorArtifactSha256: priorOutput.sha256,

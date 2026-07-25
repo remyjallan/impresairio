@@ -77,9 +77,6 @@ export class StaleInvalidationService {
       throw new RunStateError(`Gate ${gateId} is stale and cannot receive request-changes`);
     }
     const producer = this.producerForArtifact(state, gate.artifact);
-    if (producer.declaredOutput.storage === 'internal' && producer.expectedOutput) {
-      this.artifacts.discardOutput(producer.expectedOutput);
-    }
     const invalidated = this.invalidateFrom(state, producer.id, 'request-changes', producer.id);
     const timestamp = this.now().toISOString();
     const steps = invalidated.steps.map((step) => {
@@ -117,6 +114,12 @@ export class StaleInvalidationService {
       steps,
     });
     this.stateStore.save(next);
+    // Discard the live internal artifact only after the reopened state is
+    // persisted, so a save failure can never leave a "complete" step pointing
+    // at a deleted file.
+    if (producer.declaredOutput.storage === 'internal' && producer.expectedOutput) {
+      this.artifacts.discardOutput(producer.expectedOutput);
+    }
     this.eventLog.append(runId, {
       type: 'gate.changes_requested',
       at: timestamp,
@@ -135,9 +138,6 @@ export class StaleInvalidationService {
     const verdictHalted = isVerdictHalted(step);
     if (step.status !== 'stale' && step.status !== 'failed' && !verdictHalted) {
       throw new RunStateError(`Step ${stepId} can only be retried when stale, failed or halted on a verdict`);
-    }
-    if (step.declaredOutput.storage === 'internal' && step.expectedOutput) {
-      this.artifacts.discardOutput(step.expectedOutput);
     }
     const timestamp = this.now().toISOString();
     const steps = state.steps.map((candidate) => candidate.id === stepId && (candidate.kind === 'agent' || candidate.kind === 'host-handoff')
@@ -163,6 +163,11 @@ export class StaleInvalidationService {
       steps,
     });
     this.stateStore.save(next);
+    // Discard after persisting the reopened state (see requestChanges) so a
+    // save failure cannot orphan a "complete" step against a deleted artifact.
+    if (step.declaredOutput.storage === 'internal' && step.expectedOutput) {
+      this.artifacts.discardOutput(step.expectedOutput);
+    }
     this.eventLog.append(runId, { type: 'step.retry_requested', at: timestamp, stepId });
     return next;
   }
