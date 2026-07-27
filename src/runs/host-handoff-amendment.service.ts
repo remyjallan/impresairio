@@ -119,7 +119,7 @@ export class HostHandoffAmendmentService {
     );
     for (const step of state.steps) {
       if (!dependentIds.has(step.id)) continue;
-      if (step.kind !== 'gate' && step.output) {
+      if ((step.kind === 'agent' || step.kind === 'host-handoff') && step.output) {
         throw new RunStateError(`Cannot amend: dependent step ${step.id} already published an artifact`);
       }
       if (step.status === 'complete') {

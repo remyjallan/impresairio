@@ -450,4 +450,54 @@ steps:${next}
       harness.repository,
     )).toThrow('Workflow composition exceeds the maximum depth of 32');
   });
+
+  it('keeps a gated implementation phase placeholder static until runtime materialization', () => {
+    const harness = createHarness();
+    harness.writeRepository('phases', `
+id: phases
+name: Phases
+steps:
+  - id: plan
+    type: agent
+    actor: launcher
+    capability: integration-plan
+    output: { id: plan, filename: "Plan.md" }
+  - id: approve-plan
+    type: gate
+    artifact: plan
+  - id: implement-phases
+    type: implementation-phases
+    artifact: plan
+    actor: implementer
+    capability: implement
+    reviewer: adversary
+    reviewCapability: verification
+`);
+
+    const plan = harness.expander.expand(harness.registry.resolve('phases', harness.repository), harness.repository);
+    expect(plan.steps.at(-1)).toMatchObject({
+      id: 'implement-phases', type: 'implementation-phases', artifact: 'plan',
+      actor: 'implementer', reviewer: 'adversary',
+    });
+  });
+
+  it('rejects an implementation phase placeholder without a preceding approval gate', () => {
+    const harness = createHarness();
+    harness.writeRepository('unsafe-phases', `
+id: unsafe-phases
+name: Unsafe phases
+steps:
+  - id: plan
+    type: agent
+    actor: launcher
+    capability: integration-plan
+    output: { id: plan, filename: "Plan.md" }
+  - id: implement-phases
+    type: implementation-phases
+    artifact: plan
+    actor: implementer
+    capability: implement
+`);
+    expect(() => harness.registry.resolve('unsafe-phases', harness.repository)).toThrow('preceding human gate');
+  });
 });

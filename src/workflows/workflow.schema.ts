@@ -278,6 +278,27 @@ const gateStepSchema = z
   })
   .strict();
 
+/**
+ * A static, data-only expansion point. The approved artifact supplies phase
+ * data, never executable workflow definitions or provider choices.
+ */
+const implementationPhasesStepSchema = z.object({
+  id: identifier,
+  type: z.literal('implementation-phases'),
+  artifact: identifier,
+  actor: identifier,
+  capability: identifier,
+  reviewer: identifier.optional(),
+  reviewCapability: identifier.optional(),
+}).strict().superRefine((value, context) => {
+  if ((value.reviewer === undefined) !== (value.reviewCapability === undefined)) {
+    context.addIssue({ code: 'custom', message: 'reviewer and reviewCapability must be declared together' });
+  }
+  if (value.reviewer === value.actor) {
+    context.addIssue({ code: 'custom', path: ['reviewer'], message: 'must differ from actor' });
+  }
+});
+
 const composedWorkflowStepSchema = z
   .object({
     id: identifier,
@@ -316,6 +337,7 @@ export const workflowSchema = z
       promptAgentStepSchema,
       hostHandoffStepSchema,
       gateStepSchema,
+      implementationPhasesStepSchema,
       reviewCycleStepSchema,
       composedWorkflowStepSchema,
     ])).min(1),
@@ -383,6 +405,24 @@ export const workflowSchema = z
           });
         }
       }
+      if (step.type === 'implementation-phases') {
+        const producer = outputIds.get(step.artifact);
+        if (!producer) {
+          context.addIssue({
+            code: 'custom', path: ['steps', index, 'artifact'],
+            message: 'must reference an output produced by a preceding step',
+          });
+        }
+        const approved = workflow.steps.slice(0, index).some((candidate) => (
+          'type' in candidate && candidate.type === 'gate' && candidate.artifact === step.artifact
+        ));
+        if (!approved) {
+          context.addIssue({
+            code: 'custom', path: ['steps', index, 'artifact'],
+            message: 'must be covered by a preceding human gate',
+          });
+        }
+      }
       if (step.type === 'review-cycle') {
         if (stepIds.has(step.gateId)) context.addIssue({ code: 'custom', path: ['steps', index, 'gateId'], message: `duplicate step ID "${step.gateId}"` });
         stepIds.add(step.gateId);
@@ -443,6 +483,7 @@ export type WorkflowStep = Workflow['steps'][number];
 export type AgentWorkflowStep = Extract<WorkflowStep, { readonly type: 'agent' }>;
 export type HostHandoffWorkflowStep = Extract<WorkflowStep, { readonly type: 'host-handoff' }>;
 export type GateWorkflowStep = Extract<WorkflowStep, { readonly type: 'gate' }>;
+export type ImplementationPhasesWorkflowStep = Extract<WorkflowStep, { readonly type: 'implementation-phases' }>;
 export type ComposedWorkflowStep = Extract<WorkflowStep, { readonly uses: string }>;
 
 export function isAgentWorkflowStep(step: WorkflowStep): step is AgentWorkflowStep {

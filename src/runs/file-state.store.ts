@@ -155,7 +155,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       ...(state.repositoryPatch ? { repositoryPatch: state.repositoryPatch } : {}),
       currentStepId: state.currentStepId,
       successors: state.workflow.successors,
-      steps: state.steps.map((step) => ({
+      steps: state.steps.filter((step) => step.kind !== 'phase-manifest').map((step) => ({
         id: step.id,
         kind: step.kind,
         status: step.status,

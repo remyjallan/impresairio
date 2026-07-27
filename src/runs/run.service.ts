@@ -39,6 +39,7 @@ export const RUN_CLOCK = Symbol('RUN_CLOCK');
 export function workflowActors(steps: readonly ExpandedWorkflowStep[]): string[] {
   return [...new Set(steps.flatMap((step) => {
     const needsActor = step.type === 'agent'
+      || step.type === 'implementation-phases'
       || (step.type === 'host-handoff' && 'capability' in step);
     if (!needsActor) {
       return [];
@@ -124,7 +125,7 @@ export class RunService {
       parameters,
       steps: steps.map((step) => ({
         id: step.id,
-        kind: step.type,
+        kind: step.type === 'implementation-phases' ? 'phase-manifest' : step.type,
         ...(step.type === 'agent'
           ? {
               actor: step.actor,
@@ -173,6 +174,26 @@ export class RunService {
                   output: step.output,
                   sideEffects: step.sideEffects,
                 })
+            : step.type === 'implementation-phases'
+              ? {
+                  artifact: step.artifact,
+                  actor: step.actor,
+                  method: this.resolveCapabilityForActor(
+                    step.capability,
+                    step.actor,
+                    resolvedActors,
+                  ),
+                  ...(step.reviewer && step.reviewCapability
+                    ? {
+                        reviewer: step.reviewer,
+                        reviewMethod: this.resolveCapabilityForActor(
+                          step.reviewCapability,
+                          step.reviewer,
+                          resolvedActors,
+                        ),
+                      }
+                    : {}),
+                }
             : { artifact: step.artifact }),
       })),
     });

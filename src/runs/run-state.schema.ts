@@ -116,6 +116,16 @@ const externalAgentRecoverySchema = z.object({
   reason: z.string().trim().min(1).max(1_000),
 }).strict();
 
+const implementationPhaseDataSchema = z.object({
+  id: nonEmptyString.regex(/^[a-z][a-z0-9-]*$/),
+  objective: z.string().trim().min(1).max(1_000),
+  scope: z.array(z.string().trim().min(1)).min(1).max(12),
+  dependsOn: z.array(nonEmptyString).max(5),
+  verification: z.array(z.string().trim().min(1)).min(1).max(8),
+  retryBudget: z.number().int().min(0).max(2),
+  gate: z.boolean(),
+}).strict();
+
 const frozenAgentProfileSchema = z.discriminatedUnion('provider', [
   z.object({
     profile: nonEmptyString,
@@ -211,6 +221,7 @@ const runAgentStepSchema = z
       selectedAt: timestampSchema,
     }).strict()).max(5).optional(),
     effectiveParameters: z.record(nonEmptyString, workflowPrimitiveValueSchema).optional(),
+    phase: implementationPhaseDataSchema.optional(),
     declaredResult: workflowResultSchema.optional(),
     patch: workflowPatchSchema.optional(),
     appliedPatch: appliedPatchSchema.optional(),
@@ -340,7 +351,28 @@ const runHostHandoffStepSchema = z.object({
   }
 });
 
-export const runStepSchema = z.union([runAgentStepSchema, runHostHandoffStepSchema, runGateStepSchema]);
+const runPhaseManifestStepSchema = z.object({
+  id: nonEmptyString,
+  kind: z.literal('phase-manifest'),
+  status: stepStatusSchema,
+  artifact: nonEmptyString,
+  actor: nonEmptyString,
+  method: agentMethodSchema,
+  reviewer: nonEmptyString.optional(),
+  reviewMethod: agentMethodSchema.optional(),
+  manifestSha256: sha256Schema.optional(),
+  materializedAt: timestampSchema.optional(),
+  generatedStepIds: z.array(nonEmptyString).min(1).optional(),
+}).strict().superRefine((step, context) => {
+  if ((step.reviewer === undefined) !== (step.reviewMethod === undefined)) {
+    context.addIssue({ code: 'custom', message: 'reviewer and reviewMethod must be declared together' });
+  }
+  if ((step.manifestSha256 === undefined) !== (step.materializedAt === undefined)) {
+    context.addIssue({ code: 'custom', message: 'materialized phase manifest requires hash and timestamp' });
+  }
+});
+
+export const runStepSchema = z.union([runAgentStepSchema, runHostHandoffStepSchema, runGateStepSchema, runPhaseManifestStepSchema]);
 
 export const runStateSchema = z
   .object({
@@ -397,7 +429,7 @@ export function createRunState(input: {
   readonly execution?: { readonly agentTimeoutSeconds: number };
   readonly steps: readonly {
     readonly id: string;
-    readonly kind: 'agent' | 'host-handoff' | 'gate';
+    readonly kind: 'agent' | 'host-handoff' | 'gate' | 'phase-manifest';
     readonly actor?: string;
     readonly executionAuthorization?: 'explicit' | 'pre-authorized';
     readonly method?: z.input<typeof agentMethodSchema>;
@@ -414,6 +446,7 @@ export function createRunState(input: {
       readonly storage?: 'documentation' | 'internal';
     };
     readonly effectiveParameters?: Readonly<Record<string, z.input<typeof workflowPrimitiveValueSchema>>>;
+    readonly phase?: z.input<typeof implementationPhaseDataSchema>;
     readonly result?: z.input<typeof workflowResultSchema>;
     readonly patch?: z.input<typeof workflowPatchSchema>;
     readonly when?: z.input<typeof workflowConditionSchema>;
@@ -428,6 +461,8 @@ export function createRunState(input: {
       readonly blocked?: 'stop';
     };
     readonly artifact?: string;
+    readonly reviewer?: string;
+    readonly reviewMethod?: z.input<typeof agentMethodSchema>;
   }[];
   readonly now: string;
 }): RunState {
@@ -492,6 +527,23 @@ export function createRunState(input: {
           attempts: [],
         };
       }
+      if (step.kind === 'phase-manifest') {
+        if (!step.artifact || !step.actor || !step.method) {
+          throw new Error(`Implementation phase placeholder ${step.id} requires an artifact, actor and method`);
+        }
+        if ((step.reviewer === undefined) !== (step.reviewMethod === undefined)) {
+          throw new Error(`Implementation phase placeholder ${step.id} requires reviewer and review method together`);
+        }
+        return {
+          id: step.id,
+          kind: 'phase-manifest' as const,
+          status: 'pending' as const,
+          artifact: step.artifact,
+          actor: step.actor,
+          method: step.method,
+          ...(step.reviewer ? { reviewer: step.reviewer, reviewMethod: step.reviewMethod } : {}),
+        };
+      }
       if (!step.actor || !step.output) {
         throw new Error(`Agent ${step.id} requires an actor and declared output`);
       }
@@ -512,6 +564,7 @@ export function createRunState(input: {
         method,
         declaredOutput: step.output,
         ...(step.effectiveParameters ? { effectiveParameters: step.effectiveParameters } : {}),
+        ...(step.phase ? { phase: step.phase } : {}),
         ...(step.result ? { declaredResult: step.result } : {}),
         ...(step.patch ? { patch: step.patch } : {}),
         ...(step.when ? { when: step.when } : {}),
