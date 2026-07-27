@@ -25,14 +25,20 @@ export class RunAbandonService {
       }
       const normalizedReason = reason.trim();
       if (!normalizedReason) throw new RunStateError('Abandon reason must not be empty');
+      if (normalizedReason.length > 1_000) throw new RunStateError('Abandon reason must be at most 1000 characters');
       const normalizedReference = externalReference?.trim();
+      if (normalizedReference && normalizedReference.length > 2_000) {
+        throw new RunStateError('External reference must be at most 2000 characters');
+      }
       const at = new Date().toISOString();
+      const lastStepId = state.currentStepId ?? state.steps.findLast((step) => step.status !== 'pending')?.id;
       this.stateStore.save({
         ...state,
         abandonment: {
           at,
           reason: normalizedReason,
           ...(normalizedReference ? { externalReference: normalizedReference } : {}),
+          ...(lastStepId ? { lastStepId } : {}),
         },
         currentStepId: undefined,
         updatedAt: at,
@@ -40,6 +46,7 @@ export class RunAbandonService {
       this.events.append(runId, {
         type: 'run.abandoned', at, reason: normalizedReason,
         ...(normalizedReference ? { externalReference: normalizedReference } : {}),
+        ...(lastStepId ? { lastStepId } : {}),
       });
     } finally {
       release();

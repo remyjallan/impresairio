@@ -88,9 +88,9 @@ export class StaleInvalidationService {
           ...step,
           status: 'pending' as const,
           output: undefined,
-          approval: undefined,
           inputArtifactHashes: undefined,
           ...(step.kind === 'agent' ? {
+            approval: undefined,
             dispatchPreparedAt: undefined,
             reviewOutcome: undefined,
             result: undefined,
@@ -164,6 +164,48 @@ export class StaleInvalidationService {
     });
     this.stateStore.save(next);
     this.eventLog.append(runId, { type: 'step.retry_requested', at: timestamp, stepId });
+    return next;
+  }
+
+  /**
+   * Reopens the first stale work step once all of its ordered prerequisites
+   * are terminal. This is the machine-owned counterpart to `retry`: it keeps
+   * a review cycle moving after its producer was returned for changes, while
+   * a stale gate still remains an explicit human boundary.
+   */
+  reopenStaleWorkIfReady(runId: string, state: RunState, stepId: string): RunState | undefined {
+    const stepIndex = state.steps.findIndex((step) => step.id === stepId);
+    const step = state.steps[stepIndex];
+    if (!step || step.status !== 'stale' || (step.kind !== 'agent' && step.kind !== 'host-handoff')) {
+      return undefined;
+    }
+    if (state.steps.slice(0, stepIndex).some((candidate) => candidate.status !== 'complete' && candidate.status !== 'skipped')) {
+      return undefined;
+    }
+    const timestamp = this.now().toISOString();
+    const steps = state.steps.map((candidate) => candidate.id === stepId
+      ? {
+          ...candidate,
+          status: 'pending' as const,
+          output: undefined,
+          inputArtifactHashes: undefined,
+          ...(candidate.kind === 'agent' ? {
+            dispatchPreparedAt: undefined,
+            reviewOutcome: undefined,
+            result: undefined,
+            conditionDecision: undefined,
+            retryContext: undefined,
+            acknowledgment: undefined,
+          } : { handoffPreparedAt: undefined, retryContext: undefined }),
+        }
+      : candidate);
+    const next = this.withTimestamp({
+      ...state,
+      currentStepId: state.currentStepId === stepId ? undefined : state.currentStepId,
+      steps,
+    });
+    this.stateStore.save(next);
+    this.eventLog.append(runId, { type: 'step.reopened', at: timestamp, stepId, reason: 'stale-prerequisites-rebuilt' });
     return next;
   }
 

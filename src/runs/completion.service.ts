@@ -52,6 +52,14 @@ export interface CompletionRecord {
   };
   readonly appliedPatch?: AppliedPatch;
   readonly repositoryPatch?: RepositoryPatchState;
+  readonly artifactRevision?: ArtifactRevision;
+}
+
+/** Immutable run-local copy of an artifact accepted for a completion attempt. */
+export interface ArtifactRevision {
+  readonly path: string;
+  readonly sha256: string;
+  readonly recordedAt: string;
 }
 
 export interface AppliedPatch {
@@ -115,6 +123,8 @@ export interface CompletionRunStore {
   preserveRetryFeedback?(runId: string, policyStepId: string, output: CompletedDocumentationOutput): RetryFeedback;
   discardRetryFeedback?(runId: string, retryFeedback: RetryFeedback): void;
   applyVerdictRetry?(runId: string, policyStepId: string, targetStepId: string, retryFeedback: RetryFeedback): void;
+  archiveArtifactRevision?(runId: string, stepId: string, output: CompletedDocumentationOutput): ArtifactRevision;
+  discardArtifactRevision?(runId: string, revision: ArtifactRevision): void;
 }
 
 export interface OutputVerifier {
@@ -198,6 +208,7 @@ export class CompletionService {
         readonly discard: (runId: string, feedback: RetryFeedback) => void;
         readonly apply: (runId: string, policyStepId: string, targetStepId: string, feedback: RetryFeedback) => void;
       } | undefined;
+      let artifactRevision: ArtifactRevision | undefined;
       try {
         output = this.outputVerifier.completeExpectedOutput(run, step);
         const content = step.declaredResult || step.patch
@@ -226,6 +237,9 @@ export class CompletionService {
           }
           retryOperation = { feedback: preserve(runId, stepId, output), discard, apply };
         }
+        // Preserve the immutable revision only after every fallible validation
+        // and policy operation has accepted this candidate completion.
+        artifactRevision = this.store.archiveArtifactRevision?.(runId, stepId, output);
         this.store.recordCompletion(runId, {
           stepId,
           output,
@@ -236,8 +250,16 @@ export class CompletionService {
             appliedPatch: patchApplication.patch,
             repositoryPatch: patchApplication.repositoryPatch,
           } : {}),
+          ...(artifactRevision ? { artifactRevision } : {}),
         });
       } catch (error) {
+        if (artifactRevision) {
+          try {
+            this.store.discardArtifactRevision?.(runId, artifactRevision);
+          } catch {
+            // Preserve the original completion failure; cleanup is best effort.
+          }
+        }
         if (retryOperation) {
           try {
             retryOperation.discard(runId, retryOperation.feedback);

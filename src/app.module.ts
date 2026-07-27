@@ -15,7 +15,9 @@ import { StatusCommand, STATUS_WRITER } from './commands/status.command';
 import { UnlockCommand, UNLOCK_WRITER } from './commands/unlock.command';
 import { AcknowledgeCommand } from './commands/acknowledge.command';
 import { ListCommand, LIST_WRITER } from './commands/list.command';
-import { AdvanceCommand, ADVANCE_PROGRESS_WRITER } from './commands/advance.command';
+import { WorkflowsCommand, WORKFLOWS_WRITER } from './commands/workflows.command';
+import { FollowCommand, FOLLOW_WRITER } from './commands/follow.command';
+import { AdvanceCommand, ADVANCE_DETACHED_ENTRYPOINT, ADVANCE_HEARTBEAT_INTERVAL_MS, ADVANCE_PROGRESS_WRITER } from './commands/advance.command';
 import { DoctorCommand, DOCTOR_WRITER } from './commands/doctor.command';
 import { ConfigService } from './config/config.service';
 import { HomeDirectoryResolver } from './config/home-directory.resolver';
@@ -76,6 +78,8 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     UnlockCommand,
     AcknowledgeCommand,
     ListCommand,
+    WorkflowsCommand,
+    FollowCommand,
     AdvanceCommand,
     DoctorCommand,
     CompleteCommand,
@@ -132,6 +136,14 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     {
       provide: FILE_STATE_OPERATIONS,
       useValue: {},
+    },
+    {
+      provide: WORKFLOWS_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
+    },
+    {
+      provide: FOLLOW_WRITER,
+      useValue: (line: string) => process.stdout.write(line),
     },
     {
       provide: WORKFLOW_REGISTRY_RUNTIME,
@@ -226,6 +238,14 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
       // visible to humans on stderr.
       provide: ADVANCE_PROGRESS_WRITER,
       useValue: (line: string) => process.stderr.write(line),
+    },
+    {
+      provide: ADVANCE_HEARTBEAT_INTERVAL_MS,
+      useValue: 30_000,
+    },
+    {
+      provide: ADVANCE_DETACHED_ENTRYPOINT,
+      useValue: process.argv[1] ?? '',
     },
     {
       provide: AGENT_COMMAND_EXECUTOR,

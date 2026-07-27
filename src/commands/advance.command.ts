@@ -19,9 +19,13 @@ const MAX_DIAGNOSTIC_CHARS = 1_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 export const ADVANCE_PROGRESS_WRITER = Symbol('ADVANCE_PROGRESS_WRITER');
+export const ADVANCE_HEARTBEAT_INTERVAL_MS = Symbol('ADVANCE_HEARTBEAT_INTERVAL_MS');
+export const ADVANCE_DETACHED_ENTRYPOINT = Symbol('ADVANCE_DETACHED_ENTRYPOINT');
 
 interface AdvanceOptions {
   readonly onlyPreAuthorized?: boolean;
+  readonly untilGate?: boolean;
+  readonly detach?: boolean;
 }
 
 export interface AgentExecution {
@@ -54,7 +58,7 @@ export class ProviderExecutionError extends Error {
 }
 
 @Injectable()
-@Command({ name: 'advance', arguments: '<run-id>', description: 'Execute agent steps until the next human gate, failure, or workflow completion.' })
+@Command({ name: 'advance', arguments: '<run-id>', description: 'Execute pre-authorized work and at most one explicitly authorized agent step.' })
 export class AdvanceCommand extends CommandRunner {
   constructor(
     private readonly workflow: WorkflowRunnerService,
@@ -66,9 +70,27 @@ export class AdvanceCommand extends CommandRunner {
     private readonly events: EventLogService,
     @Inject(ADVANCE_PROGRESS_WRITER) private readonly writeProgress: (line: string) => void,
     @Optional() @Inject(HostHandoffService) private readonly hostHandoffs?: HostHandoffService,
+    @Optional() @Inject(ADVANCE_HEARTBEAT_INTERVAL_MS) private readonly heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
+    @Optional() @Inject(ADVANCE_DETACHED_ENTRYPOINT) private readonly detachedEntrypoint = process.argv[1] ?? '',
   ) { super(); }
 
   async run([runId]: string[], options: AdvanceOptions = {}): Promise<void> {
+    if (options.detach) {
+      if (!this.detachedEntrypoint) throw new Error('advance --detach requires a Node CLI entrypoint');
+      const release = this.locks.acquireReentrant(runId, 'advance.detach');
+      try {
+        const child = spawn(process.execPath, detachedAdvanceArguments(runId, options, this.detachedEntrypoint), {
+          cwd: process.cwd(), detached: true, stdio: 'ignore',
+        });
+        child.unref();
+        if (!child.pid) throw new Error('Unable to start detached advance process');
+        this.events.append(runId, { type: 'advance.detached', at: new Date().toISOString(), pid: child.pid });
+        process.stdout.write(`detached: ${child.pid}\n`);
+      } finally {
+        release();
+      }
+      return;
+    }
     const release = this.locks.acquireReentrant(runId, 'advance');
     let activeStepId: string | undefined;
     let activeHandoff: ReturnType<AgentDispatchService['prepare']> | undefined;
@@ -135,7 +157,14 @@ export class AdvanceCommand extends CommandRunner {
         const child = await executeAgentProcess(invocation, {
           cwd: executionDirectory(currentRun.repositoryDirectory),
           timeoutMs: currentRun.execution.agentTimeoutSeconds * 1_000,
-          onHeartbeat: (elapsedMs) => this.writeProgress(`${formatAgentProgress('running', result.stepId, handoff, elapsedMs)}\n`),
+          heartbeatIntervalMs: this.heartbeatIntervalMs,
+          onHeartbeat: (elapsedMs) => {
+            this.writeProgress(`${formatAgentProgress('running', result.stepId, handoff, elapsedMs)}\n`);
+            this.events.append(runId, {
+              type: 'agent.execution.progress', at: new Date().toISOString(), stepId: result.stepId,
+              elapsedSeconds: Math.max(1, Math.floor(elapsedMs / 1_000)),
+            });
+          },
         });
         failedAgentOutput = child.stdout || child.stderr || undefined;
         if (child.spawnError) throw createProviderExecutionError(invocation.command, result.stepId, child);
@@ -163,8 +192,11 @@ export class AdvanceCommand extends CommandRunner {
           : recoveredContent ?? (openCodeOutput
             ? (openCodeOutput.kind === 'text' ? openCodeOutput.content : '')
             : extractContent(child.stdout));
-        failedAgentOutput = content || failedAgentOutput;
-        if (!content.trim()) throw createProviderExecutionError(
+        // Staging is only a transport location. It must satisfy the same
+        // completeness contract as stdout before the runner publishes it.
+        const completeContent = extractCompleteArtifact(content);
+        failedAgentOutput = completeContent || failedAgentOutput;
+        if (!completeContent.trim()) throw createProviderExecutionError(
           invocation.command,
           result.stepId,
           child,
@@ -175,11 +207,15 @@ export class AdvanceCommand extends CommandRunner {
         if (!step || step.kind !== 'agent' || !step.expectedOutput) {
           throw new Error(`Step ${result.stepId} has no resolved output to publish`);
         }
-        this.artifacts.publishMarkdown(step.expectedOutput, content.endsWith('\n') ? content : `${content}\n`);
+        this.artifacts.publishMarkdown(step.expectedOutput, completeContent.endsWith('\n') ? completeContent : `${completeContent}\n`);
         this.completion.complete(runId, result.stepId);
         this.writeProgress(`${formatAgentProgress('completed', result.stepId, handoff, child.durationMs)}\n`);
         activeStepId = undefined;
         activeHandoff = undefined;
+        if (handoff.executionAuthorization === 'explicit' && !options.untilGate) {
+          process.stdout.write(`authorization-boundary: ${result.stepId}\n`);
+          return;
+        }
       }
     } catch (error) {
       if (activeStepId) {
@@ -212,6 +248,26 @@ export class AdvanceCommand extends CommandRunner {
   @Option({ flags: '--only-pre-authorized', description: 'Execute only steps frozen with execution.authorization: pre-authorized; stop before explicit steps.' })
   parseOnlyPreAuthorized(): boolean { return true; }
 
+  @Option({ flags: '--until-gate', description: 'After this explicit operator invocation, continue through all agent steps until the next human gate, failure, or completion.' })
+  parseUntilGate(): boolean { return true; }
+
+  @Option({ flags: '--detach', description: 'Run advance in a detached local process; use follow <run-id> to observe durable progress.' })
+  parseDetach(): boolean { return true; }
+
+}
+
+export function detachedAdvanceArguments(
+  runId: string,
+  options: Pick<AdvanceOptions, 'onlyPreAuthorized' | 'untilGate'>,
+  entrypoint?: string,
+): string[] {
+  const resolvedEntrypoint = entrypoint ?? process.argv[1] ?? '';
+  if (!resolvedEntrypoint) throw new Error('advance --detach requires a Node CLI entrypoint');
+  return [
+    resolvedEntrypoint, 'advance', runId,
+    ...(options.onlyPreAuthorized ? ['--only-pre-authorized'] : []),
+    ...(options.untilGate ? ['--until-gate'] : []),
+  ];
 }
 
 export function createProviderExecutionError(
@@ -355,6 +411,34 @@ export function extractContent(stdout: string): string {
     } catch { /* normal non-structured agent output */ }
     return result;
   } catch { return stdout; }
+}
+
+const ARTIFACT_START = '<!-- IMPRESAIRIO_ARTIFACT_START -->';
+const ARTIFACT_END = '<!-- IMPRESAIRIO_ARTIFACT_END -->';
+
+/**
+ * Accept only an explicitly closed agent artifact. A provider truncated at its
+ * own output limit must fail the step and preserve diagnostics, never replace
+ * a previous published revision with a plausible-looking fragment.
+ */
+export function extractCompleteArtifact(content: string): string {
+  const normalized = content.trim();
+  if (!normalized.startsWith(ARTIFACT_START)) {
+    throw new Error('Provider output is incomplete: expected a closed Impresairio artifact envelope');
+  }
+  const endIndex = normalized.lastIndexOf(ARTIFACT_END);
+  if (endIndex < ARTIFACT_START.length) {
+    throw new Error('Provider output is incomplete: expected a closed Impresairio artifact envelope');
+  }
+  const suffix = normalized.slice(endIndex + ARTIFACT_END.length);
+  if (suffix.trim() && !/^VERDICT: (?:APPROVED|CHANGES_REQUESTED|BLOCKED)$/.test(suffix.trim())) {
+    throw new Error('Provider output is incomplete: unexpected content after the Impresairio artifact envelope');
+  }
+  let markdown = normalized.slice(ARTIFACT_START.length, endIndex);
+  if (markdown.startsWith('\n')) markdown = markdown.slice(1);
+  if (markdown.endsWith('\n')) markdown = markdown.slice(0, -1);
+  if (!markdown.trim()) throw new Error('Provider output contains an empty Impresairio artifact envelope');
+  return `${markdown}${suffix}`;
 }
 
 /** Recover only a completed Claude response from its documented Write denial. */

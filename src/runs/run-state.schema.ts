@@ -202,6 +202,13 @@ const abandonmentSchema = z.object({
   at: timestampSchema,
   reason: z.string().trim().min(1).max(1_000),
   externalReference: z.string().trim().min(1).max(2_000).optional(),
+  lastStepId: nonEmptyString.optional(),
+}).strict();
+
+const artifactRevisionSchema = z.object({
+  path: nonEmptyString,
+  sha256: sha256Schema,
+  recordedAt: timestampSchema,
 }).strict();
 
 const runAgentStepSchema = z
@@ -233,6 +240,7 @@ const runAgentStepSchema = z
       result: z.literal(false),
     }).strict().optional(),
     expectedOutput: preparedDocumentationOutputSchema.optional(),
+    artifactRevisions: z.array(artifactRevisionSchema).max(20).optional(),
     dispatchPreparedAt: timestampSchema.optional(),
     output: z
       .object({
@@ -319,6 +327,7 @@ const runHostHandoffStepSchema = z.object({
   declaredOutput: declaredWorkflowOutputSchema,
   sideEffects: z.literal('none'),
   expectedOutput: preparedDocumentationOutputSchema.optional(),
+  artifactRevisions: z.array(artifactRevisionSchema).max(20).optional(),
   output: z.object({
     id: nonEmptyString,
     path: nonEmptyString,

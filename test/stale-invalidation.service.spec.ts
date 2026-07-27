@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRunState, type RunState } from '../src/runs/run-state.schema';
+import { createRunState, runStateSchema, type RunState } from '../src/runs/run-state.schema';
 import { GateService } from '../src/workflows/gate.service';
 import { StaleInvalidationService } from '../src/workflows/stale-invalidation.service';
 
@@ -95,6 +95,53 @@ describe('stale invalidation', () => {
     expect(harness.state().steps[0]).toMatchObject({ kind: 'host-handoff', status: 'pending', handoffPreparedAt: undefined });
   });
 
+  it('persists request-changes for a real host-handoff state without agent-only fields', () => {
+    const now = () => new Date('2026-07-20T10:10:00.000Z');
+    const initial = createRunState({
+      id: 'run-host-request-changes', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: '/tmp/docs', defaultFormat: 'markdown' },
+        featurePath: 'unused',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'TEST-2', slug: 'test-2' }, run: { id: 'run-host-request-changes' } },
+      },
+      steps: [
+        {
+          id: 'brainstorm', kind: 'host-handoff', actor: 'launcher', method: { capability: 'feature-design', promptSource: 'package', content: 'Gather the requirements.' },
+          interaction: 'user-dialog', inputs: [], sideEffects: 'none', output: { id: 'brainstorm', filename: '01.md' },
+        },
+        { id: 'approve-brainstorm', kind: 'gate', artifact: 'brainstorm' },
+      ],
+      now: '2026-07-20T10:00:00.000Z',
+    });
+    const host = initial.steps[0];
+    if (host.kind !== 'host-handoff') throw new Error('missing host handoff');
+    let state = runStateSchema.parse({
+      ...initial,
+      steps: [
+        {
+          ...host,
+          status: 'complete',
+          expectedOutput: { id: 'brainstorm', targetRoot: '/tmp/docs', directory: '/tmp/docs', path: '/tmp/docs/01.md', format: 'markdown' },
+          output: { id: 'brainstorm', path: '/tmp/docs/01.md', format: 'markdown', sha256: 'a'.repeat(64), completedAt: '2026-07-20T10:01:00.000Z' },
+          attempts: [{ number: 1, startedAt: '2026-07-20T10:00:00.000Z', inputArtifactHashes: {}, completedAt: '2026-07-20T10:01:00.000Z', outputSha256: 'a'.repeat(64) }],
+        },
+        { ...initial.steps[1], status: 'complete', approval: { approvedArtifactHash: 'a'.repeat(64), approvedAt: '2026-07-20T10:01:00.000Z' } },
+      ],
+    });
+    const stale = new StaleInvalidationService(
+      { findState: () => state, save: (next: RunState) => { state = runStateSchema.parse(next); } } as never,
+      { append: () => undefined } as never,
+      {} as never,
+      now,
+    );
+    const gates = new GateService({ findState: () => state } as never, { acquire: () => () => undefined } as never, stale);
+
+    gates.requestChanges('run-host-request-changes', 'approve-brainstorm', 'Please clarify the contract.');
+
+    expect(state.steps[0]).toMatchObject({ kind: 'host-handoff', status: 'pending', output: undefined });
+    expect(state.steps[1]).toMatchObject({ status: 'pending', feedback: [expect.objectContaining({ comment: 'Please clarify the contract.' })] });
+  });
+
   it('recursively stales completed downstream steps and preserves gate feedback', () => {
     const { gates, state } = createHarness();
 
@@ -120,6 +167,57 @@ describe('stale invalidation', () => {
       status: 'pending', output: undefined, attempts: [expect.objectContaining({ number: 1 })],
     });
     expect(() => gates.retry('run-stale', 'challenge')).toThrow('only be retried when stale, failed or halted on a verdict');
+  });
+
+  it('automatically reopens the next stale reviewer after its producer was rebuilt', () => {
+    const { gates, stale, state, replace, events } = createHarness();
+    gates.requestChanges('run-stale', 'approve-design', 'Recheck the review cycle.');
+    replace({
+      ...state(),
+      steps: state().steps.map((step, index) => index === 0
+        ? { ...step, status: 'complete' as const }
+        : step),
+    });
+
+    replace({ ...state(), currentStepId: 'challenge' });
+    const reopened = stale.reopenStaleWorkIfReady('run-stale', state(), 'challenge');
+
+    expect(reopened?.steps[1]).toMatchObject({ id: 'challenge', status: 'pending', output: undefined });
+    expect(reopened?.currentStepId).toBeUndefined();
+    expect(events).toContainEqual(expect.objectContaining({ type: 'step.reopened', stepId: 'challenge' }));
+  });
+
+  it('does not reopen a non-stale step or work with incomplete prerequisites', () => {
+    const { stale, state, replace } = createHarness();
+    expect(stale.reopenStaleWorkIfReady('run-stale', state(), 'challenge')).toBeUndefined();
+    replace({
+      ...state(),
+      steps: state().steps.map((step, index) => index === 0
+        ? { ...step, status: 'pending' as const }
+        : index === 1 ? { ...step, status: 'stale' as const } : step),
+    });
+    expect(stale.reopenStaleWorkIfReady('run-stale', state(), 'challenge')).toBeUndefined();
+  });
+
+  it('reopens stale host-handoff work without applying agent dispatch fields', () => {
+    const { stale, state, replace } = createHarness();
+    const original = state().steps[1];
+    if (original.kind !== 'agent') throw new Error('missing reviewer');
+    replace({
+      ...state(),
+      steps: state().steps.map((step, index) => index === 0
+        ? { ...step, status: 'complete' as const }
+        : index === 1 ? {
+            ...original, kind: 'host-handoff' as const, status: 'stale' as const,
+            promptFile: 'host.md', prompt: 'Review.', inputArtifactIds: [], sideEffects: 'none' as const,
+            handoffPreparedAt: '2026-07-20T10:01:00.000Z',
+          }
+          : step),
+    } as RunState);
+
+    const reopened = stale.reopenStaleWorkIfReady('run-stale', state(), 'challenge');
+
+    expect(reopened?.steps[1]).toMatchObject({ kind: 'host-handoff', status: 'pending', handoffPreparedAt: undefined });
   });
 
   it('reopens a later stale gate after request-changes work has been rebuilt', () => {

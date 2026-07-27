@@ -10,13 +10,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { HomeDirectoryResolver } from '../config/home-directory.resolver';
 import type {
   CompletionEvent,
   CompletionRecord,
   CompletionRun,
   CompletionRunStore,
+  ArtifactRevision,
   RetryFeedback,
 } from './completion.service';
 import { runStateSchema, type RunState } from './run-state.schema';
@@ -204,6 +205,9 @@ export class FileStateStore implements StateStore, CompletionRunStore {
             outputSha256: completion.output.sha256,
           },
         ],
+        ...(completion.artifactRevision ? {
+          artifactRevisions: [...(step.artifactRevisions ?? []), completion.artifactRevision].slice(-20),
+        } : {}),
       };
       return step.kind === 'agent'
         ? {
@@ -226,6 +230,47 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       steps,
       updatedAt: completedAt,
     });
+  }
+
+  /** Retains every successfully completed artifact outside its mutable publication path. */
+  archiveArtifactRevision(
+    runId: string,
+    stepId: string,
+    output: { readonly path: string; readonly sha256: string },
+  ): ArtifactRevision {
+    const content = this.fileOperations.readFileSync(output.path, 'utf8');
+    const actualSha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+    if (actualSha256 !== output.sha256) {
+      throw new RunStateError(`Artifact for ${stepId} changed before its revision could be archived`);
+    }
+    const state = this.requiredState(runId);
+    const step = state.steps.find((candidate) => candidate.id === stepId);
+    if (!step || (step.kind !== 'agent' && step.kind !== 'host-handoff')) {
+      throw new RunStateError(`Step ${stepId} cannot archive an artifact revision`);
+    }
+    const revision = (step.artifactRevisions?.length ?? 0) + 1;
+    const stepHash = createHash('sha256').update(stepId).digest('hex');
+    const directory = join(this.runDirectory(runId), 'artifact-revisions', stepHash);
+    const path = join(directory, `${revision}.md`);
+    this.fileOperations.mkdirSync(directory, { recursive: true });
+    this.fileOperations.writeFileSync(path, content, 'utf8');
+    const preserved = this.fileOperations.readFileSync(path, 'utf8');
+    const preservedSha256 = createHash('sha256').update(preserved, 'utf8').digest('hex');
+    if (preservedSha256 !== actualSha256) {
+      this.fileOperations.rmSync(path, { force: true });
+      throw new RunStateError(`Archived artifact revision for ${stepId} changed while it was being saved`);
+    }
+    return { path, sha256: actualSha256, recordedAt: new Date().toISOString() };
+  }
+
+  /** Removes a revision whose completion state could not be recorded. */
+  discardArtifactRevision(runId: string, revision: ArtifactRevision): void {
+    const directory = join(this.runDirectory(runId), 'artifact-revisions');
+    const revisionPath = relative(directory, revision.path);
+    if (!revisionPath || isAbsolute(revisionPath) || revisionPath.startsWith('..')) {
+      throw new RunStateError('Artifact revision is outside the run directory');
+    }
+    this.fileOperations.rmSync(revision.path, { force: true });
   }
 
   appendEvent(runId: string, event: CompletionEvent): void {

@@ -6,7 +6,7 @@ import type {
   PreparedAgentInvocation,
   ProviderPreparationRequest,
 } from './agent-provider';
-import { renderInstruction } from './claude-code.provider';
+import { artifactEnvelopeInstruction, renderInstruction } from './claude-code.provider';
 
 export class OpenCodeProviderError extends Error {
   constructor(message: string) {
@@ -40,7 +40,7 @@ export class OpenCodeProvider implements AgentProvider {
       // Run artifacts can be outside its repository sandbox, while the runner
       // is the only component allowed to publish them. Keep this transport
       // contract path-free, but allow repository inspection.
-      input: `${renderInstruction(request.instruction)}\n\nYou may inspect repository files. Return the complete Markdown artifact in your response only. Do not write or modify files.`,
+      input: `${renderInstruction(request.instruction)}\n\nYou may inspect repository files. ${artifactEnvelopeInstruction(request.expectsVerdict === true)}`,
       model: request.agent.model,
     };
   }

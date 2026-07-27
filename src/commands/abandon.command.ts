@@ -18,9 +18,9 @@ export class AbandonCommand extends CommandRunner {
     this.runs.abandon(runId, options.reason, options.externalReference);
   }
 
-  @Option({ flags: '--reason <text>', description: 'Required human reason recorded in the run event log.' })
+  @Option({ flags: '--reason <text>', description: 'Required human reason recorded in the run event log (maximum 1000 characters).' })
   parseReason(value: string): string { return value; }
 
-  @Option({ flags: '--external-reference <reference>', description: 'Optional commit SHA or external delivery reference.' })
+  @Option({ flags: '--external-reference <reference>', description: 'Optional commit SHA or external delivery reference (maximum 2000 characters).' })
   parseExternalReference(value: string): string { return value; }
 }

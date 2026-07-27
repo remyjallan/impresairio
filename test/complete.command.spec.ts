@@ -269,6 +269,24 @@ describe('CompleteCommand', () => {
     }]]);
   });
 
+  it('cleans an archived revision if recording the completion fails', () => {
+    const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
+    const revision = { path: '/run/artifact-revisions/review/1.md', sha256: 'a'.repeat(64), recordedAt: '2026-07-27T10:00:00.000Z' };
+    const discarded: unknown[] = [];
+    const service = new CompletionService(
+      {
+        ...store,
+        recordCompletion: () => { throw new Error('state write failed'); },
+        archiveArtifactRevision: () => revision,
+        discardArtifactRevision: (...call: unknown[]) => { discarded.push(call); },
+      },
+      { completeExpectedOutput: () => ({ id: 'verification', path: '/run/artifacts/review.md', format: 'markdown' as const, sha256: 'a'.repeat(64) }) },
+    );
+
+    expect(() => service.complete('run-42', 'verify')).toThrow('state write failed');
+    expect(discarded).toEqual([['run-42', revision]]);
+  });
+
   it('rejects a retry when the run store cannot preserve durable feedback', () => {
     const store = createStore({ id: 'verify', kind: 'agent', status: 'in_progress' });
     const discarded: string[] = [];

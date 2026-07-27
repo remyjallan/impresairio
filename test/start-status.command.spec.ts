@@ -625,6 +625,25 @@ steps:
     expect(output.join('')).toContain('run-second\tquick-fix\tin-progress\tnot-started');
   });
 
+  it('lists the last reached step for an abandoned run', async () => {
+    const { store } = createRunService();
+    const now = '2026-07-23T12:00:00.000Z';
+    const run = createRunState({
+      id: 'run-abandoned-list', workflowId: 'quick-fix', workflowSha256: 'a'.repeat(64), roles: {},
+      documentation: {
+        target: { name: 'test', kind: 'filesystem', root: '/tmp', defaultFormat: 'markdown' }, featurePath: 'Features/{{ feature.id }}',
+        bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'IMP-99', slug: 'abandoned' }, run: { id: 'run-abandoned-list' } },
+      },
+      steps: [{ id: 'implementation-plan', kind: 'agent', actor: 'implementer', action: 'implementation', output: { id: 'plan', filename: 'plan.md' } }], now,
+    });
+    store.create({ ...run, abandonment: { at: now, reason: 'Delivered outside the run.', lastStepId: 'implementation-plan' } });
+    const output: string[] = [];
+
+    await new ListCommand(store, (line) => output.push(line)).run();
+
+    expect(output.join('')).toContain('run-abandoned-list\tquick-fix\tabandoned\timplementation-plan');
+  });
+
   it('keeps the resolved step contract through start, next and completion', () => {
     const { home, store, locks, artifactService, service, runner } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));
