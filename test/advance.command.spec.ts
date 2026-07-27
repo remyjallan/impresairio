@@ -49,6 +49,25 @@ function createInProgressAgentRun(home: string, runId: string): {
 }
 
 describe('advance command output recovery', () => {
+  it('continues after materializing phases and reports the transition', async () => {
+    const progress = vi.fn();
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    let calls = 0;
+    const command = new AdvanceCommand(
+      { next: () => calls++ === 0 ? { kind: 'phase-manifest', stepId: 'phases' } : { kind: 'complete' } } as never,
+      {} as never, {} as never, {} as never, {} as never,
+      { acquireReentrant: () => () => undefined } as never,
+      {} as never, progress,
+    );
+    try {
+      await command.run(['run-1']);
+      expect(progress).toHaveBeenCalledWith('phase-manifest: phases materialized\n');
+      expect(write).toHaveBeenCalledWith('complete\n');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it('stops before an explicitly authorized step in pre-authorized mode', async () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const dispatch = { prepare: vi.fn(() => ({

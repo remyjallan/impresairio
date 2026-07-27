@@ -55,6 +55,7 @@ import { AGENT_COMMAND_EXECUTOR, AgentHealthService, LocalAgentCommandExecutor }
 import { VerdictCompletionPolicy } from './workflows/verdict-completion.policy';
 import { WorkflowExpanderService } from './workflows/workflow-expander.service';
 import { ConditionEvaluatorService } from './workflows/condition-evaluator.service';
+import { ImplementationPhaseMaterializerService } from './workflows/implementation-phase-materializer.service';
 import { RepositoryPatchService } from './runs/repository-patch.service';
 import { RepositoryBaselineService } from './runs/repository-baseline.service';
 import { AgentFallbackService } from './agents/agent-fallback.service';
@@ -123,6 +124,7 @@ import { AgentRecoverySubmissionService } from './runs/agent-recovery-submission
     WorkflowRegistryService,
     WorkflowExpanderService,
     ConditionEvaluatorService,
+    ImplementationPhaseMaterializerService,
     WorkflowRunnerService,
     GateService,
     StaleInvalidationService,

@@ -143,6 +143,10 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     return state ? { id: state.id } : undefined;
   }
 
+  /**
+   * Returns a completion-only projection. Durable run-state persistence always
+   * uses create/save/findState, so phase-manifest placeholders remain intact.
+   */
   find(runId: string): CompletionRun | undefined {
     const state = this.findState(runId);
     if (!state) {
@@ -155,7 +159,7 @@ export class FileStateStore implements StateStore, CompletionRunStore {
       ...(state.repositoryPatch ? { repositoryPatch: state.repositoryPatch } : {}),
       currentStepId: state.currentStepId,
       successors: state.workflow.successors,
-      steps: state.steps.map((step) => ({
+      steps: state.steps.filter((step) => step.kind !== 'phase-manifest').map((step) => ({
         id: step.id,
         kind: step.kind,
         status: step.status,

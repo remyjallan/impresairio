@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const MAX_IMPLEMENTATION_PHASES = 6;
+
 const phaseIdentifier = z.string().regex(/^[a-z][a-z0-9-]*$/, {
   error: 'must use lowercase letters, numbers and hyphens, starting with a letter',
 });
@@ -28,7 +30,7 @@ const implementationPhaseSchema = z.object({
 }).strict();
 
 export const implementationPhaseManifestSchema = z.object({
-  phases: z.array(implementationPhaseSchema).min(1).max(6),
+  phases: z.array(implementationPhaseSchema).min(1).max(MAX_IMPLEMENTATION_PHASES),
 }).strict().superRefine((manifest, context) => {
   const knownIds = new Set<string>();
   manifest.phases.forEach((phase, phaseIndex) => {

@@ -7,11 +7,13 @@ import { ArtifactService } from '../documentation/artifact.service';
 import { StaleInvalidationService } from './stale-invalidation.service';
 import { isVerdictHalted, verdictWarnings } from './verdict-completion.policy';
 import { ConditionEvaluatorService } from './condition-evaluator.service';
+import { ImplementationPhaseMaterializerService } from './implementation-phase-materializer.service';
 
 export type NextStepResult =
   | { readonly kind: 'agent'; readonly stepId: string }
   | { readonly kind: 'external-agent-output'; readonly stepId: string }
   | { readonly kind: 'host-handoff'; readonly stepId: string }
+  | { readonly kind: 'phase-manifest'; readonly stepId: string }
   | { readonly kind: 'gate'; readonly stepId: string; readonly warnings?: readonly string[] }
   | { readonly kind: 'blocked'; readonly stepId: string; readonly warnings: readonly string[] }
   | { readonly kind: 'complete' };
@@ -29,6 +31,8 @@ export class WorkflowRunnerService {
     @Inject(WORKFLOW_CLOCK) private readonly now: () => Date = () => new Date(),
     @Optional() @Inject(ConditionEvaluatorService)
     private readonly conditions: ConditionEvaluatorService = new ConditionEvaluatorService(),
+    @Optional() @Inject(ImplementationPhaseMaterializerService)
+    private readonly phaseMaterializer?: ImplementationPhaseMaterializerService,
   ) {}
 
   next(runId: string): NextStepResult {
@@ -75,6 +79,11 @@ export class WorkflowRunnerService {
         const warnings = verdictWarnings(state, step.id);
         this.recordGateReached(runId, state, step.id);
         return { kind: 'gate', stepId: step.id, ...(warnings.length > 0 ? { warnings } : {}) };
+      }
+      if (step.kind === 'phase-manifest') {
+        if (!this.phaseMaterializer) throw new RunStateError('Implementation phase materialization is unavailable');
+        this.phaseMaterializer.materialize(runId, step.id, this.now().toISOString());
+        return { kind: 'phase-manifest', stepId: step.id };
       }
       if (step.status === 'in_progress') {
         if (step.kind === 'agent' && step.externalRecovery) {

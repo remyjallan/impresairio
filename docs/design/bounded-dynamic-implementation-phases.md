@@ -1,7 +1,7 @@
 # Bounded dynamic implementation phases
 
-Status: discovery decision for issue #69. This document describes a proposed
-runtime increment; it does not add a user-facing workflow YAML feature yet.
+Status: implemented runtime increment for #71, based on the discovery decision
+in #69.
 
 ## Problem
 
@@ -29,13 +29,12 @@ enforces these limits:
 
 ## Materialization boundary
 
-The follow-up runtime increment will materialize the manifest only when all of
-these conditions hold:
+The runtime materializes the manifest only when all of these conditions hold:
 
 1. The source planning artifact is complete and covered by an approved gate.
 2. No generated phase has started.
 3. The run owns the resulting sequence; it does not create a sub-run.
-4. The sequence and its manifest hash are written atomically to run state and a
+4. The sequence and its manifest hash are written to run state before a
    `phase-manifest.materialized` audit event is appended.
 
 Each generated phase will use a fixed implementation pattern supplied by the
@@ -45,12 +44,10 @@ providers, capabilities, output locations, or commands.
 
 ## Change policy
 
-Before the first generated phase begins, an operator may discard a materialized
-sequence and materialize a corrected manifest through an explicit command with a
-reason recorded in the event log. Once a phase begins, adding, removing, or
-reordering phases requires a dedicated human gate and a new audited amendment
-flow. The first runtime increment will reject those changes rather than infer a
-safe rewrite.
+Once materialized, the sequence is immutable. A malformed, unavailable, or
+unapproved source artifact leaves the placeholder pending without changing the
+run. Correct the approved plan before materialization; after materialization,
+abandon the run and start a new one rather than editing durable state.
 
 ## Non-goals
 
@@ -59,9 +56,10 @@ safe rewrite.
 - A generic scheduler or replacement for a provider's native subagents.
 - Changing existing static workflows without an explicit opt-in.
 
-## Next increment
+## Static placeholder
 
-Implement an opt-in static workflow placeholder whose completed, approved
-planning artifact is parsed with this contract. The runner will replace only that
-placeholder with the fixed, frozen phase sequence and retain the remaining static
-workflow steps unchanged.
+`implementation-phases` is the opt-in static workflow placeholder. It names a
+preceding approved artifact, a fixed implementation actor/capability, and an
+optional fixed reviewer/capability. The manifest never chooses these values. The
+runner replaces only this placeholder and retains the remaining static workflow
+steps unchanged.

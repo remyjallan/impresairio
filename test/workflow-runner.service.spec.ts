@@ -1,7 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
 import { EventLogService } from '../src/runs/event-log.service';
 import { FileStateStore } from '../src/runs/file-state.store';
@@ -29,7 +29,10 @@ function gate(id: string, artifact: string): NonNullable<Parameters<typeof creat
   return { id, kind: 'gate', artifact };
 }
 
-function createRunner(steps: Parameters<typeof createRunState>[0]['steps']) {
+function createRunner(
+  steps: Parameters<typeof createRunState>[0]['steps'],
+  phaseMaterializer?: { materialize(runId: string, stepId: string, now: string): unknown },
+) {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-schedule-')));
   directories.push(home);
   const resolver = new HomeDirectoryResolver({ IMPRESAIRIO_HOME: home });
@@ -73,6 +76,8 @@ function createRunner(steps: Parameters<typeof createRunState>[0]['steps']) {
         () => new Date('2026-07-20T10:01:00.000Z'),
       ),
       () => new Date('2026-07-20T10:01:00.000Z'),
+      undefined,
+      phaseMaterializer as never,
     ),
   };
 }
@@ -84,6 +89,24 @@ afterEach(() => {
 });
 
 describe('WorkflowRunnerService', () => {
+  it('materializes a pending phase placeholder before continuing the workflow', () => {
+    const materialize = vi.fn();
+    const { runner } = createRunner([{
+      id: 'phases', kind: 'phase-manifest', artifact: 'plan', actor: 'implementer', method: { action: 'implement' },
+    }], { materialize });
+
+    expect(runner.next('run-workflow')).toEqual({ kind: 'phase-manifest', stepId: 'phases' });
+    expect(materialize).toHaveBeenCalledWith('run-workflow', 'phases', '2026-07-20T10:01:00.000Z');
+  });
+
+  it('refuses a phase placeholder when materialization is unavailable', () => {
+    const { runner } = createRunner([{
+      id: 'phases', kind: 'phase-manifest', artifact: 'plan', actor: 'implementer', method: { action: 'implement' },
+    }]);
+
+    expect(() => runner.next('run-workflow')).toThrow('materialization is unavailable');
+  });
+
   it('does not mutate or resume an abandoned run', () => {
     const { runner, store } = createRunner([agent('design')]);
     const state = store.findState('run-workflow');

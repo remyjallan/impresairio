@@ -97,6 +97,10 @@ export class AdvanceCommand extends CommandRunner {
           process.stdout.write(`external-agent-output: ${result.stepId}\n`);
           return;
         }
+        if (result.kind === 'phase-manifest') {
+          this.writeProgress(`phase-manifest: ${result.stepId} materialized\n`);
+          continue;
+        }
         activeStepId = result.stepId;
         const handoff = this.dispatch.prepare(runId, result);
         if (options.onlyPreAuthorized && handoff?.executionAuthorization !== 'pre-authorized') {

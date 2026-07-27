@@ -64,6 +64,16 @@ export interface ExpandedGateStep extends ExpandedStepMetadata {
   readonly artifact: string;
 }
 
+export interface ExpandedImplementationPhasesStep extends ExpandedStepMetadata {
+  readonly id: string;
+  readonly type: 'implementation-phases';
+  readonly artifact: string;
+  readonly actor: string;
+  readonly capability: string;
+  readonly reviewer?: string;
+  readonly reviewCapability?: string;
+}
+
 interface ExpandedHostHandoffStepBase extends ExpandedStepMetadata {
   readonly id: string;
   readonly type: 'host-handoff';
@@ -77,7 +87,7 @@ export type ExpandedHostHandoffStep = ExpandedHostHandoffStepBase & (
   | { readonly actor: string; readonly capability: string; readonly interaction: 'user-dialog' }
 );
 
-export type ExpandedWorkflowStep = ExpandedAgentStep | ExpandedHostHandoffStep | ExpandedGateStep;
+export type ExpandedWorkflowStep = ExpandedAgentStep | ExpandedHostHandoffStep | ExpandedGateStep | ExpandedImplementationPhasesStep;
 
 export interface ExpandedWorkflowPlan {
   readonly steps: readonly ExpandedWorkflowStep[];
@@ -246,6 +256,18 @@ export class WorkflowExpanderService {
           id: namespace(step.id),
           type: 'gate',
           artifact: namespace(step.artifact),
+        }];
+      }
+
+      if (step.type === 'implementation-phases') {
+        return [{
+          ...metadata,
+          id: namespace(step.id),
+          type: 'implementation-phases',
+          artifact: namespace(step.artifact),
+          actor: mapRole(step.actor),
+          capability: step.capability,
+          ...(step.reviewer ? { reviewer: mapRole(step.reviewer), reviewCapability: step.reviewCapability } : {}),
         }];
       }
 
@@ -491,5 +513,6 @@ function rolesForStep(step: Exclude<WorkflowStep, { readonly uses: string }>): r
   if (step.type === 'agent') return [step.actor];
   if (step.type === 'review-cycle') return [step.actor, step.reviewer];
   if (step.type === 'host-handoff' && 'actor' in step) return [step.actor];
+  if (step.type === 'implementation-phases') return [step.actor, ...(step.reviewer ? [step.reviewer] : [])];
   return [];
 }
