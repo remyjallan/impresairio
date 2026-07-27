@@ -173,6 +173,14 @@ describe('ImplementationPhaseMaterializerService', () => {
     } as RunState;
     (store as { findState: () => RunState }).findState = () => started;
     expect(() => service.materialize('run-phases', 'phases')).toThrow('cannot be re-entered');
+    const approvalMismatch = {
+      ...complete,
+      steps: complete.steps.map((step) => step.id === 'approve-plan'
+        ? { ...step, approval: { approvedArtifactHash: hash, approvedAt: '2026-07-27T00:00:00.000Z' } }
+        : step),
+    } as RunState;
+    (store as { findState: () => RunState }).findState = () => approvalMismatch;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('no longer matches its approval');
   });
 
   it('rejects a manifest whose approval or file content no longer matches the published artifact', () => {

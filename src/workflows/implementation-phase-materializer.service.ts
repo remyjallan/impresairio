@@ -40,6 +40,9 @@ export class ImplementationPhaseMaterializerService {
       throw new RunStateError(`Approved implementation phase manifest artifact ${placeholder.artifact} cannot be read`);
     }
     const manifestSha256 = createHash('sha256').update(markdown).digest('hex');
+    const sourceGate = state.steps.slice(0, index).find((step): step is Extract<RunState['steps'][number], { readonly kind: 'gate' }> => (
+      step.kind === 'gate' && step.artifact === placeholder.artifact && step.status === 'complete' && step.approval !== undefined
+    ));
     if (placeholder.status === 'complete') {
       const generated = placeholder.generatedStepIds ?? [];
       if (generated.length === 0 || generated.some((id) => !state.steps.some((step) => step.id === id))) {
@@ -51,11 +54,11 @@ export class ImplementationPhaseMaterializerService {
       if (placeholder.manifestSha256 !== manifestSha256) {
         throw new RunStateError(`Materialized implementation phase manifest ${placeholder.artifact} has changed`);
       }
+      if (!sourceGate?.approval || sourceGate.approval.approvedArtifactHash !== manifestSha256) {
+        throw new RunStateError(`Materialized implementation phase manifest ${placeholder.artifact} no longer matches its approval`);
+      }
       return state;
     }
-    const sourceGate = state.steps.slice(0, index).find((step): step is Extract<RunState['steps'][number], { readonly kind: 'gate' }> => (
-      step.kind === 'gate' && step.artifact === placeholder.artifact && step.status === 'complete' && step.approval !== undefined
-    ));
     if (!sourceGate?.approval) {
       throw new RunStateError(`Implementation phase manifest ${placeholder.artifact} must be approved before materialization`);
     }
