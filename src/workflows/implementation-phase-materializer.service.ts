@@ -22,21 +22,8 @@ export class ImplementationPhaseMaterializerService {
     if (!placeholder || placeholder.kind !== 'phase-manifest') {
       throw new RunStateError(`Step ${stepId} is not an implementation phase placeholder`);
     }
-    if (placeholder.status === 'complete') {
-      const generated = placeholder.generatedStepIds ?? [];
-      if (generated.length === 0 || generated.some((id) => !state.steps.some((step) => step.id === id))) {
-        throw new RunStateError(`Materialized implementation phase placeholder ${stepId} has an inconsistent generated sequence`);
-      }
-      return state;
-    }
-    if (placeholder.status !== 'pending') {
+    if (placeholder.status !== 'pending' && placeholder.status !== 'complete') {
       throw new RunStateError(`Implementation phase placeholder ${stepId} is ${placeholder.status}`);
-    }
-    const sourceGate = state.steps.slice(0, index).find((step) => (
-      step.kind === 'gate' && step.artifact === placeholder.artifact && step.status === 'complete' && step.approval
-    ));
-    if (!sourceGate) {
-      throw new RunStateError(`Implementation phase manifest ${placeholder.artifact} must be approved before materialization`);
     }
     const source = state.steps.slice(0, index)
       .filter((step): step is Extract<RunState['steps'][number], { readonly kind: 'agent' | 'host-handoff' }> => (
@@ -52,8 +39,27 @@ export class ImplementationPhaseMaterializerService {
     } catch {
       throw new RunStateError(`Approved implementation phase manifest artifact ${placeholder.artifact} cannot be read`);
     }
-    const manifest = parseImplementationPhaseManifest(markdown);
     const manifestSha256 = createHash('sha256').update(markdown).digest('hex');
+    if (placeholder.status === 'complete') {
+      const generated = placeholder.generatedStepIds ?? [];
+      if (generated.length === 0 || generated.some((id) => !state.steps.some((step) => step.id === id))) {
+        throw new RunStateError(`Materialized implementation phase placeholder ${stepId} has an inconsistent generated sequence`);
+      }
+      if (placeholder.manifestSha256 !== manifestSha256) {
+        throw new RunStateError(`Materialized implementation phase manifest ${placeholder.artifact} has changed`);
+      }
+      return state;
+    }
+    const sourceGate = state.steps.slice(0, index).find((step): step is Extract<RunState['steps'][number], { readonly kind: 'gate' }> => (
+      step.kind === 'gate' && step.artifact === placeholder.artifact && step.status === 'complete' && step.approval !== undefined
+    ));
+    if (!sourceGate?.approval || sourceGate.approval.approvedArtifactHash !== source.output.sha256) {
+      throw new RunStateError(`Implementation phase manifest ${placeholder.artifact} must be approved before materialization`);
+    }
+    if (source.output.sha256 !== manifestSha256) {
+      throw new RunStateError(`Approved implementation phase manifest artifact ${placeholder.artifact} has changed`);
+    }
+    const manifest = parseImplementationPhaseManifest(markdown);
     const generated = manifest.phases.flatMap((phase) => {
       const implementationId = `${placeholder.id}--${phase.id}`;
       const implementation = {

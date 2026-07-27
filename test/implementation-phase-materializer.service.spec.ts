@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ImplementationPhaseMaterializerService } from '../src/workflows/implementation-phase-materializer.service';
@@ -20,6 +21,7 @@ function phaseArtifact(overrides: Partial<{ retryBudget: number; gate: boolean }
 }
 
 function state(path: string, approved = true): RunState {
+  const artifactHash = createHash('sha256').update(readFileSync(path, 'utf8')).digest('hex');
   return {
     id: 'run-phases', updatedAt: '2026-07-27T00:00:00.000Z',
     workflow: { id: 'phases', sha256: hash, successors: {} },
@@ -29,11 +31,11 @@ function state(path: string, approved = true): RunState {
       {
         id: 'plan', kind: 'agent', status: 'complete', actor: 'launcher', method: { action: 'plan' },
         executionAuthorization: 'explicit', declaredOutput: { id: 'plan', filename: 'plan.md', storage: 'internal' },
-        output: { id: 'plan', path, format: 'markdown', sha256: hash, completedAt: '2026-07-27T00:00:00.000Z' }, attempts: [],
+        output: { id: 'plan', path, format: 'markdown', sha256: artifactHash, completedAt: '2026-07-27T00:00:00.000Z' }, attempts: [],
       },
       {
         id: 'approve-plan', kind: 'gate', status: 'complete', artifact: 'plan', feedback: [],
-        ...(approved ? { approval: { approvedArtifactHash: hash, approvedAt: '2026-07-27T00:00:00.000Z' } } : {}),
+        ...(approved ? { approval: { approvedArtifactHash: artifactHash, approvedAt: '2026-07-27T00:00:00.000Z' } } : {}),
       },
       { id: 'phases', kind: 'phase-manifest', status: 'pending', artifact: 'plan', actor: 'implementer', method: { action: 'implement' }, reviewer: 'adversary', reviewMethod: { action: 'verify' } },
       { id: 'report', kind: 'gate', status: 'pending', artifact: 'plan', feedback: [] },
@@ -140,7 +142,7 @@ describe('ImplementationPhaseMaterializerService', () => {
     const complete = {
       ...source,
       steps: source.steps.map((step) => step.id === 'phases' && step.kind === 'phase-manifest'
-        ? { ...step, status: 'complete' as const, manifestSha256: hash, materializedAt: '2026-07-27T01:00:00.000Z', generatedStepIds: ['generated'] }
+        ? { ...step, status: 'complete' as const, manifestSha256: source.steps[0].kind === 'agent' ? source.steps[0].output!.sha256 : hash, materializedAt: '2026-07-27T01:00:00.000Z', generatedStepIds: ['generated'] }
         : step).concat([{
         id: 'generated', kind: 'gate' as const, status: 'pending' as const, artifact: 'plan', feedback: [],
       }]),
@@ -151,6 +153,46 @@ describe('ImplementationPhaseMaterializerService', () => {
     const broken = { ...complete, steps: complete.steps.filter((step) => step.id !== 'generated') } as RunState;
     (store as { findState: () => RunState }).findState = () => broken;
     expect(() => service.materialize('run-phases', 'phases')).toThrow('inconsistent generated sequence');
+  });
+
+  it('rejects a manifest whose approval or file content no longer matches the published artifact', () => {
+    const approved = state(phaseArtifact());
+    const store = { findState: () => approved, save: () => undefined } as never;
+    const service = new ImplementationPhaseMaterializerService(store, { append: () => undefined } as never);
+    const mismatchedApproval = {
+      ...approved,
+      steps: approved.steps.map((step) => step.id === 'approve-plan'
+        ? { ...step, approval: { approvedArtifactHash: hash, approvedAt: '2026-07-27T00:00:00.000Z' } }
+        : step),
+    } as RunState;
+    (store as { findState: () => RunState }).findState = () => mismatchedApproval;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('must be approved');
+
+    const tampered = state(phaseArtifact());
+    const plan = tampered.steps.find((step) => step.id === 'plan');
+    if (!plan || plan.kind !== 'agent' || !plan.output) throw new Error('missing plan output');
+    writeFileSync(plan.output.path, '# tampered', 'utf8');
+    (store as { findState: () => RunState }).findState = () => tampered;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('has changed');
+  });
+
+  it('detects tampering when a completed phase placeholder is re-entered', () => {
+    const source = state(phaseArtifact());
+    const plan = source.steps.find((step) => step.id === 'plan');
+    if (!plan || plan.kind !== 'agent' || !plan.output) throw new Error('missing plan output');
+    const complete = {
+      ...source,
+      steps: source.steps.map((step) => step.id === 'phases'
+        ? { ...step, status: 'complete' as const, manifestSha256: plan.output!.sha256, materializedAt: '2026-07-27T01:00:00.000Z', generatedStepIds: ['generated'] }
+        : step).concat([{ id: 'generated', kind: 'gate' as const, status: 'pending' as const, artifact: 'plan', feedback: [] }]),
+    } as RunState;
+    writeFileSync(plan.output.path, '# tampered', 'utf8');
+    const service = new ImplementationPhaseMaterializerService(
+      { findState: () => complete, save: () => undefined } as never,
+      { append: () => undefined } as never,
+    );
+
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('has changed');
   });
 
   it('materializes a phase without review retries and gates its implementation artifact', () => {
