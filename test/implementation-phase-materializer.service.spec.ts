@@ -9,14 +9,17 @@ import { createRunState, runStepSchema, type RunState } from '../src/runs/run-st
 const temporaryDirectories: string[] = [];
 const hash = 'a'.repeat(64);
 
-function phaseArtifact(overrides: Partial<{ retryBudget: number; gate: boolean }> = {}): string {
+function phaseArtifact(
+  overrides: Partial<{ retryBudget: number; gate: boolean }> = {},
+  additionalPhases: readonly Record<string, unknown>[] = [],
+): string {
   const directory = mkdtempSync(join(tmpdir(), 'impresairio-phases-'));
   temporaryDirectories.push(directory);
   const path = join(directory, 'plan.md');
   writeFileSync(path, `# Plan\n\n\`\`\`impresairio-phase-manifest\n${JSON.stringify({ phases: [{
     id: 'storage', objective: 'Add storage.', scope: ['state'], dependsOn: [],
     verification: ['Run storage tests.'], retryBudget: 1, gate: true, ...overrides,
-  }] })}\n\`\`\`\n`, 'utf8');
+  }, ...additionalPhases] })}\n\`\`\`\n`, 'utf8');
   return path;
 }
 
@@ -166,7 +169,7 @@ describe('ImplementationPhaseMaterializerService', () => {
         : step),
     } as RunState;
     (store as { findState: () => RunState }).findState = () => mismatchedApproval;
-    expect(() => service.materialize('run-phases', 'phases')).toThrow('must be approved');
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('has changed');
 
     const tampered = state(phaseArtifact());
     const plan = tampered.steps.find((step) => step.id === 'plan');
@@ -228,6 +231,24 @@ describe('ImplementationPhaseMaterializerService', () => {
     expect(result.steps.find((step) => step.id === 'phases--storage--review')).toMatchObject({
       verdictPolicy: { blocked: 'stop' },
     });
+  });
+
+  it('keeps phase dependencies in the frozen serial materialization order', () => {
+    const source = state(phaseArtifact({}, [{
+      id: 'migration', objective: 'Migrate storage.', scope: ['migration'], dependsOn: ['storage'],
+      verification: ['Run migration tests.'], retryBudget: 0, gate: false,
+    }]));
+    const service = new ImplementationPhaseMaterializerService(
+      { findState: () => source, save: () => undefined } as never,
+      { append: () => undefined } as never,
+    );
+
+    const result = service.materialize('run-phases', 'phases');
+
+    expect(result.steps.map((step) => step.id)).toEqual(expect.arrayContaining([
+      'phases--storage', 'phases--migration',
+    ]));
+    expect(result.workflow.successors['phases--storage--approve']).toEqual(['phases--migration']);
   });
 
   it('validates phase placeholder state and preserves phase data on generated agents', () => {

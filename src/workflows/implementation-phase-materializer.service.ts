@@ -53,13 +53,15 @@ export class ImplementationPhaseMaterializerService {
     const sourceGate = state.steps.slice(0, index).find((step): step is Extract<RunState['steps'][number], { readonly kind: 'gate' }> => (
       step.kind === 'gate' && step.artifact === placeholder.artifact && step.status === 'complete' && step.approval !== undefined
     ));
-    if (!sourceGate?.approval || sourceGate.approval.approvedArtifactHash !== source.output.sha256) {
+    if (!sourceGate?.approval) {
       throw new RunStateError(`Implementation phase manifest ${placeholder.artifact} must be approved before materialization`);
     }
-    if (source.output.sha256 !== manifestSha256) {
+    if (sourceGate.approval.approvedArtifactHash !== manifestSha256
+      || source.output.sha256 !== manifestSha256) {
       throw new RunStateError(`Approved implementation phase manifest artifact ${placeholder.artifact} has changed`);
     }
     const manifest = parseImplementationPhaseManifest(markdown);
+    // The parser accepts dependencies only on earlier phases; this fixed serial sequence therefore honors each dependency.
     const generated = manifest.phases.flatMap((phase) => {
       const implementationId = `${placeholder.id}--${phase.id}`;
       const implementation = {
