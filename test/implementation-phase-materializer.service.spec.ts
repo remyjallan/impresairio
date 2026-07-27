@@ -79,4 +79,41 @@ describe('ImplementationPhaseMaterializerService', () => {
     expect(() => service.materialize('run-phases', 'plan')).toThrow('not an implementation phase placeholder');
     expect(saved).toEqual([]);
   });
+
+  it('rejects an in-progress placeholder and unavailable sources', () => {
+    const saved: RunState[] = [];
+    const source = state(phaseArtifact());
+    const store = { findState: () => source, save: (value: RunState) => saved.push(value) } as never;
+    const service = new ImplementationPhaseMaterializerService(store, { append: () => undefined } as never);
+    const inProgress = { ...source, steps: source.steps.map((step) => step.id === 'phases' ? { ...step, status: 'in_progress' as const } : step) } as RunState;
+    (store as { findState: () => RunState }).findState = () => inProgress;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('is in_progress');
+    const unavailable = { ...source, steps: source.steps.map((step) => step.id === 'plan' ? { ...step, output: undefined } : step) } as RunState;
+    (store as { findState: () => RunState }).findState = () => unavailable;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('is unavailable');
+    const missing = { ...source, steps: source.steps.map((step) => step.id === 'plan' && step.kind === 'agent'
+      ? { ...step, output: { ...step.output!, path: '/missing-plan.md' } }
+      : step) } as RunState;
+    (store as { findState: () => RunState }).findState = () => missing;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('cannot be read');
+    expect(saved).toEqual([]);
+  });
+
+  it('accepts only a complete placeholder whose frozen generated sequence is still present', () => {
+    const source = state(phaseArtifact());
+    const complete = {
+      ...source,
+      steps: source.steps.map((step) => step.id === 'phases'
+        ? { ...step, status: 'complete' as const, manifestSha256: hash, materializedAt: '2026-07-27T01:00:00.000Z', generatedStepIds: ['generated'] }
+        : step).concat([{
+        id: 'generated', kind: 'gate' as const, status: 'pending' as const, artifact: 'plan', feedback: [],
+      }]),
+    } as RunState;
+    const store = { findState: () => complete, save: () => undefined } as never;
+    const service = new ImplementationPhaseMaterializerService(store, { append: () => undefined } as never);
+    expect(service.materialize('run-phases', 'phases')).toBe(complete);
+    const broken = { ...complete, steps: complete.steps.filter((step) => step.id !== 'generated') } as RunState;
+    (store as { findState: () => RunState }).findState = () => broken;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('inconsistent generated sequence');
+  });
 });

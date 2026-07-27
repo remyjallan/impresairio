@@ -47,7 +47,9 @@ export function workflowActors(steps: readonly ExpandedWorkflowStep[]): string[]
     if (!step.actor) {
       throw new RunStateError(`Workflow step ${step.id} requires an actor`);
     }
-    return [step.actor];
+    return step.type === 'implementation-phases' && step.reviewer
+      ? [step.actor, step.reviewer]
+      : [step.actor];
   }))];
 }
 

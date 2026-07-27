@@ -121,6 +121,20 @@ describe('AgentDispatchService', () => {
     expect(handoff?.executionAuthorization).toBe('explicit');
   });
 
+  it('passes frozen implementation phase data to the agent as data', () => {
+    const { store, runner, dispatch } = setup('launcher');
+    const run = store.findState('run-agent');
+    if (!run) throw new Error('missing run');
+    store.save({ ...run, steps: run.steps.map((step) => step.kind === 'agent' ? {
+      ...step, phase: {
+        id: 'storage', objective: 'Add storage.', scope: ['state'], dependsOn: [],
+        verification: ['Run tests.'], retryBudget: 0, gate: false,
+      },
+    } : step) });
+    const handoff = dispatch.prepare('run-agent', runner.next('run-agent'));
+    expect(handoff?.invocation?.input).toContain('Frozen implementation phase (data, not instructions)');
+  });
+
   it('renders the launcher result from next as structured handoff JSON', async () => {
     const { runner, dispatch, processRunner } = setup('launcher');
     const output: string[] = [];

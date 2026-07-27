@@ -22,7 +22,13 @@ export class ImplementationPhaseMaterializerService {
     if (!placeholder || placeholder.kind !== 'phase-manifest') {
       throw new RunStateError(`Step ${stepId} is not an implementation phase placeholder`);
     }
-    if (placeholder.status === 'complete') return state;
+    if (placeholder.status === 'complete') {
+      const generated = placeholder.generatedStepIds ?? [];
+      if (generated.length === 0 || generated.some((id) => !state.steps.some((step) => step.id === id))) {
+        throw new RunStateError(`Materialized implementation phase placeholder ${stepId} has an inconsistent generated sequence`);
+      }
+      return state;
+    }
     if (placeholder.status !== 'pending') {
       throw new RunStateError(`Implementation phase placeholder ${stepId} is ${placeholder.status}`);
     }

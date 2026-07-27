@@ -126,6 +126,34 @@ afterEach(() => {
 });
 
 describe('start and status commands', () => {
+  it('freezes a gated implementation phase placeholder', () => {
+    const { home, service, store } = createRunService();
+    const docs = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-docs-')));
+    temporaryDirectories.push(docs);
+    const repository = configureRepository(home, docs);
+    mkdirSync(join(repository, '.impresairio', 'workflows'), { recursive: true });
+    writeFileSync(join(repository, '.impresairio', 'workflows', 'phases.yaml'), `id: phases
+name: Phases
+steps:
+  - id: plan
+    type: agent
+    actor: launcher
+    capability: integration-plan
+    output: { id: plan, filename: "Plan.md" }
+  - id: approve-plan
+    type: gate
+    artifact: plan
+  - id: phases
+    type: implementation-phases
+    artifact: plan
+    actor: implementer
+    capability: implement
+    reviewer: adversary
+    reviewCapability: verification
+`);
+    service.start({ id: 'run-phases', workflowId: 'phases', roles: { launcher: 'claude', implementer: 'codex', adversary: 'claude' }, request: 'Implement safely.', feature: { id: 'IMP-71', slug: 'phases' }, repositoryDirectory: repository });
+    expect(store.findState('run-phases')?.steps.find((step) => step.id === 'phases')).toMatchObject({ kind: 'phase-manifest', actor: 'implementer', reviewer: 'adversary', method: { capability: 'implement' }, reviewMethod: { capability: 'verification' } });
+  });
   it('creates a run state and renders its workflow and step status', async () => {
     const { home, store, events, service } = createRunService();
     const documentationRoot = realpathSync(mkdtempSync(join(tmpdir(), 'impresairio-output-')));

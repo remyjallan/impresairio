@@ -500,4 +500,31 @@ steps:
 `);
     expect(() => harness.registry.resolve('unsafe-phases', harness.repository)).toThrow('preceding human gate');
   });
+
+  it('rejects invalid phase placeholder roles and an unknown source artifact', () => {
+    const harness = createHarness();
+    harness.writeRepository('invalid-phases', `
+id: invalid-phases
+name: Invalid phases
+steps:
+  - id: phases
+    type: implementation-phases
+    artifact: missing
+    actor: implementer
+    capability: implement
+    reviewer: implementer
+`);
+    expect(() => harness.registry.resolve('invalid-phases', harness.repository)).toThrow('reviewer and reviewCapability');
+    harness.writeRepository('missing-phases', `
+id: missing-phases
+name: Missing phases
+steps:
+  - id: phases
+    type: implementation-phases
+    artifact: missing
+    actor: implementer
+    capability: implement
+`);
+    expect(() => harness.registry.resolve('missing-phases', harness.repository)).toThrow('produced by a preceding step');
+  });
 });
