@@ -3,18 +3,18 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ImplementationPhaseMaterializerService } from '../src/workflows/implementation-phase-materializer.service';
-import type { RunState } from '../src/runs/run-state.schema';
+import { createRunState, runStepSchema, type RunState } from '../src/runs/run-state.schema';
 
 const temporaryDirectories: string[] = [];
 const hash = 'a'.repeat(64);
 
-function phaseArtifact(): string {
+function phaseArtifact(overrides: Partial<{ retryBudget: number; gate: boolean }> = {}): string {
   const directory = mkdtempSync(join(tmpdir(), 'impresairio-phases-'));
   temporaryDirectories.push(directory);
   const path = join(directory, 'plan.md');
   writeFileSync(path, `# Plan\n\n\`\`\`impresairio-phase-manifest\n${JSON.stringify({ phases: [{
     id: 'storage', objective: 'Add storage.', scope: ['state'], dependsOn: [],
-    verification: ['Run storage tests.'], retryBudget: 1, gate: true,
+    verification: ['Run storage tests.'], retryBudget: 1, gate: true, ...overrides,
   }] })}\n\`\`\`\n`, 'utf8');
   return path;
 }
@@ -103,7 +103,7 @@ describe('ImplementationPhaseMaterializerService', () => {
     const source = state(phaseArtifact());
     const complete = {
       ...source,
-      steps: source.steps.map((step) => step.id === 'phases'
+      steps: source.steps.map((step) => step.id === 'phases' && step.kind === 'phase-manifest'
         ? { ...step, status: 'complete' as const, manifestSha256: hash, materializedAt: '2026-07-27T01:00:00.000Z', generatedStepIds: ['generated'] }
         : step).concat([{
         id: 'generated', kind: 'gate' as const, status: 'pending' as const, artifact: 'plan', feedback: [],
@@ -115,5 +115,71 @@ describe('ImplementationPhaseMaterializerService', () => {
     const broken = { ...complete, steps: complete.steps.filter((step) => step.id !== 'generated') } as RunState;
     (store as { findState: () => RunState }).findState = () => broken;
     expect(() => service.materialize('run-phases', 'phases')).toThrow('inconsistent generated sequence');
+  });
+
+  it('materializes a phase without review retries and gates its implementation artifact', () => {
+    const source = state(phaseArtifact({ retryBudget: 0, gate: true }));
+    const withoutReviewer = {
+      ...source,
+      steps: source.steps.map((step) => step.id === 'phases' && step.kind === 'phase-manifest'
+        ? { id: step.id, kind: step.kind, status: step.status, artifact: step.artifact, actor: step.actor, method: step.method }
+        : step),
+    } as RunState;
+    const service = new ImplementationPhaseMaterializerService(
+      { findState: () => withoutReviewer, save: () => undefined } as never,
+      { append: () => undefined } as never,
+    );
+
+    const result = service.materialize('run-phases', 'phases');
+
+    expect(result.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'phases--storage', patch: 'apply-unified-diff' }),
+      expect.objectContaining({ id: 'phases--storage--approve', artifact: 'phases--storage' }),
+    ]));
+  });
+
+  it('materializes a reviewer without a retry loop when the phase budget is zero', () => {
+    const source = state(phaseArtifact({ retryBudget: 0, gate: false }));
+    const service = new ImplementationPhaseMaterializerService(
+      { findState: () => source, save: () => undefined } as never,
+      { append: () => undefined } as never,
+    );
+
+    const result = service.materialize('run-phases', 'phases');
+
+    expect(result.steps.find((step) => step.id === 'phases--storage--review')).toMatchObject({
+      verdictPolicy: { blocked: 'stop' },
+    });
+  });
+
+  it('validates phase placeholder state and preserves phase data on generated agents', () => {
+    const phase = { id: 'storage', objective: 'Add storage.', scope: ['state'], dependsOn: [], verification: ['Run tests.'], retryBudget: 0, gate: false };
+    const base = { id: 'phases', kind: 'phase-manifest' as const, status: 'pending' as const, artifact: 'plan', actor: 'implementer', method: { action: 'implement' } };
+    const documentation = {
+      target: { name: 'test', kind: 'filesystem' as const, root: '/tmp', defaultFormat: 'markdown' as const },
+      featurePath: 'Features/{{ feature.id }}',
+      bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'IMP-71', slug: 'phases' }, run: { id: 'phase-data' } },
+    };
+
+    expect(runStepSchema.safeParse({ ...base, reviewer: 'adversary' }).success).toBe(false);
+    expect(runStepSchema.safeParse({ ...base, manifestSha256: hash }).success).toBe(false);
+    expect(() => createRunState({
+      id: 'missing-phase-fields', workflowId: 'phases', workflowSha256: hash, roles: {}, documentation,
+      steps: [{ id: 'phases', kind: 'phase-manifest', artifact: 'plan' }], now: '2026-07-27T00:00:00.000Z',
+    })).toThrow('requires an artifact, actor and method');
+    expect(() => createRunState({
+      id: 'missing-review-method', workflowId: 'phases', workflowSha256: hash, roles: {}, documentation,
+      steps: [{ ...base, reviewer: 'adversary' }], now: '2026-07-27T00:00:00.000Z',
+    })).toThrow('requires reviewer and review method together');
+    expect(createRunState({
+      id: 'phase-data', workflowId: 'phases', workflowSha256: hash, roles: {}, documentation,
+      steps: [
+        { ...base, reviewer: 'adversary', reviewMethod: { action: 'review' } },
+        { id: 'implement', kind: 'agent', actor: 'implementer', action: 'implement', output: { id: 'implementation', filename: 'Implementation.md' }, phase },
+      ], now: '2026-07-27T00:00:00.000Z',
+    }).steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'phases', reviewer: 'adversary' }),
+      expect.objectContaining({ id: 'implement', phase }),
+    ]));
   });
 });
