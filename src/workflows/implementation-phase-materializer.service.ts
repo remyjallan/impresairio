@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { EventLogService } from '../runs/event-log.service';
 import { FileStateStore, RunStateError } from '../runs/file-state.store';
-import type { RunState } from '../runs/run-state.schema';
+import { runStateSchema, type RunState } from '../runs/run-state.schema';
 import { parseImplementationPhaseManifest } from './implementation-phase-manifest';
 
 /** Expands a previously approved data manifest into a fixed serial run sequence. */
@@ -44,6 +44,9 @@ export class ImplementationPhaseMaterializerService {
       const generated = placeholder.generatedStepIds ?? [];
       if (generated.length === 0 || generated.some((id) => !state.steps.some((step) => step.id === id))) {
         throw new RunStateError(`Materialized implementation phase placeholder ${stepId} has an inconsistent generated sequence`);
+      }
+      if (state.steps.some((step) => generated.includes(step.id) && step.status !== 'pending')) {
+        throw new RunStateError(`Materialized implementation phase placeholder ${stepId} cannot be re-entered after a generated phase starts`);
       }
       if (placeholder.manifestSha256 !== manifestSha256) {
         throw new RunStateError(`Materialized implementation phase manifest ${placeholder.artifact} has changed`);
@@ -136,11 +139,12 @@ export class ImplementationPhaseMaterializerService {
       steps,
       updatedAt: now,
     };
-    this.states.save(next);
+    const validated = runStateSchema.parse(next);
+    this.states.save(validated);
     this.events.append(runId, {
       type: 'phase-manifest.materialized', at: now, stepId,
       artifact: placeholder.artifact, manifestSha256, generatedStepIds,
     });
-    return next;
+    return validated;
   }
 }

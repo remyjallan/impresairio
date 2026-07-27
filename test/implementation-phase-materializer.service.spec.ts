@@ -26,9 +26,15 @@ function phaseArtifact(
 function state(path: string, approved = true): RunState {
   const artifactHash = createHash('sha256').update(readFileSync(path, 'utf8')).digest('hex');
   return {
+    version: 1,
     id: 'run-phases', updatedAt: '2026-07-27T00:00:00.000Z',
     workflow: { id: 'phases', sha256: hash, successors: {} },
-    roles: {}, resolvedActors: {}, documentation: {} as RunState['documentation'],
+    roles: {}, resolvedActors: {},
+    documentation: {
+      target: { name: 'test', kind: 'filesystem', root: '/tmp', defaultFormat: 'markdown' },
+      featurePath: 'Features/{{ feature.id }}',
+      bindings: { project: { name: 'Test', slug: 'test' }, feature: { id: 'IMP-71', slug: 'phases' }, run: { id: 'run-phases' } },
+    },
     execution: { agentTimeoutSeconds: 60 }, createdAt: '2026-07-27T00:00:00.000Z',
     steps: [
       {
@@ -156,6 +162,12 @@ describe('ImplementationPhaseMaterializerService', () => {
     const broken = { ...complete, steps: complete.steps.filter((step) => step.id !== 'generated') } as RunState;
     (store as { findState: () => RunState }).findState = () => broken;
     expect(() => service.materialize('run-phases', 'phases')).toThrow('inconsistent generated sequence');
+    const started = {
+      ...complete,
+      steps: complete.steps.map((step) => step.id === 'generated' ? { ...step, status: 'in_progress' as const } : step),
+    } as RunState;
+    (store as { findState: () => RunState }).findState = () => started;
+    expect(() => service.materialize('run-phases', 'phases')).toThrow('cannot be re-entered');
   });
 
   it('rejects a manifest whose approval or file content no longer matches the published artifact', () => {
