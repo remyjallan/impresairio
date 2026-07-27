@@ -73,6 +73,11 @@ describe('ImplementationPhaseMaterializerService', () => {
     expect(result.steps[2]).toMatchObject({ status: 'complete', manifestSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(result.steps[3]).toMatchObject({ patch: 'apply-unified-diff', phase: { id: 'storage' } });
     expect(result.steps[5]).toMatchObject({ artifact: 'phases--storage--review' });
+    const review = result.steps.find((step) => step.id === 'phases--storage--review');
+    if (!review || review.kind !== 'agent') throw new Error('missing generated review');
+    expect(result.steps.find((step) => step.id === 'phases--storage--approve')).toMatchObject({
+      artifact: review.declaredOutput.id,
+    });
     expect(saved).toBe(result);
     expect(events).toEqual([expect.objectContaining({ type: 'phase-manifest.materialized', generatedStepIds: expect.any(Array) })]);
   });

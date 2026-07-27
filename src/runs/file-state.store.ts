@@ -143,6 +143,10 @@ export class FileStateStore implements StateStore, CompletionRunStore {
     return state ? { id: state.id } : undefined;
   }
 
+  /**
+   * Returns a completion-only projection. Durable run-state persistence always
+   * uses create/save/findState, so phase-manifest placeholders remain intact.
+   */
   find(runId: string): CompletionRun | undefined {
     const state = this.findState(runId);
     if (!state) {

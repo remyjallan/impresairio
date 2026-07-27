@@ -83,6 +83,7 @@ export class ImplementationPhaseMaterializerService {
         patch: 'apply-unified-diff' as const,
         attempts: [],
       };
+      // Implementation emits a patch; only its configured reviewer emits a verdict and controls retries.
       const review = placeholder.reviewer && placeholder.reviewMethod ? [{
         id: `${implementationId}--review`,
         kind: 'agent' as const,
@@ -104,6 +105,7 @@ export class ImplementationPhaseMaterializerService {
         },
         attempts: [],
       }] : [];
+      // Gates address declared artifact IDs, which stale invalidation resolves to the producing completed step.
       const gate = phase.gate ? [{
         id: `${implementationId}--approve`,
         kind: 'gate' as const,
