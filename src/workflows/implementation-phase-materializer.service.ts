@@ -108,14 +108,22 @@ export class ImplementationPhaseMaterializerService {
       ...generated,
       ...state.steps.slice(index + 1),
     ];
+    const existingSuccessors = state.workflow.successors;
+    const generatedStepIds = generated.map((step) => step.id);
+    const successorOfPlaceholder = existingSuccessors[placeholder.id] ?? [];
+    const materializedSuccessors = Object.fromEntries(generatedStepIds.map((generatedStepId, offset) => [
+      generatedStepId,
+      offset + 1 < generatedStepIds.length ? [generatedStepIds[offset + 1]] : successorOfPlaceholder,
+    ]));
     const next = {
       ...state,
       workflow: {
         ...state.workflow,
-        successors: Object.fromEntries(steps.map((step, offset) => [
-          step.id,
-          offset + 1 < steps.length ? [steps[offset + 1].id] : [],
-        ])),
+        successors: {
+          ...existingSuccessors,
+          [placeholder.id]: [generatedStepIds[0]],
+          ...materializedSuccessors,
+        },
       },
       steps,
       updatedAt: now,
@@ -123,7 +131,7 @@ export class ImplementationPhaseMaterializerService {
     this.states.save(next);
     this.events.append(runId, {
       type: 'phase-manifest.materialized', at: now, stepId,
-      artifact: placeholder.artifact, manifestSha256, generatedStepIds: generated.map((step) => step.id),
+      artifact: placeholder.artifact, manifestSha256, generatedStepIds,
     });
     return next;
   }

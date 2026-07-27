@@ -66,6 +66,42 @@ describe('ImplementationPhaseMaterializerService', () => {
     expect(events).toEqual([expect.objectContaining({ type: 'phase-manifest.materialized', generatedStepIds: expect.any(Array) })]);
   });
 
+  it('inserts materialized phases without flattening existing successor edges', () => {
+    const source = state(phaseArtifact());
+    const branched = {
+      ...source,
+      workflow: {
+        ...source.workflow,
+        successors: {
+          plan: ['approve-plan', 'audit'],
+          'approve-plan': ['phases'],
+          phases: ['report'],
+          audit: ['report'],
+          report: [],
+        },
+      },
+      steps: [...source.steps.slice(0, 3), {
+        id: 'audit', kind: 'gate' as const, status: 'pending' as const, artifact: 'plan', feedback: [],
+      }, source.steps[3]],
+    } as RunState;
+    const service = new ImplementationPhaseMaterializerService(
+      { findState: () => branched, save: () => undefined } as never,
+      { append: () => undefined } as never,
+    );
+
+    const result = service.materialize('run-phases', 'phases');
+
+    expect(result.workflow.successors).toMatchObject({
+      plan: ['approve-plan', 'audit'],
+      'approve-plan': ['phases'],
+      phases: ['phases--storage'],
+      'phases--storage': ['phases--storage--review'],
+      'phases--storage--review': ['phases--storage--approve'],
+      'phases--storage--approve': ['report'],
+      audit: ['report'],
+    });
+  });
+
   it('rejects unavailable, unapproved, non-placeholder and malformed sources without saving', () => {
     const saved: RunState[] = [];
     const store = { findState: () => undefined, save: (value: RunState) => saved.push(value) } as never;

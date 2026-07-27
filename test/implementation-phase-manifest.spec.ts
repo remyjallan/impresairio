@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ImplementationPhaseManifestError,
+  MAX_IMPLEMENTATION_PHASES,
   parseImplementationPhaseManifest,
 } from '../src/workflows/implementation-phase-manifest';
 
@@ -63,7 +64,7 @@ describe('implementation phase manifest parser', () => {
       ],
     })))).toThrow('duplicate phase ID');
     expect(() => parseImplementationPhaseManifest(manifest(JSON.stringify({
-      phases: Array.from({ length: 7 }, (_value, index) => ({
+      phases: Array.from({ length: MAX_IMPLEMENTATION_PHASES + 1 }, (_value, index) => ({
         id: `phase-${index}`, objective: 'Bounded phase.', scope: ['scope'], dependsOn: [],
         verification: ['Check it.'], retryBudget: 0,
       })),
