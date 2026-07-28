@@ -70,8 +70,15 @@ export class WorkflowRunnerService {
             return { kind: 'gate', stepId: step.id };
           }
         }
-        throw new RunStateError(`Step ${step.id} is stale and must be retried before continuing`);
+        const reopened = this.staleInvalidation.reopenStaleWorkIfReady(runId, state, step.id);
+        if (reopened) {
+          state = reopened;
+          step = state.steps.find((candidate) => candidate.id === step?.id);
+        } else {
+          throw new RunStateError(`Step ${step.id} is stale and must be retried before continuing`);
+        }
       }
+      if (!step) throw new RunStateError('A reopened step disappeared from run state');
       if (step.status === 'failed') {
         throw new RunStateError(`Step ${step.id} failed and must be retried before continuing`);
       }

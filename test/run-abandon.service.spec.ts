@@ -66,6 +66,17 @@ describe('RunAbandonService', () => {
     expect(events.read('run-abandon').at(-1)).not.toHaveProperty('externalReference');
   });
 
+  it('rejects undocumented-size inputs clearly and preserves the last reached step', () => {
+    const { store, events, service } = harness();
+    expect(() => service.abandon('run-abandon', 'x'.repeat(1_001))).toThrow('at most 1000 characters');
+    expect(() => service.abandon('run-abandon', 'stop', 'x'.repeat(2_001))).toThrow('at most 2000 characters');
+
+    service.abandon('run-abandon', 'Stopped after a failed implementation.');
+
+    expect(store.findState('run-abandon')?.abandonment).toMatchObject({ lastStepId: 'implement' });
+    expect(events.read('run-abandon').at(-1)).toMatchObject({ lastStepId: 'implement' });
+  });
+
   it('allows a pending run to be abandoned and blocks retry afterward', () => {
     const { store, locks, service } = harness();
     const failed = store.findState('run-abandon');

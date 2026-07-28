@@ -33,6 +33,7 @@ describe('OpenCodeProvider', () => {
     expect(invocation.input).toContain('You may inspect repository files.');
     expect(invocation.input).toContain('Return the complete Markdown artifact in your response only.');
     expect(invocation.input).toContain('Do not write or modify files.');
+    expect(invocation.input).toContain('IMPRESAIRIO_ARTIFACT_END');
     expect(invocation.input).not.toContain('Do not read');
     expect(invocation.input).not.toContain('/docs/report.md');
   });

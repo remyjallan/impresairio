@@ -64,6 +64,92 @@ describe('FileStateStore', () => {
     expect(store.findState('run-completion-state')?.steps[0]).toMatchObject({ status: 'complete' });
   });
 
+  it('archives immutable artifact revisions before recording a mutable publication path', () => {
+    const { home, store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const outputPath = join(home, 'published.md');
+    const content = '# First revision\n';
+    const sha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+    const state = createRunState({ id: 'run-artifact-revision', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } }], now: at });
+    store.create({ ...state, currentStepId: 'work', steps: state.steps.map((step) => step.kind === 'agent'
+      ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
+      : step) });
+    writeFileSync(outputPath, content, 'utf8');
+
+    const revision = store.archiveArtifactRevision('run-artifact-revision', 'work', { path: outputPath, sha256 });
+    writeFileSync(outputPath, '# Later mutable publication\n', 'utf8');
+    store.recordCompletion('run-artifact-revision', {
+      stepId: 'work', output: { id: 'work', path: outputPath, format: 'markdown', sha256 }, artifactRevision: revision,
+    });
+
+    expect(readFileSync(revision.path, 'utf8')).toBe(content);
+    expect(store.findState('run-artifact-revision')?.steps[0]).toMatchObject({
+      artifactRevisions: [expect.objectContaining({ path: revision.path, sha256 })],
+    });
+  });
+
+  it('discards an unrecorded artifact revision only from its own run directory', () => {
+    const { home, store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const outputPath = join(home, 'discard.md');
+    const content = '# Discarded revision\n';
+    const sha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+    const state = createRunState({ id: 'run-discard-revision', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } }], now: at });
+    store.create({ ...state, currentStepId: 'work', steps: state.steps.map((step) => step.kind === 'agent'
+      ? { ...step, status: 'in_progress' as const, attempts: [{ number: 1, startedAt: at, inputArtifactHashes: {} }] }
+      : step) });
+    writeFileSync(outputPath, content, 'utf8');
+    const revision = store.archiveArtifactRevision('run-discard-revision', 'work', { path: outputPath, sha256 });
+
+    store.discardArtifactRevision('run-discard-revision', revision);
+
+    expect(existsSync(revision.path)).toBe(false);
+    expect(() => store.discardArtifactRevision('run-discard-revision', { ...revision, path: join(home, 'outside.md') }))
+      .toThrow('outside the run directory');
+    expect(() => store.discardArtifactRevision('run-discard-revision', { ...revision, path: join(home, 'runs', 'run-discard-revision', 'artifact-revisions') }))
+      .toThrow('outside the run directory');
+  });
+
+  it('rejects a changed artifact before archiving a revision', () => {
+    const { home, store } = createStore();
+    const at = '2026-07-20T10:00:00.000Z';
+    const outputPath = join(home, 'changed.md');
+    const state = createRunState({ id: 'run-artifact-change', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [{ id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } }], now: at });
+    store.create(state);
+    writeFileSync(outputPath, '# Changed\n', 'utf8');
+
+    expect(() => store.archiveArtifactRevision('run-artifact-change', 'work', { path: outputPath, sha256: 'a'.repeat(64) }))
+      .toThrow('changed before its revision could be archived');
+  });
+
+  it('rejects non-artifact steps and detects a corrupted revision copy', () => {
+    let corruptRevisionRead = false;
+    const { home, store } = createStore({
+      readFileSync: ((path: string, encoding: BufferEncoding) => corruptRevisionRead && path.includes('artifact-revisions')
+        ? '# Corrupted\n'
+        : readFileSync(path, encoding)) as never,
+    });
+    const at = '2026-07-20T10:00:00.000Z';
+    const outputPath = join(home, 'revision.md');
+    const content = '# Revision\n';
+    const sha256 = createHash('sha256').update(content, 'utf8').digest('hex');
+    const state = createRunState({ id: 'run-corrupt-revision', workflowId: 'feature', workflowSha256: 'a'.repeat(64), roles: {}, documentation,
+      steps: [
+        { id: 'work', kind: 'agent', actor: 'launcher', action: 'implementation', output: { id: 'work', filename: 'work.md' } },
+        { id: 'approve', kind: 'gate', artifact: 'work' },
+      ], now: at });
+    store.create(state);
+    writeFileSync(outputPath, content, 'utf8');
+    expect(() => store.archiveArtifactRevision('run-corrupt-revision', 'approve', { path: outputPath, sha256 }))
+      .toThrow('cannot archive an artifact revision');
+    corruptRevisionRead = true;
+    expect(() => store.archiveArtifactRevision('run-corrupt-revision', 'work', { path: outputPath, sha256 }))
+      .toThrow('changed while it was being saved');
+  });
+
   it('marks an in-progress agent failure without applying host-only state fields', () => {
     const { store } = createStore();
     const at = '2026-07-20T10:00:00.000Z';

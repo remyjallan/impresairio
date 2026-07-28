@@ -24,7 +24,7 @@ export class ListCommand extends CommandRunner {
     }
     this.write([
       'RUN ID\tWORKFLOW\tSTATUS\tCURRENT STEP\tUPDATED',
-      ...runs.map((run) => `${run.id}\t${run.workflow.id}\t${getRunStatus(run)}\t${run.currentStepId ?? 'not-started'}\t${run.updatedAt}`),
+      ...runs.map((run) => `${run.id}\t${run.workflow.id}\t${getRunStatus(run)}\t${run.currentStepId ?? run.abandonment?.lastStepId ?? 'not-started'}\t${run.updatedAt}`),
       '',
     ].join('\n'));
   }

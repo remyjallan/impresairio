@@ -4,13 +4,15 @@ import {
   createProviderExecutionError,
   executeAgentProcess,
   executionDirectory,
+  detachedAdvanceArguments,
+  extractCompleteArtifact,
   extractContent,
   extractDeniedWriteContent,
   formatAgentProgress,
   prepareExecutionInvocation,
 } from '../src/commands/advance.command';
 import { describeOpenCodeRunOutput, readOpenCodeRunOutput } from '../src/agents/opencode.provider';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -18,6 +20,10 @@ import { HomeDirectoryResolver } from '../src/config/home-directory.resolver';
 import { FileStateStore } from '../src/runs/file-state.store';
 import { createRunState } from '../src/runs/run-state.schema';
 import { StructuredResultError } from '../src/workflows/structured-result';
+
+function envelope(markdown: string): string {
+  return `<!-- IMPRESAIRIO_ARTIFACT_START -->\n${markdown}\n<!-- IMPRESAIRIO_ARTIFACT_END -->`;
+}
 
 function createInProgressAgentRun(home: string, runId: string): {
   readonly stateStore: FileStateStore;
@@ -49,6 +55,60 @@ function createInProgressAgentRun(home: string, runId: string): {
 }
 
 describe('advance command output recovery', () => {
+  it('accepts only explicitly closed provider artifacts and preserves structured verdicts', () => {
+    expect(extractCompleteArtifact(envelope('# Complete'))).toBe('# Complete');
+    expect(extractCompleteArtifact(`${envelope('# Review')}\n\nVERDICT: APPROVED`)).toBe('# Review\n\nVERDICT: APPROVED');
+    expect(extractCompleteArtifact(`${envelope('# Review')}\nVERDICT: APPROVED`)).toBe('# Review\nVERDICT: APPROVED');
+    expect(extractCompleteArtifact(`${envelope('# Review')}\n\n\nVERDICT: APPROVED`)).toBe('# Review\n\n\nVERDICT: APPROVED');
+    expect(extractCompleteArtifact('<!-- IMPRESAIRIO_ARTIFACT_START --># Same line<!-- IMPRESAIRIO_ARTIFACT_END -->')).toBe('# Same line');
+    expect(extractCompleteArtifact(envelope('Documenting <!-- IMPRESAIRIO_ARTIFACT_END --> is safe.'))).toBe('Documenting <!-- IMPRESAIRIO_ARTIFACT_END --> is safe.');
+    expect(() => extractCompleteArtifact('partial provider output')).toThrow('expected a closed Impresairio artifact envelope');
+    expect(() => extractCompleteArtifact('<!-- IMPRESAIRIO_ARTIFACT_START -->')).toThrow('expected a closed Impresairio artifact envelope');
+    expect(() => extractCompleteArtifact(`${envelope('# Complete')} trailing prose`)).toThrow('unexpected content after');
+    expect(detachedAdvanceArguments('run-1', { onlyPreAuthorized: true, untilGate: true })).toEqual([
+      process.argv[1] ?? '', 'advance', 'run-1', '--only-pre-authorized', '--until-gate',
+    ]);
+    expect(() => detachedAdvanceArguments('run-1', { onlyPreAuthorized: false, untilGate: false }, '')).toThrow('requires a Node CLI entrypoint');
+  });
+
+  it('starts a detached child while recording its PID under the run lock', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'impresairio-detached-'));
+    const script = join(directory, 'child.js');
+    writeFileSync(script, 'process.exit(0);', 'utf8');
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const append = vi.fn();
+    const release = vi.fn();
+    const command = new AdvanceCommand(
+      {} as never, {} as never, {} as never, {} as never, {} as never,
+      { acquireReentrant: vi.fn(() => release) } as never,
+      { append } as never, () => undefined,
+      undefined,
+      undefined,
+      script,
+    );
+    try {
+      await command.run(['run-detached'], { detach: true });
+      expect(write).toHaveBeenCalledWith(expect.stringMatching(/^detached: \d+\n$/));
+      expect(append).toHaveBeenCalledWith('run-detached', expect.objectContaining({ type: 'advance.detached' }));
+      expect(release).toHaveBeenCalledOnce();
+    } finally {
+      write.mockRestore();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects detaching when no Node CLI entrypoint is available', async () => {
+    const command = new AdvanceCommand(
+      {} as never, {} as never, {} as never, {} as never, {} as never,
+      {} as never, {} as never, () => undefined,
+      undefined,
+      undefined,
+      '',
+    );
+
+    await expect(command.run(['run-detached'], { detach: true })).rejects.toThrow('requires a Node CLI entrypoint');
+  });
+
   it('continues after materializing phases and reports the transition', async () => {
     const progress = vi.fn();
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -84,7 +144,9 @@ describe('advance command output recovery', () => {
       );
       await command.run(['run-1'], { onlyPreAuthorized: true });
       expect(write).toHaveBeenCalledWith('explicit-authorization-required: review\n');
-      expect(command.parseOnlyPreAuthorized()).toBe(true);
+    expect(command.parseOnlyPreAuthorized()).toBe(true);
+      expect(command.parseUntilGate()).toBe(true);
+      expect(command.parseDetach()).toBe(true);
     } finally {
       write.mockRestore();
     }
@@ -132,6 +194,8 @@ describe('advance command output recovery', () => {
   it('stages an agent invocation before publishing its output', async () => {
     const runDirectory = mkdtempSync(join(tmpdir(), 'impresairio-advance-'));
     const expectedOutputPath = join(runDirectory, 'artifacts', 'implement.md');
+    const stagingPath = join(runDirectory, 'staging', 'implement', 'artifact.md');
+    const publishMarkdown = vi.fn();
     let nextCall = 0;
     const command = new AdvanceCommand(
       { next: () => nextCall++ === 0
@@ -140,7 +204,11 @@ describe('advance command output recovery', () => {
       { prepare: () => ({
         actor: 'agent', profile: 'codex', provider: 'codex', executionAuthorization: 'pre-authorized',
         expectedOutput: { path: expectedOutputPath },
-        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("# Result")'], input: expectedOutputPath },
+        invocation: {
+          command: process.execPath,
+          args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(stagingPath)}, ${JSON.stringify(envelope('# Result'))})`],
+          input: expectedOutputPath,
+        },
       }) } as never,
       { complete: () => undefined } as never,
       {
@@ -151,7 +219,7 @@ describe('advance command output recovery', () => {
         }),
         markFailed: () => undefined,
       } as never,
-      { publishMarkdown: () => undefined } as never,
+      { publishMarkdown } as never,
       { acquireReentrant: () => () => undefined } as never,
       { append: () => undefined } as never,
       () => undefined,
@@ -159,8 +227,67 @@ describe('advance command output recovery', () => {
 
     try {
       await command.run(['run-1'], { onlyPreAuthorized: true });
+      expect(publishMarkdown).toHaveBeenCalledWith(expect.anything(), '# Result\n');
     } finally {
       rmSync(runDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('stops after a single explicitly authorized provider step by default', async () => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const command = new AdvanceCommand(
+      { next: vi.fn(() => ({ kind: 'agent', stepId: 'review' })) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex', executionAuthorization: 'explicit',
+        expectedOutput: { path: '/tmp/review.md' },
+        invocation: { command: process.execPath, args: ['-e', `process.stdout.write(${JSON.stringify(envelope('# Review'))})`], input: 'work' },
+      }) } as never,
+      { complete: () => undefined } as never,
+      {
+        runDirectory: () => '/tmp',
+        findState: () => ({
+          execution: { agentTimeoutSeconds: 1 },
+          steps: [{ id: 'review', kind: 'agent', expectedOutput: { path: '/tmp/review.md' } }],
+        }),
+        markFailed: () => undefined,
+      } as never,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: () => undefined } as never,
+      () => undefined,
+    );
+    try {
+      await command.run(['run-1']);
+      expect(write).toHaveBeenCalledWith('authorization-boundary: review\n');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  it('persists heartbeat progress while a provider is running', async () => {
+    const events: unknown[] = [];
+    const directory = mkdtempSync(join(tmpdir(), 'impresairio-heartbeat-'));
+    const expectedOutput = join(directory, 'review.md');
+    const command = new AdvanceCommand(
+      { next: () => ({ kind: 'agent', stepId: 'review' }) } as never,
+      { prepare: () => ({
+        actor: 'agent', profile: 'codex', provider: 'codex', executionAuthorization: 'explicit', expectedOutput: { path: expectedOutput },
+        invocation: { command: process.execPath, args: [join(process.cwd(), 'test', 'fixtures', 'heartbeat-provider.js')], input: 'work' },
+      }) } as never,
+      { complete: () => undefined } as never,
+      { runDirectory: () => directory, findState: () => ({ execution: { agentTimeoutSeconds: 1 }, steps: [{ id: 'review', kind: 'agent', expectedOutput: { path: expectedOutput } }] }), markFailed: () => undefined } as never,
+      { publishMarkdown: () => undefined } as never,
+      { acquireReentrant: () => () => undefined } as never,
+      { append: (_runId: string, event: unknown) => events.push(event) } as never,
+      () => undefined,
+      undefined,
+      1,
+    );
+    try {
+      await command.run(['run-heartbeat']);
+      expect(events).toContainEqual(expect.objectContaining({ type: 'agent.execution.progress', stepId: 'review' }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 
@@ -205,7 +332,7 @@ describe('advance command output recovery', () => {
       { next: () => ({ kind: 'agent', stepId: 'implement' }) } as never,
       { prepare: () => ({
         actor: 'agent', profile: 'codex', provider: 'codex', expectedOutput,
-        invocation: { command: process.execPath, args: ['-e', `process.stdout.write(${JSON.stringify(rawOutput)})`], input: 'work' },
+        invocation: { command: process.execPath, args: ['-e', `process.stdout.write(${JSON.stringify(envelope(rawOutput))})`], input: 'work' },
       }) } as never,
       { complete: () => { throw completionError; } } as never,
       stateStore,
@@ -234,7 +361,7 @@ describe('advance command output recovery', () => {
       { prepare: () => ({
         actor: 'agent', profile: 'codex', provider: 'codex',
         expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') },
-        invocation: { command: process.execPath, args: ['-e', 'process.stdout.write("result")'], input: 'work' },
+        invocation: { command: process.execPath, args: ['-e', `process.stdout.write(${JSON.stringify(envelope('result'))})`], input: 'work' },
       }) } as never,
       { complete: () => { throw 'completion failed'; } } as never,
       { runDirectory: () => runDirectory, findState: () => ({ execution: { agentTimeoutSeconds: 1 }, steps: [{ id: 'implement', kind: 'agent', expectedOutput: { path: join(runDirectory, 'artifacts', 'implement.md') } }] }), markFailed } as never,

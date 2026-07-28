@@ -63,7 +63,18 @@ function instructionText(request: ProviderPreparationRequest): string {
   // path deliberately sits outside the agent's workspace and is therefore
   // denied.  The runner owns persistence, so keep this transport contract
   // explicit and file-system independent.
-  return `${renderInstruction(request.instruction)}\n\nReturn the complete Markdown artifact in your response only. Do not write or modify files.`;
+  return `${renderInstruction(request.instruction)}\n\n${artifactEnvelopeInstruction(request.expectsVerdict === true, request.expectsVerdict === true)}`;
+}
+
+export function artifactEnvelopeInstruction(expectsVerdict: boolean, structuredVerdict = false): string {
+  const envelope = 'Return the complete Markdown artifact in your response only. Do not write or modify files. Wrap the complete artifact exactly as:\n<!-- IMPRESAIRIO_ARTIFACT_START -->\n<artifact markdown>\n<!-- IMPRESAIRIO_ARTIFACT_END -->\nThe closing marker is mandatory.';
+  if (structuredVerdict) {
+    return `${envelope} Put that envelope in the structured markdown field and report the selected verdict only in the structured verdict field.`;
+  }
+  if (expectsVerdict) {
+    return `${envelope} After the envelope, append exactly one required VERDICT line. Do not add other prose outside the envelope.`;
+  }
+  return `${envelope} Do not add prose outside the envelope.`;
 }
 
 export function renderInstruction(request: ProviderPreparationRequest['instruction']): string {

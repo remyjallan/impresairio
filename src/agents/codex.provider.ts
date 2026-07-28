@@ -7,7 +7,7 @@ import type {
   PreparedAgentInvocation,
   ProviderPreparationRequest,
 } from './agent-provider';
-import { renderInstruction } from './claude-code.provider';
+import { artifactEnvelopeInstruction, renderInstruction } from './claude-code.provider';
 
 export class CodexProvider implements AgentProvider {
   readonly name = 'codex' as const;
@@ -23,7 +23,7 @@ export class CodexProvider implements AgentProvider {
       // The runner owns artifact publication. Asking Codex to write a staging
       // file conflicts with the intentionally read-only sandbox and wraps an
       // otherwise valid response in a denied-write diagnostic.
-      input: `${renderInstruction(request.instruction)}\n\nReturn the complete Markdown artifact in your response only. Do not write or modify files.`,
+      input: `${renderInstruction(request.instruction)}\n\n${artifactEnvelopeInstruction(request.expectsVerdict === true)}`,
       ...(request.agent.model ? { model: request.agent.model } : {}),
       ...(request.agent.reasoningEffort ? { reasoningEffort: request.agent.reasoningEffort } : {}),
     };

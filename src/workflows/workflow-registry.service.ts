@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseDocument, YAMLParseError } from 'yaml';
 import { HomeDirectoryResolver } from '../config/home-directory.resolver';
@@ -92,6 +92,37 @@ export class WorkflowRegistryService {
       path: selected.path,
       sha256: createHash('sha256').update(source).digest('hex'),
     };
+  }
+
+  /** Lists the effective workflow definitions after repository/global/package precedence. */
+  list(repositoryDirectory = this.runtime.currentDirectory()): readonly ResolvedWorkflow[] {
+    const directories: readonly { readonly source: WorkflowSource; readonly directory: string }[] = [
+      { source: 'repository', directory: join(resolve(repositoryDirectory), '.impresairio', 'workflows') },
+      { source: 'global', directory: join(this.homeDirectoryResolver.resolve(), 'workflows') },
+      { source: 'package', directory: this.runtime.packageWorkflowsDirectory },
+    ];
+    const selected = new Map<string, ResolvedWorkflow>();
+    for (const candidate of directories) {
+      if (!existsSync(candidate.directory)) continue;
+      for (const entry of readdirSync(candidate.directory, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.yaml')) continue;
+        const workflowId = entry.name.slice(0, -'.yaml'.length);
+        if (!workflowIdPattern.test(workflowId) || selected.has(workflowId)) continue;
+        const path = join(candidate.directory, entry.name);
+        const source = this.read(path);
+        const workflow = this.parse(source, path);
+        if (workflow.id !== workflowId) {
+          throw new WorkflowError(`${path}: workflow id "${workflow.id}" does not match filename "${workflowId}.yaml"`);
+        }
+        selected.set(workflowId, {
+          workflow,
+          source: candidate.source,
+          path,
+          sha256: createHash('sha256').update(source).digest('hex'),
+        });
+      }
+    }
+    return [...selected.values()].sort((left, right) => left.workflow.id.localeCompare(right.workflow.id));
   }
 
   readPromptFile(resolvedWorkflow: ResolvedWorkflow, promptFile: string): string {

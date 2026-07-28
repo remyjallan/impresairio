@@ -89,6 +89,20 @@ afterEach(() => {
 });
 
 describe('WorkflowRunnerService', () => {
+  it('reopens the next stale work step and rejects an unsupported stale placeholder', () => {
+    const { runner, store } = createRunner([agent('review')]);
+    const state = store.findState('run-workflow');
+    if (!state) throw new Error('missing run state');
+    store.save({ ...state, steps: state.steps.map((step) => ({ ...step, status: 'stale' as const })) });
+    expect(runner.next('run-workflow')).toEqual({ kind: 'agent', stepId: 'review' });
+
+    const phases = createRunner([{ id: 'phases', kind: 'phase-manifest', artifact: 'plan', actor: 'implementer', method: { action: 'implement' } }]);
+    const phaseState = phases.store.findState('run-workflow');
+    if (!phaseState) throw new Error('missing phase state');
+    phases.store.save({ ...phaseState, steps: phaseState.steps.map((step) => ({ ...step, status: 'stale' as const })) });
+    expect(() => phases.runner.next('run-workflow')).toThrow('stale and must be retried');
+  });
+
   it('materializes a pending phase placeholder before continuing the workflow', () => {
     const materialize = vi.fn();
     const { runner } = createRunner([{
